@@ -1,7 +1,7 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund
+from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog
 import os
 from datetime import datetime, timedelta
 
@@ -198,6 +198,31 @@ def manage_schedule():
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
     return render_template('schedule.html', schedules=schedules)
 
+@app.route('/schedule/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_schedule(id):
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    s = Schedule.query.get_or_404(id)
+    s.day = request.form['day']
+    s.time_start = request.form['time_start']
+    s.time_end = request.form['time_end']
+    s.subject = request.form['subject']
+    s.lecturer = request.form['lecturer']
+    s.room = request.form['room']
+    db.session.commit()
+    log_activity("Edit Jadwal", f"Matkul: {s.subject}")
+    return redirect(url_for('manage_schedule'))
+
+@app.route('/schedule/delete/<int:id>')
+@login_required
+def delete_schedule(id):
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    s = Schedule.query.get_or_404(id)
+    log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
+    db.session.delete(s)
+    db.session.commit()
+    return redirect(url_for('manage_schedule'))
+
 @app.route('/announcements', methods=['GET', 'POST'])
 @login_required
 def manage_announcements():
@@ -219,6 +244,30 @@ def manage_announcements():
     
     announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     return render_template('announcements.html', announcements=announcements)
+
+@app.route('/announcements/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_announcement(id):
+    if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
+    ann = Announcement.query.get_or_404(id)
+    ann.title = request.form['title']
+    ann.content = request.form['content']
+    ann.category = request.form['category']
+    ann.is_pinned = 'is_pinned' in request.form
+    db.session.commit()
+    log_activity("Edit Pengumuman", f"Judul: {ann.title}")
+    flash('Pengumuman diperbarui.')
+    return redirect(url_for('manage_announcements'))
+
+@app.route('/announcements/delete/<int:id>')
+@login_required
+def delete_announcement(id):
+    if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
+    ann = Announcement.query.get_or_404(id)
+    log_activity("Hapus Pengumuman", f"Judul: {ann.title}")
+    db.session.delete(ann)
+    db.session.commit()
+    return redirect(url_for('manage_announcements'))
 
 @app.route('/fund', methods=['GET', 'POST'])
 @login_required
