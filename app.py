@@ -755,51 +755,43 @@ from sqlalchemy import text
 
 def init_db():
     """
-    Inisialisasi database dan sinkronisasi skema otomatis (Automated Schema Healing).
-    Memastikan tabel baru dan kolom baru ditambahkan tanpa menghapus data lama.
+    Inisialisasi database dan sinkronisasi skema otomatis (Multi-Engine Support).
+    Mendukung SQLite dan MySQL untuk sinkronisasi kolom baru tanpa merusak data.
     """
     with app.app_context():
-        # 1. Buat tabel baru jika belum ada (create_all aman untuk tabel baru)
+        # 1. Buat tabel baru jika belum ada
         db.create_all()
 
-        # 2. Sinkronisasi Skema untuk SQLite (SQLite tidak mendukung sinkronisasi otomatis kolom baru)
-        if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
-            try:
-                engine = db.engine
-                with engine.connect() as conn:
-                    # Periksa dan Tambah Kolom Baru pada tabel 'role'
-                    res = conn.execute(text("PRAGMA table_info(role)"))
-                    columns = [row[1] for row in res.fetchall()]
-                    
-                    # Tambah kolom izin granular jika belum ada
-                    if 'can_view_logs' not in columns:
-                        conn.execute(text("ALTER TABLE role ADD COLUMN can_view_logs BOOLEAN DEFAULT 0"))
-                    if 'can_export_data' not in columns:
-                        conn.execute(text("ALTER TABLE role ADD COLUMN can_export_data BOOLEAN DEFAULT 0"))
-                    if 'can_edit_settings' not in columns:
-                        conn.execute(text("ALTER TABLE role ADD COLUMN can_edit_settings BOOLEAN DEFAULT 0"))
-                    
-                    # Update batch_fund
-                    res_fund = conn.execute(text("PRAGMA table_info(batch_fund)"))
-                    columns_fund = [row[1] for row in res_fund.fetchall()]
-                    if 'original_amount' not in columns_fund:
-                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT"))
-                    if 'original_description' not in columns_fund:
-                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_description VARCHAR(200)"))
-                    if 'tags' not in columns_fund:
-                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100)"))
-
-                    # Periksa kolom 'student_id' pada tabel 'user'
-                    res_user = conn.execute(text("PRAGMA table_info(user)"))
-                    columns_user = [row[1] for row in res_user.fetchall()]
-                    if 'student_id' not in columns_user:
-                        conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER REFERENCES student(id)"))
-                    
-                    # Pastikan perubahan tersimpan
-                    conn.commit()
-                    print("Status: Sinkronisasi Skema Berhasil.")
-            except Exception as e:
-                print(f"Peringatan: Gagal sinkronisasi skema otomatis: {e}")
+        # 2. Sinkronisasi Skema Otomatis (SQLite & MySQL)
+        try:
+            from sqlalchemy import inspect
+            inspector = inspect(db.engine)
+            
+            with db.engine.connect() as conn:
+                # A. Sinkronisasi tabel 'user'
+                user_cols = [c['name'] for c in inspector.get_columns('user')]
+                if 'student_id' not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER NULL"))
+                
+                # B. Sinkronisasi tabel 'role'
+                role_cols = [c['name'] for c in inspector.get_columns('role')]
+                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings']:
+                    if col not in role_cols:
+                        conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
+                
+                # C. Sinkronisasi tabel 'batch_fund'
+                fund_cols = [c['name'] for c in inspector.get_columns('batch_fund')]
+                if 'original_amount' not in fund_cols:
+                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT NULL"))
+                if 'original_description' not in fund_cols:
+                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_description VARCHAR(200) NULL"))
+                if 'tags' not in fund_cols:
+                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100) NULL"))
+                
+                conn.commit()
+                print("Status: Sinkronisasi Skema (Multi-Engine) Berhasil.")
+        except Exception as e:
+            print(f"Peringatan: Gagal sinkronisasi skema otomatis: {e}")
 
         # 3. Inisialisasi Data Default jika tabel Role masih kosong
         try:
