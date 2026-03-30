@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header>
+    <h1>Pengaturan Sistem & Branding</h1>
+    <p style="color: var(--text-muted);">Sesuaikan identitas portal kelas Anda di sini.</p>
+</header>
+
+{% with messages = get_flashed_messages() %}
+    {% if messages %}
+        {% for message in messages %}
+            <div style="background: #ecfdf5; color: #065f46; padding: 1rem; border-radius: 12px; margin-bottom: 2rem; border: 1px solid #d1fae5; font-weight: 500;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="card" style="max-width: 800px;">
+    <h3 style="margin-bottom: 2rem; font-size: 1.25rem;">Branding & Metadata</h3>
+    <form method="POST" enctype="multipart/form-data">
+        <div class="form-group">
+            <label>Judul Portal (Web Title)</label>
+            <input type="text" name="web_title" class="form-control" value="{{ settings.get('web_title', '') }}" placeholder="Contoh: Famousbytee.b Portal">
+        </div>
+
+        <div style="margin-top: 2rem; padding: 1.5rem; background: #f8faff; border-radius: 16px; border: 1px solid #eef2ff;">
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                    {% if settings.get('web_logo_path') %}
+                        <img src="{{ settings.get('web_logo_path') }}" style="max-width: 32px; max-height: 32px;">
+                    {% else %}
+                        <i data-lucide="{{ settings.get('web_logo', 'monitor') }}" style="color: var(--primary);"></i>
+                    {% endif %}
+                </div>
+                <h4 style="font-size: 1rem;">Logo Portal Utama</h4>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px;">
+                <div class="form-group">
+                    <label>Metode 1: Lucide Icon</label>
+                    <input type="text" name="web_logo" class="form-control" value="{{ settings.get('web_logo', 'monitor') }}" placeholder="monitor, zap, heart...">
+                </div>
+                <div class="form-group">
+                    <label>Metode 2: Upload Gambar</label>
+                    <input type="file" name="logo_file" class="form-control" style="background: white;">
+                    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;">Format: PNG/JPG (Maks 1MB). Rekomendasi 128x128px.</p>
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 1.5rem; padding: 1.5rem; background: #f8faff; border-radius: 16px; border: 1px solid #eef2ff;">
+             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                   <img src="{{ settings.get('favicon_path') or settings.get('favicon_url', '/static/favicon.ico') }}" style="max-width: 24px; border-radius: 4px;">
+                </div>
+                <h4 style="font-size: 1rem;">Favicon (Browser Icon)</h4>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px;">
+                <div class="form-group">
+                    <label>URL / File Local</label>
+                    <input type="text" name="favicon_url" class="form-control" value="{{ settings.get('favicon_url', '/static/favicon.ico') }}">
+                </div>
+                <div class="form-group">
+                    <label>Upload Baru</label>
+                    <input type="file" name="favicon_file" class="form-control" style="background: white;">
+                </div>
+            </div>
+        </div>
+
+        <div style="margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+            <button type="submit" class="btn" style="width: 200px;">Simpan Perubahan</button>
+        </div>
+    </form>
+</div>
+
+<div class="card" style="max-width: 800px; margin-top: 2rem; border-left: 5px solid #ff9f40;">
+    <h3 style="font-size: 1.1rem; color: #854d0e; display: flex; align-items: center; gap: 10px;">
+        <i data-lucide="help-circle" style="width: 20px;"></i> Tips Kustomisasi
+    </h3>
+    <ul style="margin-top: 1rem; color: var(--text-muted); font-size: 0.9rem; padding-left: 1.5rem;">
+        <li style="margin-bottom: 8px;">Gunakan icon seperti <b>'layers'</b>, <b>'shield'</b>, atau <b>'zap'</b> untuk tampilan lebih modern.</li>
+        <li style="margin-bottom: 8px;">Gunakan judul web yang singkat namun padat di kolom Web Title.</li>
+        <li>Pastikan file favicon sudah diupload di folder <code>static/</code> jika ingin menggantinya.</li>
+    </ul>
+</div>
+{% endblock %}

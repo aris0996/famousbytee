@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem;">
+    <div style="font-size: 8rem; font-weight: 800; color: #ef4444; opacity: 0.1; position: absolute; z-index: -1;">500</div>
+    <div style="background: rgba(239, 68, 68, 0.1); width: 100px; height: 100px; border-radius: 30px; display: flex; align-items: center; justify-content: center; color: #ef4444; margin-bottom: 2rem;">
+        <i data-lucide="server-crash" style="width: 48px; height: 48px;"></i>
+    </div>
+    <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem;">Terjadi Kesalahan Server</h1>
+    <p style="color: var(--text-muted); max-width: 500px; margin-bottom: 2.5rem; font-size: 1.1rem;">Maaf atas ketidaknyamanan ini. Server kami sedang mengalami masalah teknis. Tim admin kami sedang bekerja untuk memperbaikinya.</p>
+    <a href="{{ url_for('dashboard') }}" class="btn" style="text-decoration: none; padding: 1rem 2rem; background: #1e293b;">Kembali Beranda</a>
+</div>
+{% endblock %}

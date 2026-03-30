@@ -1,8 +1,12 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog
+from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting
 import os
+import csv
+from io import StringIO
+from flask import send_from_directory, make_response
+from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 
 from config import Config
@@ -10,17 +14,49 @@ from config import Config
 app = Flask(__name__)
 app.config.from_object(Config)
 
+UPLOAD_FOLDER = os.path.join('static', 'uploads')
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
 db.init_app(app)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
+# Ensure database tables are created for new features
+with app.app_context():
+    db.create_all()
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+@app.context_processor
+def inject_settings():
+    try:
+        all_s = SystemSetting.query.all()
+        settings = {s.key: s.value for s in all_s}
+    except Exception:
+        settings = {}
+        
+    # Defaults
+    if 'web_title' not in settings: settings['web_title'] = 'Famousbytee.b Portal'
+    if 'web_logo' not in settings: settings['web_logo'] = 'monitor'
+    if 'favicon_url' not in settings: settings['favicon_url'] = '/static/favicon.ico'
+    return dict(site_settings=settings)
+
+@app.errorhandler(404)
+def page_not_found(e):
+    return render_template('errors/404.html'), 404
+
+@app.errorhandler(500)
+def internal_server_error(e):
+    return render_template('errors/500.html'), 500
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
     if request.method == 'POST':
         id_input = request.form['username'] # Can be username or NIM
         password = request.form.get('password')
@@ -70,12 +106,13 @@ def member_activation(nim):
         if password != confirm:
             flash('Password tidak cocok.')
         else:
-            # Create user account for member
+            # Create user account for member and link it
             member_role = Role.query.filter_by(name='Member').first()
             new_user = User(
                 username=nim,
                 password=password,
                 role_id=member_role.id,
+                student_id=student.id,
                 full_name=student.full_name,
                 status='Active'
             )
@@ -94,6 +131,8 @@ def logout():
 
 @app.route('/')
 def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
     announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
     return render_template('index.html', announcements=announcements)
 
@@ -114,14 +153,60 @@ def view_logs():
 @app.route('/dashboard')
 @login_required
 def dashboard():
-    stats = {
-        'total_members': Student.query.count(),
-        'total_announcements': Announcement.query.count(),
-        'balance': sum(f.amount if f.type == 'Masuk' else -f.amount for f in BatchFund.query.all())
-    }
-    recent_announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(3).all()
-    recent_members = Student.query.order_by(Student.id.desc()).limit(5).all()
-    return render_template('dashboard.html', stats=stats, recent_students=recent_members, recent_announcements=recent_announcements)
+    """
+    Dashboard Unified: Menampilkan info personal member (jika terhubung ke data Mahasiswa)
+    serta statistik manajemen bagi Admin/Pengurus.
+    """
+    # 1. Data Dasar: Pengumuman Terbaru
+    recent_announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
+    
+    # 2. Ambil Info Personal Member (jika User terhubung ke Student)
+    member_info = None
+    if current_user.student_id:
+        student = current_user.student
+        start_date = datetime(2024, 3, 30).date()
+        today = datetime.now().date()
+        target_payment = 0
+        if today >= start_date:
+            curr = start_date
+            while curr <= today:
+                if curr.weekday() < 5: target_payment += 1500 # Tarif default
+                curr += timedelta(days=1)
+        
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == student.id, 
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        
+        member_info = {
+            'nim': student.nim,
+            'name': student.full_name,
+            'paid': total_paid,
+            'target': target_payment,
+            'arrears': max(0, target_payment - total_paid)
+        }
+
+    # 3. Data Statistik Admin/Pengurus (jika punya izin)
+    admin_stats = None
+    recent_students = []
+    if current_user.role.name in ['Admin', 'Pengurus']:
+        total_mhs = Student.query.count()
+        total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
+        total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
+        total_ann = Announcement.query.count()
+        
+        admin_stats = {
+            'total_members': total_mhs,
+            'balance': total_in - total_out,
+            'total_announcements': total_ann
+        }
+        recent_students = Student.query.order_by(Student.id.desc()).limit(5).all()
+
+    return render_template('dashboard.html', 
+                         recent_announcements=recent_announcements,
+                         member_info=member_info,
+                         admin_stats=admin_stats,
+                         recent_students=recent_students)
 
 @app.route('/members', methods=['GET', 'POST'])
 @login_required
@@ -310,7 +395,10 @@ def manage_fund():
             flash('Akses ditolak.')
             return redirect(url_for('dashboard'))
             
-        student_id = request.form.get('student_id')
+        # Handle Tags
+        tags = request.form.get('tags', '').strip()
+        if tags and not tags.startswith('#'): tags = '#' + tags
+        
         fund = BatchFund(
             description=request.form['desc'], 
             amount=float(request.form['amount']), 
@@ -319,14 +407,38 @@ def manage_fund():
             evidence_note=request.form['note'],
             recorded_by=current_user.username,
             date=datetime.strptime(request.form['date'], '%Y-%m-%d'),
-            student_id=int(student_id) if student_id and student_id != 'none' else None
+            student_id=int(student_id) if student_id and student_id != 'none' else None,
+            tags=tags
         )
         db.session.add(fund)
+        
+        # Suggestion #1: Auto-Announcement on Keluar
+        if fund.type == 'Keluar':
+            ann = Announcement(
+                title=f"[PENGELUARAN] {fund.description}",
+                content=f"Diberitahukan bahwa dana kas sebesar Rp {fund.amount:,.0f} telah digunakan untuk: {fund.description}. Kategori: {fund.category}. Dicatat oleh: {fund.recorded_by}.",
+                category='Penting'
+            )
+            db.session.add(ann)
+            
         db.session.commit()
         log_activity("Tambah Kas", f"Nominal: {fund.amount}, Ket: {fund.description}")
         return redirect(url_for('manage_fund'))
     
-    funds = BatchFund.query.order_by(BatchFund.date.desc()).all()
+    # Suggestion #17: Advanced Filtering
+    query = BatchFund.query
+    start_filter = request.args.get('start_date')
+    end_filter = request.args.get('end_date')
+    tag_filter = request.args.get('tag')
+    
+    if start_filter:
+        query = query.filter(BatchFund.date >= datetime.strptime(start_filter, '%Y-%m-%d'))
+    if end_filter:
+        query = query.filter(BatchFund.date <= datetime.strptime(end_filter, '%Y-%m-%d'))
+    if tag_filter:
+        query = query.filter(BatchFund.tags.contains(tag_filter))
+        
+    funds = query.order_by(BatchFund.date.desc()).all()
     total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
     total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
     balance = total_in - total_out
@@ -341,11 +453,24 @@ def manage_fund():
             current += timedelta(days=1)
     
     member_statuses = []
+    your_status = None
     for s in students:
         total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.student_id == s.id, BatchFund.type == 'Masuk').scalar() or 0
-        member_statuses.append({'student': s,'paid': total_paid,'target': target_payment,'arrears': target_payment - total_paid})
+        status_data = {'student': s,'paid': total_paid,'target': target_payment,'arrears': max(0, target_payment - total_paid)}
+        member_statuses.append(status_data)
         
-    return render_template('batch_fund.html', funds=funds, balance=balance, students=students, member_statuses=member_statuses, target_daily=1000)
+        # Identify current user's personal status
+        if current_user.student_id == s.id:
+            your_status = status_data
+            
+    return render_template('batch_fund.html', 
+                         funds=funds, 
+                         balance=balance, 
+                         students=students, 
+                         member_statuses=member_statuses, 
+                         your_status=your_status,
+                         target_daily=1000,
+                         today_date=datetime.now().strftime('%Y-%m-%d'))
 
 @app.route('/fund/edit/<int:id>', methods=['POST'])
 @login_required
@@ -353,30 +478,89 @@ def edit_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
     f = BatchFund.query.get_or_404(id)
     reason = request.form.get('reason')
-    if not reason:
-        flash('Alasan perubahan wajib diisi.')
-        return redirect(url_for('manage_fund'))
-        
+    
+    # Suggestion #10: Forensic Audit Detail
+    if not f.is_edited:
+        f.original_amount = f.amount
+        f.original_description = f.description
+    
     f.is_edited = True
-    f.edit_reason = reason
+    f.edit_reason = reason or "Koreksi Data"
     f.last_edited_by = current_user.username
     f.description = request.form['desc']
     f.amount = float(request.form['amount'])
     f.type = request.form['type']
     f.category = request.form['category']
-    db.session.commit()
     
-    # Auto Announcement for Edit
+    # Handle Tags
+    tags = request.form.get('tags', '').strip()
+    if tags: f.tags = tags if tags.startswith('#') else '#' + tags
+    
+    db.session.commit()
+
+    # Suggestion #1: Auto-Announcement for Edit transactions
     new_ann = Announcement(
-        title=f"Update Transaksi Kas: {f.description}",
-        content=f"Transaksi ID: {f.id} telah diperbarui oleh {current_user.username}.\nAlasan: {reason}\nNilai Baru: Rp {f.amount:,.0f}",
+        title=f"Update Transaksi: {f.description}",
+        content=f"ID: {f.id} diperbarui oleh {current_user.username}.\nAlasan: {f.edit_reason}\nNilai Baru: Rp {f.amount:,.0f}",
         category='Penting'
     )
     db.session.add(new_ann)
     db.session.commit()
     
-    log_activity("Edit Kas", f"ID: {id}, Alasan: {reason}")
-    flash('Transaksi diperbarui dan diumumkan.')
+    log_activity("Edit Kas", f"ID: {f.id}, Alasan: {f.edit_reason}")
+    flash('Data kas diperbarui dan riwayat perubahan disimpan.')
+    return redirect(url_for('manage_fund'))
+
+# Suggestion #16: Duplicate
+@app.route('/fund/duplicate/<int:id>')
+@login_required
+def duplicate_fund(id):
+    if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
+    f = BatchFund.query.get_or_404(id)
+    new_f = BatchFund(
+        description=f"{f.description} (Copy)",
+        amount=f.amount,
+        type=f.type,
+        category=f.category,
+        date=datetime.now(),
+        recorded_by=current_user.username,
+        student_id=f.student_id,
+        tags=f.tags
+    )
+    db.session.add(new_f)
+    db.session.commit()
+    flash('Transaksi diduplikasikan.')
+    return redirect(url_for('manage_fund'))
+
+# Suggestion #15: Batch Input
+@app.route('/fund/batch', methods=['POST'])
+@login_required
+def batch_add_fund():
+    if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
+    ids = request.form.getlist('student_ids[]')
+    amounts = request.form.getlist('amounts[]')
+    desc = request.form.get('common_desc', 'Iuran Massal')
+    date_str = request.form.get('common_date', datetime.now().strftime('%Y-%m-%d'))
+    
+    count = 0
+    for i in range(len(ids)):
+        if amounts[i] and float(amounts[i]) > 0:
+            student = Student.query.get(int(ids[i]))
+            if student:
+                f = BatchFund(
+                    description=f"{desc} - {student.full_name}",
+                    amount=float(amounts[i]),
+                    type='Masuk',
+                    category='Iuran Mingguan',
+                    date=datetime.strptime(date_str, '%Y-%m-%d'),
+                    recorded_by=current_user.username,
+                    student_id=student.id
+                )
+                db.session.add(f)
+                count += 1
+    db.session.commit()
+    log_activity("Batch Input", f"Total: {count} entri.")
+    flash(f'Berhasil mencatat {count} transaksi massal.')
     return redirect(url_for('manage_fund'))
 
 @app.route('/fund/delete/<int:id>')
@@ -389,13 +573,70 @@ def delete_fund(id):
     db.session.commit()
     return redirect(url_for('manage_fund'))
 
+@app.route('/fund/export')
+@login_required
+def export_fund():
+    if not current_user.role.can_export_data:
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund'))
+        
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['ID', 'Tanggal', 'Keterangan', 'Jumlah', 'Tipe', 'Kategori', 'Pelapor'])
+    
+    funds = BatchFund.query.order_by(BatchFund.date.desc()).all()
+    for f in funds:
+        cw.writerow([f.id, f.date, f.description, f.amount, f.type, f.category, f.recorded_by])
+        
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=laporan_kas.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
+
+@app.route('/settings', methods=['GET', 'POST'])
+@login_required
+def manage_settings():
+    if not current_user.role.can_edit_settings:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        # 1. Handle Text Settings
+        for key in ['web_title', 'web_logo', 'favicon_url']:
+            if key in request.form:
+                setting = SystemSetting.query.filter_by(key=key).first()
+                if setting: setting.value = request.form[key]
+                else: db.session.add(SystemSetting(key=key, value=request.form[key]))
+        
+        # 2. Handle File Uploads (Logo/Favicon)
+        for key in ['logo_file', 'favicon_file']:
+            if key in request.files:
+                file = request.files[key]
+                if file.filename != '':
+                    filename = secure_filename(f"{key.split('_')[0]}_{file.filename}")
+                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                    
+                    db_key = 'web_logo_path' if 'logo' in key else 'favicon_path'
+                    setting = SystemSetting.query.filter_by(key=db_key).first()
+                    if setting: setting.value = f"/static/uploads/{filename}"
+                    else: db.session.add(SystemSetting(key=db_key, value=f"/static/uploads/{filename}"))
+                    
+        db.session.commit()
+        flash('Pengaturan sistem diperbarui.')
+        return redirect(url_for('manage_settings'))
+    
+    settings = {s.key: s.value for s in SystemSetting.query.all()}
+    return render_template('settings.html', settings=settings)
+
 @app.route('/roles', methods=['GET', 'POST'])
 @login_required
 def manage_roles():
     if not current_user.role.can_manage_roles:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
+        
     if request.method == 'POST':
+        # 1. Buat Role Baru
         if 'role_name' in request.form:
             new_role = Role(
                 name=request.form['role_name'], 
@@ -404,20 +645,39 @@ def manage_roles():
                 can_manage_schedule='can_manage_schedule' in request.form, 
                 can_manage_fund='can_manage_fund' in request.form,
                 can_manage_announcements='can_manage_announcements' in request.form,
-                can_manage_roles='can_manage_roles' in request.form
+                can_manage_roles='can_manage_roles' in request.form,
+                can_view_logs='can_view_logs' in request.form,
+                can_export_data='can_export_data' in request.form,
+                can_edit_settings='can_edit_settings' in request.form
             )
             db.session.add(new_role)
             db.session.commit()
             log_activity("Tambah Role", f"Nama: {new_role.name}")
-        elif 'username' in request.form:
-            new_user = User(username=request.form['username'], password=request.form['password'], role_id=request.form['role_id'], full_name=request.form['full_name'], email=request.form['email'])
+            flash(f'Role {new_role.name} berhasil dibuat.')
+            
+        # 2. Buat User Baru (Manual)
+        elif 'username' in request.form and 'password' in request.form:
+            s_id = request.form.get('student_id')
+            new_user = User(
+                username=request.form['username'], 
+                password=request.form['password'], 
+                role_id=request.form['role_id'], 
+                full_name=request.form['full_name'], 
+                email=request.form['email'],
+                student_id=int(s_id) if s_id and s_id != 'none' else None,
+                status='Active'
+            )
             db.session.add(new_user)
             db.session.commit()
             log_activity("Tambah User", f"Username: {new_user.username}")
+            flash(f'User {new_user.username} berhasil didaftarkan.')
+            
         return redirect(url_for('manage_roles'))
+
     roles = Role.query.all()
     users = User.query.all()
-    return render_template('roles.html', roles=roles, users=users)
+    students = Student.query.order_by(Student.full_name).all()
+    return render_template('roles.html', roles=roles, users=users, students=students)
 
 @app.route('/roles/edit/user/<int:id>', methods=['POST'])
 @login_required
@@ -428,10 +688,15 @@ def edit_user(id):
     user.email = request.form['email']
     user.role_id = request.form['role_id']
     user.status = request.form['status']
-    if request.form['password']:
+    
+    s_id = request.form.get('student_id')
+    user.student_id = int(s_id) if s_id and s_id != 'none' else None
+    
+    if request.form.get('password'):
         user.password = request.form['password']
     db.session.commit()
     log_activity("Edit User", f"Username: {user.username}")
+    flash(f'Data user {user.username} telah diperbarui.')
     return redirect(url_for('manage_roles'))
 
 @app.route('/roles/delete/user/<int:id>')
@@ -445,6 +710,25 @@ def delete_user(id):
     log_activity("Hapus User", f"Username: {user.username}")
     db.session.delete(user)
     db.session.commit()
+    return redirect(url_for('manage_roles'))
+
+@app.route('/roles/edit/role/<int:id>', methods=['POST'])
+@login_required
+def edit_role(id):
+    if not current_user.role.can_manage_roles: return redirect(url_for('dashboard'))
+    role = Role.query.get_or_404(id)
+    role.name = request.form['role_name']
+    role.description = request.form['role_desc']
+    role.can_manage_students = 'can_manage_students' in request.form
+    role.can_manage_schedule = 'can_manage_schedule' in request.form
+    role.can_manage_fund = 'can_manage_fund' in request.form
+    role.can_manage_announcements = 'can_manage_announcements' in request.form
+    role.can_manage_roles = 'can_manage_roles' in request.form
+    role.can_view_logs = 'can_view_logs' in request.form
+    role.can_export_data = 'can_export_data' in request.form
+    role.can_edit_settings = 'can_edit_settings' in request.form
+    db.session.commit()
+    log_activity("Edit Role", f"Nama: {role.name}")
     return redirect(url_for('manage_roles'))
 
 @app.route('/roles/delete/role/<int:id>')
@@ -467,23 +751,117 @@ def public_view(class_name):
     grouped_schedules = {k: v for k, v in grouped_schedules.items() if v}
     return render_template('public_schedule.html', classroom=classroom, grouped_schedules=grouped_schedules)
 
+from sqlalchemy import text
+
 def init_db():
+    """
+    Inisialisasi database dan sinkronisasi skema otomatis (Automated Schema Healing).
+    Memastikan tabel baru dan kolom baru ditambahkan tanpa menghapus data lama.
+    """
     with app.app_context():
+        # 1. Buat tabel baru jika belum ada (create_all aman untuk tabel baru)
         db.create_all()
-        if not Role.query.first():
-            admin_r = Role(name='Admin', description='Akses penuh koordinasi.', can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, can_manage_announcements=True, can_manage_roles=True)
-            staff_r = Role(name='Pengurus', description='Manajemen data mahasiswa & jadwal.', can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, can_manage_announcements=True, can_manage_roles=False)
-            member_r = Role(name='Member', description='Akses dashboard anggota.', can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, can_manage_announcements=False, can_manage_roles=False)
-            db.session.add_all([admin_r, staff_r, member_r])
-            db.session.commit()
-            db.session.add(User(username='admin', password='admin', role_id=admin_r.id))
-            fb = ClassRoom(name='Famousbytee.b', batch='TI 2024')
-            db.session.add(fb)
-            a1 = Announcement(title='Selamat Datang di Portal Famousbytee.b', content='Ini adalah portal resmi khusus untuk anggota kelas Famousbytee.b.', category='Penting', is_pinned=True)
-            db.session.add(a1)
-            f1 = BatchFund(description='Saldo Awal Kas Kelas', amount=1000000, type='Masuk', category='Iuran Mingguan', date=datetime.now(), recorded_by='System')
-            db.session.add(f1)
-            db.session.commit()
+
+        # 2. Sinkronisasi Skema untuk SQLite (SQLite tidak mendukung sinkronisasi otomatis kolom baru)
+        if app.config['SQLALCHEMY_DATABASE_URI'].startswith('sqlite'):
+            try:
+                engine = db.engine
+                with engine.connect() as conn:
+                    # Periksa dan Tambah Kolom Baru pada tabel 'role'
+                    res = conn.execute(text("PRAGMA table_info(role)"))
+                    columns = [row[1] for row in res.fetchall()]
+                    
+                    # Tambah kolom izin granular jika belum ada
+                    if 'can_view_logs' not in columns:
+                        conn.execute(text("ALTER TABLE role ADD COLUMN can_view_logs BOOLEAN DEFAULT 0"))
+                    if 'can_export_data' not in columns:
+                        conn.execute(text("ALTER TABLE role ADD COLUMN can_export_data BOOLEAN DEFAULT 0"))
+                    if 'can_edit_settings' not in columns:
+                        conn.execute(text("ALTER TABLE role ADD COLUMN can_edit_settings BOOLEAN DEFAULT 0"))
+                    
+                    # Update batch_fund
+                    res_fund = conn.execute(text("PRAGMA table_info(batch_fund)"))
+                    columns_fund = [row[1] for row in res_fund.fetchall()]
+                    if 'original_amount' not in columns_fund:
+                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT"))
+                    if 'original_description' not in columns_fund:
+                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_description VARCHAR(200)"))
+                    if 'tags' not in columns_fund:
+                        conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100)"))
+
+                    # Periksa kolom 'student_id' pada tabel 'user'
+                    res_user = conn.execute(text("PRAGMA table_info(user)"))
+                    columns_user = [row[1] for row in res_user.fetchall()]
+                    if 'student_id' not in columns_user:
+                        conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER REFERENCES student(id)"))
+                    
+                    # Pastikan perubahan tersimpan
+                    conn.commit()
+                    print("Status: Sinkronisasi Skema Berhasil.")
+            except Exception as e:
+                print(f"Peringatan: Gagal sinkronisasi skema otomatis: {e}")
+
+        # 3. Inisialisasi Data Default jika tabel Role masih kosong
+        try:
+            if not Role.query.first():
+                # Definisikan Role Default dengan izin baru
+                admin_r = Role(
+                    name='Admin', description='Akses penuh koordinasi sistem.', 
+                    can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
+                    can_manage_announcements=True, can_manage_roles=True,
+                    can_view_logs=True, can_export_data=True, can_edit_settings=True
+                )
+                staff_r = Role(
+                    name='Pengurus', description='Manajemen data operasional.', 
+                    can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
+                    can_manage_announcements=True, can_manage_roles=False,
+                    can_view_logs=True, can_export_data=True, can_edit_settings=False
+                )
+                member_r = Role(
+                    name='Member', description='Akses dashboard anggota.', 
+                    can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, 
+                    can_manage_announcements=False, can_manage_roles=False,
+                    can_view_logs=False, can_export_data=False, can_edit_settings=False
+                )
+                db.session.add_all([admin_r, staff_r, member_r])
+                db.session.commit()
+                
+                # Buat Admin Default
+                db.session.add(User(username='admin', password='admin', role_id=admin_r.id))
+                
+                # Seeding Awal
+                fb = ClassRoom(name='Famousbytee.b', batch='TI 2024')
+                db.session.add(fb)
+                db.session.add(Announcement(
+                    title='Selamat Datang di Portal Famousbytee.b', 
+                    content='Ini adalah portal resmi khusus untuk anggota kelas Famousbytee.b.', 
+                    category='Penting', is_pinned=True
+                ))
+                db.session.add(BatchFund(
+                    description='Saldo Awal Kas Kelas', amount=1000000, 
+                    type='Masuk', category='Iuran Mingguan', 
+                    date=datetime.now(), recorded_by='System'
+                ))
+                db.session.commit()
+                print("Status: Data awal berhasil disuntikkan.")
+        except Exception as e:
+            print(f"Peringatan: Gagal seeding data awal (Mungkin tabel belum sinkron): {e}")
+
+        # 4. Inisialisasi Pengaturan Sistem jika belum ada
+        try:
+            if not SystemSetting.query.filter_by(key='web_title').first():
+                db.session.add_all([
+                    SystemSetting(key='web_logo', value='monitor', description='Ikon Logo (Lucide Icon)'),
+                    SystemSetting(key='web_title', value='Famousbytee.b Portal', description='Judul Utama Portal'),
+                    SystemSetting(key='favicon_url', value='/static/favicon.ico', description='URL Favicon')
+                ])
+                db.session.commit()
+                print("Status: Pengaturan sistem berhasil diinisialisasi.")
+        except Exception as e:
+            print(f"Peringatan: Gagal inisialisasi pengaturan: {e}")
+
+# Inisialisasi database saat aplikasi dinyalakan
+init_db()
 
 # Mod_wsgi akan mencari objek "application" secara langsung dari file ini.
 # Gunakan "python -m flask run" atau jalankan "wsgi.py" untuk pengembangan lokal.

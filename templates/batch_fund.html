@@ -3,15 +3,21 @@
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem;">
     <div>
         <h1>{{ 'Transparansi Kas' if current_user.role.name == 'Member' else 'Manajemen Kas' }} Famousbytee.b</h1>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">Kelola dan pantau aliran dana kas kelas secara transparan.</p>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Kelola finansial kelas dengan fitur cerdas dan transparan.</p>
     </div>
     {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-    <button class="btn" style="white-space: nowrap;" onclick="document.getElementById('modal-fund').style.display='flex'">
-        <i data-lucide="plus"></i> Tambah Transaksi
-    </button>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn" style="background: #1e293b; color: white;" onclick="document.getElementById('modal-batch').style.display='flex'">
+            <i data-lucide="layers"></i> Input Massal (Batch)
+        </button>
+        <button class="btn" onclick="document.getElementById('modal-fund').style.display='flex'">
+            <i data-lucide="plus"></i> Transaksi Baru
+        </button>
+    </div>
     {% endif %}
 </header>
 
+<!-- Stats Overview -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;"><i data-lucide="wallet"></i></div>
@@ -21,21 +27,15 @@
         </div>
     </div>
     
-    {% if current_user.role.name == 'Member' %}
-    {% for s in member_statuses %}
-        {% if s.student.nim == current_user.username %}
-        <div class="stat-card" style="border-left: 4px solid {{ '#16a34a' if s.arrears <= 0 else '#ef4444' }}">
-            <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);"><i data-lucide="user-check"></i></div>
-            <div class="stat-info">
-                <h3>Status Kas Anda</h3>
-                <p style="font-size: 1.1rem; color: {{ '#16a34a' if s.arrears <= 0 else '#ef4444' }}">
-                    {{ 'Lunas' if s.arrears <= 0 else 'Tunggakan: Rp ' + "{:,.0f}".format(s.arrears) }}
-                </p>
-                <span style="font-size: 0.75rem; color: var(--text-muted);">Total Bayar: Rp {{ "{:,.0f}".format(s.paid) }}</span>
-            </div>
+    {% if your_status %}
+    <div class="stat-card" style="border-left: 4px solid var(--primary); background: #fdfdfd;">
+        <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);"><i data-lucide="user-check"></i></div>
+        <div class="stat-info">
+            <h3>Setoran Anda</h3>
+            <p style="font-size: 1.1rem; color: var(--primary); font-weight: 700;">Rp {{ "{:,.0f}".format(your_status.paid) }}</p>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">Tercatat Aktif</span>
         </div>
-        {% endif %}
-    {% endfor %}
+    </div>
     {% endif %}
 
     <div class="stat-card">
@@ -47,237 +47,216 @@
     </div>
 </div>
 
-<!-- Arrears Table (Detailed monitoring) -->
-{% if current_user.role.name in ['Admin', 'Pengurus'] %}
-<div class="card" style="margin-bottom: 2rem;">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-        <h3>Monitoring Kas Member (1k/hari)</h3>
-        <span style="font-size: 0.8rem; color: var(--text-muted);">Target Kumulatif: Rp {{ "{:,.0f}".format(member_statuses[0].target if member_statuses else 0) }}</span>
-    </div>
-    <div style="max-height: 400px; overflow-y: auto;">
-<div style="overflow-x: auto;">
-    <table>
-        <thead>
-            <tr>
-                <th>Member</th>
-                <th>NIM</th>
-                <th>Total Bayar</th>
-                <th>Status / Tunggakan</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for s in member_statuses %}
-            <tr>
-                <td style="font-weight: 700; white-space: nowrap;">{{ s.student.full_name }}</td>
-                <td style="font-family: monospace; font-size: 0.85rem;">{{ s.student.nim }}</td>
-                <td style="font-weight: 600; white-space: nowrap;">Rp {{ "{:,.0f}".format(s.paid) }}</td>
-                <td>
-                    {% if s.arrears <= 0 %}
-                    <span class="status-badge status-aktif">Lunas</span>
-                    {% else %}
-                    <span class="status-badge status-cuti">Rp {{ "{:,.0f}".format(s.arrears) }}</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- Suggestion #17: Advanced Filtering Section -->
+<div class="card" style="margin-bottom: 2rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <form method="GET" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
+       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+           <label style="font-size: 0.75rem; font-weight: 700;">Mulai Tanggal</label>
+           <input type="date" name="start_date" class="form-control" value="{{ request.args.get('start_date', '') }}">
+       </div>
+       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+           <label style="font-size: 0.75rem; font-weight: 700;">Sampai Tanggal</label>
+           <input type="date" name="end_date" class="form-control" value="{{ request.args.get('end_date', '') }}">
+       </div>
+       <div class="form-group" style="flex: 1; min-width: 150px; margin-bottom: 0;">
+           <label style="font-size: 0.75rem; font-weight: 700;">Cari Tag (#Event)</label>
+           <input type="text" name="tag" class="form-control" placeholder="#Kategori" value="{{ request.args.get('tag', '') }}">
+       </div>
+       <div style="display: flex; gap: 8px;">
+           <button type="submit" class="btn" style="padding: 10px 20px;"><i data-lucide="search" style="width: 16px;"></i> Filter</button>
+           <a href="{{ url_for('manage_fund') }}" class="btn" style="background: white; border: 1px solid #cbd5e1; color: var(--text-main); padding: 10px 20px;">Reset</a>
+       </div>
+    </form>
 </div>
-</div>
-{% endif %}
 
+<!-- Main History Table -->
 <div class="card">
-<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
-    <h3>Riwayat Transaksi Kelas</h3>
-    <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); font-size: 0.85rem;" onclick="window.print()"><i data-lucide="printer" style="width: 14px; vertical-align: middle;"></i> Print Laporan</button>
-</div>
-<div style="overflow-x: auto;">
-    <table>
-        <thead>
-            <tr>
-                <th>Tanggal</th>
-                <th>Kategori</th>
-                <th>Keterangan / Member</th>
-                <th>Jumlah (Rp)</th>
-                <th>Oleh</th>
-                <th>Tipe</th>
-                {% if current_user.role.can_manage_fund %}<th>Aksi</th>{% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for f in funds %}
-            <tr>
-                <td style="white-space: nowrap; font-size: 0.9rem;">{{ f.date.strftime('%d %b %Y') }}</td>
-                <td>
-                    <span class="status-badge" style="background: #f1f5f9; color: var(--primary); font-size: 0.8rem; white-space: nowrap;">{{ f.category }}</span>
-                    {% if f.is_edited %}
-                    <div style="margin-top: 5px;"><span class="status-badge" style="background: #fef9c3; color: #854d0e; font-size: 0.65rem;">TERUBAH</span></div>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;">
+        <h3 style="font-weight: 700;">Riwayat Aliran Dana</h3>
+        <div style="display: flex; gap: 10px;">
+            <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); font-size: 0.85rem;" onclick="window.print()"><i data-lucide="printer" style="width: 14px; vertical-align: middle;"></i> Print Laporan</button>
+        </div>
+    </div>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tanggal</th>
+                    <th>Detail & Metadata</th>
+                    <th>Nominal (Rp)</th>
+                    <th>Tipe</th>
+                    <th>Pencatat</th>
+                    {% if current_user.role.can_manage_fund %}<th>Opsi</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in funds %}
+                <tr style="{{ 'background: #fffbeb;' if f.is_edited else '' }}">
+                    <td style="white-space: nowrap; font-size: 0.9rem; vertical-align: top; padding-top: 15px;">
+                        {{ f.date.strftime('%d %b %Y') }}
+                    </td>
+                    <td>
+                        <div style="font-weight: 700; font-size: 1rem; margin-bottom: 4px;">{{ f.description }}</div>
+                        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                            <span class="status-badge" style="background: #eff6ff; color: #1d4ed8; font-size: 0.7rem;">{{ f.category }}</span>
+                            {% if f.tags %}
+                                <span class="status-badge" style="background: #fdf2f8; color: #db2777; font-size: 0.7rem; font-weight: 700;">{{ f.tags }}</span>
+                            {% endif %}
+                        </div>
+                        
+                        {% if f.student %}
+                            <div style="font-size: 0.8rem; color: var(--primary); font-weight: 600; display: flex; align-items: center; gap: 4px;">
+                                <i data-lucide="award" style="width: 14px;"></i> {{ f.student.full_name }}
+                            </div>
+                        {% endif %}
+                        
+                        <!-- Suggestion #10: Audit View -->
+                        {% if f.is_edited %}
+                        <div style="margin-top: 10px; padding: 10px; background: white; border: 1px solid #fde68a; border-radius: 8px; font-size: 0.75rem;">
+                            <div style="color: #92400e; font-weight: 800; margin-bottom: 4px;">RIWAYAT PERUBAHAN:</div>
+                            <p><strong>Asli:</strong> {{ f.original_description }} (Rp {{ "{:,.0f}".format(f.original_amount or 0) }})</p>
+                            <p><strong>Alasan:</strong> {{ f.edit_reason }}</p>
+                            <p><strong>Oleh:</strong> {{ f.last_edited_by }}</p>
+                        </div>
+                        {% endif %}
+                    </td>
+                    <td style="font-weight: 800; color: {{ '#16a34a' if f.type == 'Masuk' else '#dc2626' }}; white-space: nowrap; font-size: 1.1rem; vertical-align: top; padding-top: 15px;">
+                        {{ '+' if f.type == 'Masuk' else '-' }} {{ "{:,.0f}".format(f.amount) }}
+                    </td>
+                    <td style="vertical-align: top; padding-top: 15px;">
+                        <span class="status-badge {{ 'status-aktif' if f.type == 'Masuk' else 'status-cuti' }}">{{ f.type }}</span>
+                    </td>
+                    <td style="font-size: 0.85rem; color: var(--text-muted); vertical-align: top; padding-top: 15px;">{{ f.recorded_by }}</td>
+                    {% if current_user.role.can_manage_fund %}
+                    <td style="vertical-align: top; padding-top: 15px;">
+                        <div style="display: flex; gap: 15px;">
+                            <button onclick="openEditFund('{{ f.id }}', `{{ f.description|replace('`','\\`') }}`, '{{ f.amount }}', '{{ f.type }}', '{{ f.category }}', '{{ f.tags or '' }}')" class="icon-btn" title="Edit Data"><i data-lucide="edit-3" style="width: 18px;"></i></button>
+                            <!-- Suggestion #16: Duplicate Link -->
+                            <a href="{{ url_for('duplicate_fund', id=f.id) }}" class="icon-btn" style="color: #10b981;" title="Duplikasi Transaksi" onclick="return confirm('Salin transaksi ini?')"><i data-lucide="copy" style="width: 18px;"></i></a>
+                            <a href="{{ url_for('delete_fund', id=f.id) }}" class="icon-btn" style="color: #ef4444;" title="Hapus" onclick="return confirm('Hapus transaksi ini?')"><i data-lucide="trash-2" style="width: 18px;"></i></a>
+                        </div>
+                    </td>
                     {% endif %}
-                </td>
-                <td>
-                    <div style="font-weight: 600; min-width: 150px;">{{ f.description }}</div>
-                    {% if f.student %}
-                    <div style="font-size: 0.75rem; color: var(--primary); font-weight: 700;">
-                        <i data-lucide="user" style="width: 10px;"></i> {{ f.student.full_name }}
-                    </div>
-                    {% else %}
-                    <div style="font-size: 0.75rem; color: var(--text-muted); font-style: italic;">{{ f.evidence_note or 'Public Transaction' }}</div>
-                    {% endif %}
-                    
-                    {% if f.is_edited %}
-                    <div style="font-size: 0.7rem; color: #854d0e; margin-top: 4px; padding: 4px 8px; background: #fefce8; border-radius: 4px; display: inline-block;">
-                        <strong>Alasan:</strong> {{ f.edit_reason }}
-                    </div>
-                    {% endif %}
-                </td>
-                <td style="font-weight: 800; color: {{ '#16a34a' if f.type == 'Masuk' else '#dc2626' }}; white-space: nowrap;">
-                    {{ '+' if f.type == 'Masuk' else '-' }} {{ "{:,.0f}".format(f.amount) }}
-                </td>
-                <td style="font-size: 0.85rem; white-space: nowrap;">{{ f.recorded_by }}</td>
-                <td>
-                    <span class="status-badge {{ 'status-aktif' if f.type == 'Masuk' else 'status-cuti' }}">
-                        {{ f.type }}
-                    </span>
-                </td>
-                {% if current_user.role.can_manage_fund %}
-                <td>
-                    <div style="display: flex; gap: 12px;">
-                        <button onclick="openEditFund('{{ f.id }}', '{{ f.description }}', '{{ f.amount }}', '{{ f.type }}', '{{ f.category }}')" style="background:none; border:none; color:var(--primary); cursor:pointer;">
-                            <i data-lucide="edit-3" style="width: 18px;"></i>
-                        </button>
-                        <a href="{{ url_for('delete_fund', id=f.id) }}" onclick="return confirm('Hapus catatan transaksi ini?')" style="color: #ef4444; display: block;">
-                            <i data-lucide="trash-2" style="width: 18px;"></i>
-                        </a>
-                    </div>
-                </td>
-                {% endif %}
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="{{ '7' if current_user.role.can_manage_fund else '6' }}" style="text-align: center; opacity: 0.5; padding: 2rem;">Belum ada riwayat transaksi.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
-<!-- Modal Entry -->
+<!-- Suggestion #15: Modal Batch Input -->
+<div id="modal-batch" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005; padding: 1rem;">
+    <div class="card" style="width: 800px; max-width: 100%; max-height: 90vh; display: flex; flex-direction: column;">
+        <div style="padding: 1.5rem 2rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="font-size: 1.5rem; font-weight: 800;">Batch Input Iuran Member</h2>
+            <button class="icon-btn" onclick="document.getElementById('modal-batch').style.display='none'"><i data-lucide="x"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('batch_add_fund') }}" style="flex: 1; overflow-y: auto; padding: 2rem;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 2rem; background: #eff6ff; padding: 1.5rem; border-radius: 15px;">
+                <div class="form-group" style="margin-bottom: 0;"><label>Deskripsi Massal</label><input type="text" name="common_desc" class="form-control" value="Iuran Kas Mingguan"></div>
+                <div class="form-group" style="margin-bottom: 0;"><label>Tanggal</label><input type="date" name="common_date" class="form-control" value="{{ today_date }}"></div>
+            </div>
+            
+            <div style="overflow-x: auto;">
+                <table style="width: 100%; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #f1f5f9; text-align: left;">
+                            <th style="padding: 12px; border-radius: 10px 0 0 10px;">Mahasiswa</th>
+                            <th style="padding: 12px;">NIM</th>
+                            <th style="padding: 12px; border-radius: 0 10px 10px 0;">Nominal Setoran (Rp)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for s in students %}
+                        <tr style="border-bottom: 1px solid #f1f5f9;">
+                            <td style="padding: 12px; font-weight: 600;">{{ s.full_name }}<input type="hidden" name="student_ids[]" value="{{ s.id }}"></td>
+                            <td style="padding: 12px; font-size: 0.85rem; font-family: monospace;">{{ s.nim }}</td>
+                            <td style="padding: 12px;"><input type="number" name="amounts[]" class="form-control" style="background: white; border: 1px solid #cbd5e1; height: 35px;" placeholder="0"></td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top: 2rem; display: flex; gap: 15px;">
+                <button type="submit" class="btn" style="flex: 1; height: 50px; font-size: 1.1rem;">⚡ Proses Entri Massal</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; width: 120px;" onclick="document.getElementById('modal-batch').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Entry Tunggal -->
 <div id="modal-fund" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-<div class="card" style="width: 650px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 1.5rem 2.5rem;">
-    <h2 style="margin-bottom: 1.5rem;">Entri Transaksi Baru</h2>
-    <form method="POST">
-        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Tipe Transaksi</label>
-                <select name="type" class="form-control" required>
-                    <option value="Masuk">Uang Masuk (+)</option>
-                    <option value="Keluar">Uang Keluar (-)</option>
-                </select>
+    <div class="card" style="width: 650px; max-width: 100%; padding: 2.5rem;">
+        <h2 style="margin-bottom: 2rem;">Entry Transaksi Baru</h2>
+        <form method="POST">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group"><label>Tipe</label><select name="type" class="form-control"><option value="Masuk">Masuk (+)</option><option value="Keluar">Keluar (-)</option></select></div>
+                <div class="form-group"><label>Kategori</label><select name="category" class="form-control"><option value="Iuran Mingguan">Iuran</option><option value="Perlengkapan">Perlengkapan</option><option value="Event">Event</option><option value="Lain-lain">Lain-lain</option></select></div>
             </div>
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Hubungkan ke Member (Opsional)</label>
-                <select name="student_id" class="form-control">
-                    <option value="none">-- Bukan Iuran Personal --</option>
-                    {% for s in students %}
-                    <option value="{{ s.id }}">{{ s.nim }} - {{ s.full_name }}</option>
-                    {% endfor %}
-                </select>
+            <div class="form-group"><label>Hubungkan Member (Jika Iuran Pribadi)</label><select name="student_id" class="form-control"><option value="none">-- Bukan Iuran Personal --</option>{% for s in students %}<option value="{{ s.id }}">{{ s.nim }} - {{ s.full_name }}</option>{% endfor %}</select></div>
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 20px;">
+                <div class="form-group"><label>Keterangan</label><input type="text" name="desc" class="form-control" required placeholder="Contoh: Beli Spidol"></div>
+                <div class="form-group"><label>Tanggal</label><input type="date" name="date" class="form-control" required value="{{ today_date }}"></div>
             </div>
-        </div>
-        
-        <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px;">
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Kategori</label>
-                <select name="category" class="form-control" required>
-                    <option value="Iuran Mingguan">Iuran Mingguan / Harian</option>
-                    <option value="Perlengkapan">Perlengkapan Kelas</option>
-                    <option value="Event">Kegiatan/Event</option>
-                    <option value="Lain-lain">Lain-lain</option>
-                </select>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group"><label>Nominal (Rp)</label><input type="number" name="amount" class="form-control" required></div>
+                <div class="form-group"><label>Tag (Metadata)</label><input type="text" name="tags" class="form-control" placeholder="#Event #Futsal"></div>
             </div>
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Tanggal</label>
-                <input type="date" name="date" class="form-control" required value="{{ funds[0].date.strftime('%Y-%m-%d') if funds else '' }}">
+            <div class="form-group"><label>Link Bukti / Catatan</label><input type="text" name="note" class="form-control"></div>
+            <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
+                <button type="submit" class="btn" style="flex: 1;">Aktifkan Catatan</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; width: 100px;" onclick="document.getElementById('modal-fund').style.display='none'">Batal</button>
             </div>
-        </div>
-
-        <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-top: 10px;">
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Nilai Transaksi (Rp)</label>
-                <input type="number" name="amount" class="form-control" placeholder="Contoh: 5000" required>
-            </div>
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Keterangan</label>
-                <input type="text" name="desc" class="form-control" placeholder="Contoh: Bayar Kas Minggu 1" required>
-            </div>
-        </div>
-        
-        <div class="form-group" style="margin-top: 10px;">
-            <label>Catatan Bukti / Link</label>
-            <input type="text" name="note" class="form-control" placeholder="Link foto bukti atau catatan lain">
-        </div>
-
-        <div style="display: flex; gap: 10px; margin-top: 2rem;">
-            <button type="submit" class="btn" style="flex: 1;">Simpan Transaksi</button>
-            <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-fund').style.display='none'">Batal</button>
-        </div>
-    </form>
-</div>
+        </form>
+    </div>
 </div>
 
-<!-- Edit Modal -->
+<!-- Modal Edit -->
 <div id="modal-edit-fund" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-<div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
-    <h2 style="margin-bottom: 2rem;">Edit Transaksi</h2>
-    <form id="form-edit-fund" method="POST">
-        <div style="display: flex; flex-wrap: wrap; gap: 20px;">
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Tipe</label>
-                <select name="type" id="edit-fund-type" class="form-control">
-                    <option value="Masuk">Uang Masuk (+)</option>
-                    <option value="Keluar">Uang Keluar (-)</option>
-                </select>
+    <div class="card" style="width: 600px; max-width: 100%; padding: 2.5rem;">
+        <h2 style="margin-bottom: 2rem;">Koreksi Riwayat Kas</h2>
+        <form id="form-edit-fund" method="POST">
+            <div class="form-group"><label>Keterangan</label><input type="text" name="desc" id="edit-fund-desc" class="form-control"></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group"><label>Nominal (Rp)</label><input type="number" name="amount" id="edit-fund-amount" class="form-control"></div>
+                <div class="form-group"><label>Tag</label><input type="text" name="tags" id="edit-fund-tags" class="form-control"></div>
             </div>
-            <div class="form-group" style="flex: 1; min-width: 200px;">
-                <label>Kategori</label>
-                <select name="category" id="edit-fund-cat" class="form-control">
-                    <option value="Iuran Mingguan">Iuran Mingguan / Harian</option>
-                    <option value="Perlengkapan">Perlengkapan Kelas</option>
-                    <option value="Event">Kegiatan/Event</option>
-                    <option value="Lain-lain">Lain-lain</option>
-                </select>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group"><label>Tipe</label><select name="type" id="edit-fund-type" class="form-control"><option value="Masuk">Masuk</option><option value="Keluar">Keluar</option></select></div>
+                <div class="form-group"><label>Kategori</label><select name="category" id="edit-fund-cat" class="form-control"><option value="Iuran Mingguan">Iuran</option><option value="Perlengkapan">Perlengkapan</option><option value="Event">Event</option><option value="Lain-lain">Lain-lain</option></select></div>
             </div>
-        </div>
-        <div class="form-group" style="margin-top: 15px;">
-            <label>Nominal (Rp)</label>
-            <input type="number" name="amount" id="edit-fund-amount" class="form-control" required>
-        </div>
-        <div class="form-group">
-            <label>Keterangan</label>
-            <input type="text" name="desc" id="edit-fund-desc" class="form-control" required>
-        </div>
-        <div class="form-group" style="background: #fff9db; padding: 1rem; border-radius: 12px; border: 1px solid #fab005; margin-top: 1.5rem;">
-            <label style="color: #854d0e; font-weight: 800;">ALASAN PERUBAHAN (Wajib)</label>
-            <textarea name="reason" class="form-control" style="border-color: #fab005; height: 80px;" placeholder="Contoh: Salah input nominal / Koreksi catatan" required></textarea>
-            <p style="font-size: 0.7rem; color: #854d0e; margin-top: 5px;">* Perubahan akan dicatat dalam Log Aktivitas dan diumumkan ke seluruh Member.</p>
-        </div>
-        <div style="display: flex; gap: 10px; margin-top: 2rem;">
-            <button type="submit" class="btn" style="flex: 1;">Update & Umumkan</button>
-            <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-edit-fund').style.display='none'">Batal</button>
-        </div>
-    </form>
+            <div class="form-group" style="background: #fff9db; padding: 1.2rem; border-radius: 12px; border: 1px solid #fab005; margin-top: 1rem;">
+                <label style="color: #854d0e; font-weight: 800;">ALASAN PERUBAHAN (Wajib Audit)</label>
+                <textarea name="reason" class="form-control" style="border-color: #fab005; height: 80px;" placeholder="Contoh: Salah input tanggal / nominal tertukar" required></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Update & Simpan Riwayat</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569;" onclick="document.getElementById('modal-edit-fund').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
 </div>
-</div>
+
+<style>
+    .icon-btn { background: none; border: none; cursor: pointer; color: var(--primary); padding: 8px; border-radius: 8px; transition: background 0.2s; display: flex; align-items: center; justify-content: center; }
+    .icon-btn:hover { background: rgba(67, 97, 238, 0.1); }
+</style>
 
 <script>
-function openEditFund(id, desc, amount, type, cat) {
+function openEditFund(id, desc, amount, type, cat, tags) {
     document.getElementById('form-edit-fund').action = '/fund/edit/' + id;
     document.getElementById('edit-fund-desc').value = desc;
     document.getElementById('edit-fund-amount').value = amount;
     document.getElementById('edit-fund-type').value = type;
     document.getElementById('edit-fund-cat').value = cat;
+    document.getElementById('edit-fund-tags').value = tags;
     document.getElementById('modal-edit-fund').style.display = 'flex';
+}
+window.onclick = function(event) {
+    ['modal-fund', 'modal-edit-fund', 'modal-batch'].forEach(id => {
+        if (event.target == document.getElementById(id)) document.getElementById(id).style.display = "none";
+    });
 }
 </script>
 {% endblock %}

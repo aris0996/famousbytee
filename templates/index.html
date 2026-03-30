@@ -5,7 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <!-- SEO Meta Tags -->
-    <title>Famousbytee.b - Portal Kelas Eksklusif</title>
+    <title>{{ site_settings.get('web_title', 'Famousbytee.b - Portal Kelas Eksklusif') }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ site_settings.get('favicon_url', '/static/favicon.ico') }}">
     <meta name="description" content="Portal Resmi Kelas Famousbytee.b. Akses jadwal harian, transparansi kas kelas, dan pengumuman internal dalam satu platform terintegrasi.">
     <meta name="keywords" content="famousbytee, portal kelas, manajemen kelas, kas kelas, jadwal kuliah">
     <meta name="author" content="arisdev">
@@ -112,7 +113,7 @@
 </head>
 <body>
     <nav>
-        <div class="logo"><i data-lucide="monitor"></i> Famousbytee.b</div>
+        <div class="logo"><i data-lucide="{{ site_settings.get('web_logo', 'monitor') }}"></i> {{ site_settings.get('web_title', 'Famousbytee.b').split(' ')[0] }}</div>
         <ul class="nav-links">
             <li><a href="#">Beranda</a></li>
             <li><a href="{{ url_for('public_view', class_name='Famousbytee.b') }}">Jadwal</a></li>
@@ -195,7 +196,7 @@
 
     <footer id="footer">
         <div class="footer-logo" style="display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.4rem; margin-bottom: 2rem;">
-            <i data-lucide="monitor"></i> Famousbytee.b Portal
+            <i data-lucide="{{ site_settings.get('web_logo', 'monitor') }}"></i> {{ site_settings.get('web_title', 'Famousbytee.b Portal') }}
         </div>
         <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform eksklusif untuk integrasi data, koordinasi harian, dan transparansi internal kelas Famousbytee.b.</p>
         

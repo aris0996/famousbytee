@@ -3,8 +3,8 @@
 {% block content %}
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
     <div>
-        <h1>Dashboard Pengurus Famousbytee.b</h1>
-        <p style="color: var(--text-muted);">Selamat datang, {{ current_user.username }}. Pantau koordinasi kelas Anda secara real-time.</p>
+        <h1>Dashboard {{ 'Anggota' if current_user.role.name == 'Member' else 'Pengurus' }}</h1>
+        <p style="color: var(--text-muted);">Selamat datang, {{ current_user.full_name or current_user.username }}. Pantau koordinasi kelas Anda secara real-time.</p>
     </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         {% if current_user.role.name in ['Admin', 'Pengurus'] %}
@@ -14,29 +14,48 @@
     </div>
 </header>
 
+{% if admin_stats %}
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);"><i data-lucide="users"></i></div>
         <div class="stat-info">
             <h3>Total Members</h3>
-            <p>{{ stats.total_members }} Orang</p>
+            <p>{{ admin_stats.total_members }} Orang</p>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;"><i data-lucide="wallet"></i></div>
         <div class="stat-info">
             <h3>Saldo Kas</h3>
-            <p>Rp {{ "{:,.0f}".format(stats.balance) }}</p>
+            <p>Rp {{ "{:,.0f}".format(admin_stats.balance) }}</p>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon" style="background: rgba(255, 159, 64, 0.1); color: #ff9f40;"><i data-lucide="megaphone"></i></div>
         <div class="stat-info">
             <h3>Pengumuman</h3>
-            <p>{{ stats.total_announcements }} Aktif</p>
+            <p>{{ admin_stats.total_announcements }} Aktif</p>
         </div>
     </div>
 </div>
+{% endif %}
+
+{% if member_info %}
+<div class="card" style="background: linear-gradient(135deg, var(--primary), var(--secondary)); color: white; border: none; overflow: hidden; position: relative; margin-bottom: 2rem;">
+    <div style="position: absolute; right: -20px; top: -20px; opacity: 0.1;"><i data-lucide="wallet" style="width: 120px; height: 120px;"></i></div>
+    <div style="position: relative; z-index: 2; padding: 0.5rem;">
+        <h3 style="font-size: 1.1rem; opacity: 0.9; margin-bottom: 0.5rem;">Kontribusi Kas Anda</h3>
+        <div style="display: flex; align-items: flex-end; gap: 10px;">
+            <h2 style="font-size: 2.5rem; font-weight: 800;">Rp {{ "{:,.0f}".format(member_info.paid) }}</h2>
+            <p style="font-size: 1.1rem; opacity: 0.8; margin-bottom: 8px;">Telah Dibayarkan</p>
+        </div>
+        <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+            <p style="font-size: 0.9rem; opacity: 0.8;">Partisipasi Anda sangat berarti untuk kemajuan kelas Famousbytee.b ✨</p>
+            <a href="{{ url_for('manage_fund') }}" class="btn" style="background: white; color: var(--primary); font-size: 0.85rem; padding: 8px 20px;">Lihat Riwayat</a>
+        </div>
+    </div>
+</div>
+{% endif %}
 
 <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
     <!-- Recent Announcements -->
@@ -62,6 +81,7 @@
     </div>
 
     <!-- Recent Students -->
+    {% if admin_stats %}
     <div class="card" style="flex: 1.2; min-width: 320px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem; font-weight: 700;">Update Member Terkini</h2>
@@ -88,5 +108,6 @@
             </table>
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}

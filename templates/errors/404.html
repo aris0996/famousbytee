@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="height: 80vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 2rem;">
+    <div style="font-size: 8rem; font-weight: 800; color: var(--primary); opacity: 0.1; position: absolute; z-index: -1;">404</div>
+    <div style="background: rgba(67, 97, 238, 0.1); width: 100px; height: 100px; border-radius: 30px; display: flex; align-items: center; justify-content: center; color: var(--primary); margin-bottom: 2rem;">
+        <i data-lucide="search-x" style="width: 48px; height: 48px;"></i>
+    </div>
+    <h1 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem;">Halaman Tidak Ditemukan</h1>
+    <p style="color: var(--text-muted); max-width: 500px; margin-bottom: 2.5rem; font-size: 1.1rem;">Maaf, halaman yang Anda cari mungkin telah dipindahkan atau tidak pernah ada. Silakan kembali ke dashboard.</p>
+    <a href="{{ url_for('dashboard') }}" class="btn" style="text-decoration: none; padding: 1rem 2rem;">Kembali ke Dashboard</a>
+</div>
+{% endblock %}

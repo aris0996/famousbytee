@@ -9,7 +9,10 @@ class User(UserMixin, db.Model):
     password = db.Column(db.String(120), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'))
     
-    # Detailed fields
+    # Personal Link to Student Data
+    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=True)
+    student = db.relationship('Student', backref=db.backref('user', uselist=False), lazy=True)
+    
     full_name = db.Column(db.String(100))
     email = db.Column(db.String(120), unique=True)
     status = db.Column(db.String(20), default='Active') # Active, Inactive
@@ -29,6 +32,11 @@ class Role(db.Model):
     can_manage_fund = db.Column(db.Boolean, default=False)
     can_manage_announcements = db.Column(db.Boolean, default=False)
     can_manage_roles = db.Column(db.Boolean, default=False)
+    
+    # Advanced Permissions
+    can_view_logs = db.Column(db.Boolean, default=False)
+    can_export_data = db.Column(db.Boolean, default=False)
+    can_edit_settings = db.Column(db.Boolean, default=False)
 
 class ClassRoom(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -88,6 +96,9 @@ class BatchFund(db.Model):
     is_edited = db.Column(db.Boolean, default=False)
     edit_reason = db.Column(db.String(255))
     last_edited_by = db.Column(db.String(100))
+    original_amount = db.Column(db.Float)
+    original_description = db.Column(db.String(200))
+    tags = db.Column(db.String(100)) # e.g., "#Event #Futsal"
 class SystemSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(50), unique=True, nullable=False)
