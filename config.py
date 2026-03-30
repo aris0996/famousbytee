@@ -10,7 +10,7 @@ class Config:
     
     DB_TYPE = os.environ.get('DB_TYPE') or 'mariadb'
     DB_USER = os.environ.get('DB_USER') or 'famousbytee'
-    DB_PASS = os.environ.get('DB_PASS') or 'aZOh3CXbldMtz67'
+    DB_PASS = os.environ.get('DB_PASS') or 'gMKYzmmzIEiw5ms'
     DB_HOST = os.environ.get('DB_HOST') or 'localhost'
     DB_PORT = os.environ.get('DB_PORT') or '3306'
     DB_NAME = os.environ.get('DB_NAME') or 'famousbytee'
