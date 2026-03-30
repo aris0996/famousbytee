@@ -1,12 +1,17 @@
-#!/usr/bin/python
 import sys
 import os
 
-# Menambahkan direktori proyek ke sys.path
-sys.path.insert(0, os.path.dirname(__file__))
+# 🔥 PAKSA AKTIFKAN VENV
+activate_this = '/home/famousbytee/venv/bin/activate_this.py'
+with open(activate_this) as f:
+    exec(f.read(), {'__file__': activate_this})
 
-# Import app dari app.py
+# path project
+project_path = "/home/famousbytee/public_html/famousbytee"
+if project_path not in sys.path:
+    sys.path.insert(0, project_path)
+
+# debug (optional, bisa hapus nanti)
+print("PYTHON USED:", sys.executable)
+
 from app import app as application
-
-# Konfigurasi Opsional:
-# application.secret_key = 'GANTI_HAK_AKSES_AMAT_RAHASIA'
