@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% block content %}
+<header>
+    <h1>Pengumuman Class Famousbytee.b</h1>
+    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+    <button class="btn" onclick="document.getElementById('modal-ann').style.display='flex'">
+        <i data-lucide="plus"></i> Tambah Pengumuman
+    </button>
+    {% endif %}
+</header>
+
+<div class="card">
+    <h3>Daftar Pengumuman</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Prio</th>
+                <th>Tanggal</th>
+                <th>Kategori</th>
+                <th>Judul</th>
+                <th>Isi</th>
+                {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th style="width: 100px;">Aksi</th>{% endif %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in announcements %}
+            <tr style="{{ 'background: rgba(67, 97, 238, 0.03);' if a.is_pinned else '' }}">
+                <td style="text-align: center;">
+                    {% if a.is_pinned %}
+                    <i data-lucide="pin" style="width: 16px; color: var(--primary); fill: var(--primary);"></i>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td style="white-space: nowrap; font-size: 0.85rem;">{{ a.date_posted.strftime('%d %b %Y') }}</td>
+                <td>
+                    <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#ecfdf5; color: #065f46' if a.category == 'Info' else '#fef9c3; color: #854d0e' }}">
+                        {{ a.category }}
+                    </span>
+                </td>
+                <td style="font-weight: 700;">{{ a.title }}</td>
+                <td style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
+                    {{ a.content[:60] }}{{ '...' if a.content|length > 60 else '' }}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 10px;">
+                        <!-- Member View Action -->
+                        <button onclick="viewAnnouncement('{{ a.title }}', '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:var(--primary); border:none; color:white; padding: 5px 12px; border-radius: 6px; cursor:pointer; font-size: 0.8rem;">
+                            Baca Detail
+                        </button>
+                        
+                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                        <button onclick="openEditAnn('{{ a.id }}', '{{ a.title }}', '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ a.content }}')" style="background:none; border:none; color:var(--primary); cursor:pointer;">
+                            <i data-lucide="edit-3" style="width: 16px;"></i>
+                        </button>
+                        <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus pengumuman ini?')" style="color: #ef4444;">
+                            <i data-lucide="trash-2" style="width: 16px;"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="{{ '6' if current_user.role.name != 'Member' else '5' }}" style="text-align: center; opacity: 0.5;">Belum ada pengumuman.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<!-- Modal Detail for Everyone -->
+<div id="modal-view-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 600px; padding: 2.5rem; max-height: 80vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+            <div>
+                <span id="view-ann-cat" class="status-badge" style="margin-bottom: 10px; display: inline-block;"></span>
+                <h2 id="view-ann-title"></h2>
+                <p id="view-ann-date" style="font-size: 0.85rem; color: var(--text-muted);"></p>
+            </div>
+            <button onclick="document.getElementById('modal-view-ann').style.display='none'" style="background:none; border:none; cursor:pointer; opacity:0.5;"><i data-lucide="x"></i></button>
+        </div>
+        <div id="view-ann-content" style="line-height: 1.7; color: #475569; white-space: pre-wrap;"></div>
+        <button class="btn" style="width: 100%; margin-top: 2rem;" onclick="document.getElementById('modal-view-ann').style.display='none'">Tutup</button>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="modal-edit-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 600px; padding: 2.5rem;">
+        <h2 style="margin-bottom: 1.5rem;">Update Pengumuman</h2>
+        <form id="form-edit-ann" method="POST">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>Kategori</label>
+                    <select name="category" id="edit-ann-category" class="form-control">
+                        <option value="Info">Informasi Umum</option>
+                        <option value="Penting">Peringatan Penting</option>
+                        <option value="Event">Kegiatan/Event</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
+                        <input type="checkbox" name="is_pinned" id="edit-ann-pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label>Judul Pengumuman</label>
+                <input type="text" name="title" id="edit-ann-title" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Isi Pengumuman</label>
+                <textarea name="content" id="edit-ann-content" class="form-control" rows="5" required></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Update</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-edit-ann').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function viewAnnouncement(title, cat, date, content) {
+    document.getElementById('view-ann-title').innerText = title;
+    document.getElementById('view-ann-cat').innerText = cat;
+    document.getElementById('view-ann-cat').className = 'status-badge ' + (cat == 'Penting' ? 'status-aktif' : 'status-cuti'); // reuse styles
+    document.getElementById('view-ann-date').innerText = 'Diposting pada: ' + date;
+    document.getElementById('view-ann-content').innerText = content;
+    document.getElementById('modal-view-ann').style.display = 'flex';
+}
+
+function openEditAnn(id, title, category, pinned, content) {
+    document.getElementById('form-edit-ann').action = '/announcements/edit/' + id;
+    document.getElementById('edit-ann-title').value = title;
+    document.getElementById('edit-ann-category').value = category;
+    document.getElementById('edit-ann-pinned').checked = (pinned === 'true');
+    document.getElementById('edit-ann-content').value = content;
+    document.getElementById('modal-edit-ann').style.display = 'flex';
+}
+</script>
+
+<!-- Modal -->
+<div id="modal-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 600px; padding: 2.5rem;">
+        <h2 style="margin-bottom: 1.5rem;">Buat Pengumuman Baru</h2>
+        <form method="POST">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>Kategori</label>
+                    <select name="category" class="form-control" required>
+                        <option value="Info">Informasi Umum</option>
+                        <option value="Penting">Peringatan Penting</option>
+                        <option value="Event">Kegiatan/Event</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
+                        <input type="checkbox" name="is_pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
+                    </label>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label>Judul Pengumuman</label>
+                <input type="text" name="title" class="form-control" placeholder="Contoh: Rapat Evaluasi Angkatan" required>
+            </div>
+            <div class="form-group">
+                <label>Isi Pengumuman</label>
+                <textarea name="content" class="form-control" rows="5" placeholder="Tulis rincian pengumuman di sini..." required></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Publikasikan</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-ann').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

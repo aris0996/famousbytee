@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portal Kelas Famousbytee.b</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4cc9f0;
+            --bg: #f8faff;
+            --card-bg: #fff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --sidebar-bg: #1e293b;
+            --sidebar-text: #cbd5e1;
+            --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            color: var(--text-main);
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Styling */
+        .sidebar {
+            width: 260px;
+            background: var(--sidebar-bg);
+            color: var(--sidebar-text);
+            padding: 2rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .sidebar-brand {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: white;
+            margin-bottom: 3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-list {
+            list-style: none;
+            flex: 1;
+        }
+
+        .nav-item {
+            margin-bottom: 0.5rem;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0.75rem 1rem;
+            color: var(--sidebar-text);
+            text-decoration: none;
+            border-radius: 12px;
+            transition: var(--transition);
+            font-weight: 500;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+        }
+
+        .nav-link.active {
+            background: var(--primary);
+        }
+
+        .btn-logout {
+            margin-top: auto;
+            color: #ef4444;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 0.75rem 1rem;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        /* Main Content Styling */
+        .main-content {
+            flex: 1;
+            padding: 2rem 3rem;
+            overflow-y: auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            margin-bottom: 2rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+
+        .stat-card {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            background: white;
+            padding: 1.5rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .stat-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(67, 97, 238, 0.1);
+            color: var(--primary);
+        }
+
+        .stat-info h3 {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+        }
+
+        .stat-info p {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        /* Form and Table Styling */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+        }
+
+        th {
+            text-align: left;
+            padding: 1rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .status-badge {
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .status-aktif { background: #dcfce7; color: #166534; }
+        .status-cuti { background: #fef9c3; color: #854d0e; }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: var(--transition);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+        }
+
+        .modal-form {
+            max-width: 500px;
+            margin: 0 auto;
+        }
+
+        .roles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .role-card {
+            background: white;
+            border-radius: 20px;
+            padding: 1.5rem;
+            border-top: 4px solid var(--primary);
+            box-shadow: var(--shadow);
+        }
+
+        .role-card h4 {
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .role-card p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <i data-lucide="monitor"></i>
+            Famousbytee.b
+        </div>
+        <nav class="nav-list">
+            <div class="nav-item">
+                <a href="{{ url_for('dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
+                    <i data-lucide="layout-dashboard"></i> {{ 'Home Info' if current_user.role.name == 'Member' else 'Dashboard' }}
+                </a>
+            </div>
+
+            <div class="nav-item">
+                <a href="{{ url_for('manage_announcements') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
+                    <i data-lucide="megaphone"></i> Pengumuman
+                </a>
+            </div>
+
+            <div class="nav-item">
+                <a href="{{ url_for('manage_fund') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
+                    <i data-lucide="wallet"></i> {{ 'Transparansi Kas' if current_user.role.name == 'Member' else 'Uang Kas' }}
+                </a>
+            </div>
+            
+            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+            <div class="nav-item">
+                <a href="{{ url_for('manage_members') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
+                    <i data-lucide="users"></i> Members
+                </a>
+            </div>
+            {% endif %}
+
+            <div class="nav-item">
+                <a href="{{ url_for('manage_schedule') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
+                    <i data-lucide="calendar"></i> {{ 'Lihat Jadwal' if current_user.role.name == 'Member' else 'Jadwal Kuliah' }}
+                </a>
+            </div>
+
+            {% if current_user.role.can_manage_roles %}
+            <div class="nav-item">
+                <a href="{{ url_for('manage_roles') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
+                    <i data-lucide="shield-check"></i> Admin & Role
+                </a>
+            </div>
+            <div class="nav-item">
+                <a href="{{ url_for('view_logs') }}" class="nav-link {{ 'active' if request.endpoint == 'view_logs' else '' }}">
+                    <i data-lucide="file-text"></i> Log Aktivitas
+                </a>
+            </div>
+            {% endif %}
+        </nav>
+        <a href="{{ url_for('logout') }}" class="btn-logout">
+            <i data-lucide="log-out"></i> Logout
+        </a>
+    </aside>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

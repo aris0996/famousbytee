@@ -1,0 +1,168 @@
+{% extends 'base.html' %}
+{% block content %}
+<header>
+    <div>
+        <h1>Jadwal Kuliah Famousbytee.b</h1>
+        <p style="color: var(--text-muted);">Kelola jadwal perkuliahan harian dengan cepat dan efisien.</p>
+    </div>
+    <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" target="_blank" style="background: var(--accent); color: var(--text-main); font-size: 0.9rem; padding: 10px 20px; border-radius: 12px; text-decoration: none; font-weight: 700; display: flex; align-items: center; gap: 8px;">
+        <i data-lucide="external-link" style="width: 18px;"></i> Buka Live Page
+    </a>
+</header>
+
+<div style="display: grid; grid-template-columns: {{ '1fr' if current_user.role.name == 'Member' else '350px 1fr' }}; gap: 2rem; align-items: start;">
+    <!-- Form Side -->
+    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+    <div class="card" style="position: sticky; top: 2rem;">
+        <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="plus" style="color: var(--primary); font-weight: 800;"></i> Tambah Matkul
+        </h3>
+        <form method="POST">
+            <div class="form-group">
+                <label>Pilih Hari</label>
+                <select name="day" class="form-control" required>
+                    <option value="Senin">Senin</option>
+                    <option value="Selasa">Selasa</option>
+                    <option value="Rabu">Rabu</option>
+                    <option value="Kamis">Kamis</option>
+                    <option value="Jumat">Jumat</option>
+                    <option value="Sabtu">Sabtu</option>
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="form-group">
+                    <label>Waktu Mulai</label>
+                    <input type="time" name="time_start" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Waktu Selesai</label>
+                    <input type="time" name="time_end" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Nama Mata Kuliah</label>
+                <input type="text" name="subject" class="form-control" placeholder="Contoh: Pemrograman Web" required>
+            </div>
+            <div class="form-group">
+                <label>Nama Dosen</label>
+                <input type="text" name="lecturer" class="form-control" placeholder="Contoh: Dr. Jhon Doe" required>
+            </div>
+            <div class="form-group">
+                <label>Ruangan</label>
+                <input type="text" name="room" class="form-control" placeholder="Contoh: Lab 01" required>
+            </div>
+            <button type="submit" class="btn" style="width: 100%; margin-top: 1rem;">
+                Simpan Jadwal
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    <!-- Table Side -->
+    <div class="card">
+        <h3 style="margin-bottom: 1.5rem;">Daftar Mata Kuliah</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Hari & Jam</th>
+                    <th>Detail Matkul</th>
+                    <th>Ruang</th>
+                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th>Aksi</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in schedules %}
+                <tr>
+                    <td style="white-space: nowrap;">
+                        <div style="font-weight: 800; color: var(--primary);">{{ s.day }}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">{{ s.time_start }} - {{ s.time_end }}</div>
+                    </td>
+                    <td>
+                        <div style="font-weight: 700; font-size: 1.05rem;">{{ s.subject }}</div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+                            <i data-lucide="user" style="width: 14px;"></i> {{ s.lecturer }}
+                        </div>
+                    </td>
+                    <td><span class="status-badge" style="background:#f1f5f9; color:var(--text-main); font-weight: 700; font-family: monospace;">{{ s.room }}</span></td>
+                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                    <td>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', '{{ s.subject }}', '{{ s.lecturer }}', '{{ s.room }}')" style="background:none; border:none; color:var(--primary); cursor:pointer;">
+                                <i data-lucide="edit-3" style="width: 18px;"></i>
+                            </button>
+                            <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus jadwal ini?')" style="color: #ef4444;">
+                                <i data-lucide="trash-2" style="width: 18px;"></i>
+                            </a>
+                        </div>
+                    </td>
+                    {% endif %}
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="{{ '4' if current_user.role.name != 'Member' else '3' }}" style="text-align: center; opacity: 0.5; padding: 3rem;">Jadwal perkuliahan masih kosong.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Edit Modal -->
+<div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 500px; padding: 2.5rem;">
+        <h2 style="margin-bottom: 1.5rem;">Update Jadwal Matkul</h2>
+        <form id="form-edit-sched" method="POST">
+            <div class="form-group">
+                <label>Hari</label>
+                <select name="day" id="edit-day" class="form-control">
+                    <option value="Senin">Senin</option>
+                    <option value="Selasa">Selasa</option>
+                    <option value="Rabu">Rabu</option>
+                    <option value="Kamis">Kamis</option>
+                    <option value="Jumat">Jumat</option>
+                    <option value="Sabtu">Sabtu</option>
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div class="form-group">
+                    <label>Mulai</label>
+                    <input type="time" name="time_start" id="edit-start" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Selesai</label>
+                    <input type="time" name="time_end" id="edit-end" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Mata Kuliah</label>
+                <input type="text" name="subject" id="edit-subject" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Dosen</label>
+                <input type="text" name="lecturer" id="edit-lecturer" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Ruangan</label>
+                <input type="text" name="room" id="edit-room" class="form-control" required>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex:1;">Update Jadwal</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-edit-sched').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditSchedule(id, day, start, end, subject, lecturer, room) {
+    document.getElementById('form-edit-sched').action = '/schedule/edit/' + id;
+    document.getElementById('edit-day').value = day;
+    document.getElementById('edit-start').value = start;
+    document.getElementById('edit-end').value = end;
+    document.getElementById('edit-subject').value = subject;
+    document.getElementById('edit-lecturer').value = lecturer;
+    document.getElementById('edit-room').value = room;
+    document.getElementById('modal-edit-sched').style.display = 'flex';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusLink - Portal Akademik STMIK Bina Mulia</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4cc9f0;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --bg: #f8faff;
+            --transition: all 0.4s ease;
+        }
+
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.6; overflow-x: hidden; }
+
+        /* Navbar */
+        nav {
+            padding: 1.2rem 5%;
+            display: flex; justify-content: space-between; align-items: center;
+            position: fixed; top: 0; width: 100%; z-index: 1000;
+            background: rgba(248, 250, 255, 0.85); backdrop-filter: blur(12px);
+            border-bottom: 1px solid rgba(238, 242, 255, 0.5);
+        }
+        .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; color: var(--primary); }
+        .nav-links { display: flex; gap: 1.5rem; list-style: none; align-items: center; }
+        .nav-links a { text-decoration: none; color: var(--text-main); font-weight: 600; transition: var(--transition); font-size: 0.95rem; }
+        .nav-links a:hover { color: var(--primary); }
+        .btn-login { background: var(--primary); color: white !important; padding: 0.7rem 1.3rem; border-radius: 12px; font-size: 0.9rem; }
+
+        /* Hero Section */
+        .hero {
+            padding: 9rem 5% 5rem;
+            display: flex; flex-direction: column; align-items: center; text-align: center;
+            background: radial-gradient(circle at top right, rgba(67, 97, 238, 0.08), transparent);
+            min-height: 90vh;
+        }
+        .hero-content { max-width: 800px; margin-bottom: 3rem; }
+        .hero h1 { font-size: clamp(2.2rem, 8vw, 3.8rem); font-weight: 800; line-height: 1.1; margin-bottom: 1.5rem; color: #0f172a; letter-spacing: -1px; }
+        .hero h1 span { color: var(--primary); }
+        .hero p { font-size: clamp(1rem, 4vw, 1.25rem); color: var(--text-muted); margin-bottom: 2.5rem; max-width: 650px; margin-left: auto; margin-right: auto; }
+        .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+        
+        .hero-image { position: relative; width: 100%; max-width: 400px; margin-top: 1rem; }
+        .hero-image .abstract-shape { 
+            width: 100%; aspect-ratio: 1; background: linear-gradient(135deg, var(--primary), var(--accent)); 
+            border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; 
+            filter: drop-shadow(0 20px 40px rgba(67, 97, 238, 0.3));
+            animation: morphing 10s infinite alternate ease-in-out;
+        }
+        @keyframes morphing {
+            0% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
+            100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+        }
+
+        /* Features */
+        .features { padding: 5rem 5%; text-align: center; }
+        .features-grid { margin-top: 3.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
+        .feature-card { background: white; padding: 2.5rem; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.02); transition: var(--transition); border: 1px solid #f8faff; }
+        .feature-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(67, 97, 238, 0.08); }
+        .feature-icon { width: 56px; height: 56px; background: rgba(67, 97, 238, 0.1); color: var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; }
+
+        /* Schedule Access */
+        .schedule-access { padding: 5rem 5%; background: white; text-align: center; }
+        .class-grid { margin-top: 3rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; justify-content: center; }
+        .class-card {
+            background: #f8faff; padding: 2rem 1rem; border-radius: 20px; border: 1px solid #eef2ff;
+            transition: var(--transition); text-decoration: none; color: inherit;
+        }
+        .class-card:hover { background: var(--primary); color: white; transform: translateY(-5px); }
+        .class-card h3 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+
+        footer { padding: 4rem 5%; background: #0f172a; color: white; text-align: center; }
+
+        /* Desktop specific layout */
+        @media (min-width: 992px) {
+            .hero { flex-direction: row; text-align: left; padding: 12rem 10% 8rem; }
+            .hero-content { margin-bottom: 0; }
+            .hero p { margin-left: 0; }
+            .hero-btns { justify-content: flex-start; }
+            .features, .schedule-access, footer { padding-left: 10%; padding-right: 10%; }
+        }
+
+        @media (max-width: 600px) {
+            .nav-links li:not(:last-child) { display: none; } /* Show only login button on very small screens */
+            .hero { padding-top: 8rem; }
+            .hero h1 { margin-bottom: 1rem; }
+            .feature-card { padding: 2rem 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo"><i data-lucide="monitor"></i> Famousbytee.b</div>
+        <ul class="nav-links">
+            <li><a href="#">Beranda</a></li>
+            <li><a href="{{ url_for('public_view', class_name='Famousbytee.b') }}">Jadwal Luar</a></li>
+            <li><a href="{{ url_for('login') }}" class="btn-login">Login Portal</a></li>
+        </ul>
+    </nav>
+
+    <section class="hero">
+        <div class="hero-content">
+            <span style="color: var(--primary); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem;">Official Portal Famousbytee.b</span>
+            <h1>Koordinasi Kelas <span>Jauh Lebih Mudah</span></h1>
+            <p>Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kas kelas eksklusif Famousbytee.b.</p>
+            <div class="hero-btns">
+                <a href="{{ url_for('login') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem;">Masuk ke Portal Member</a>
+                <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" style="text-decoration: none; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; margin-left: 20px;">
+                    Lihat Jadwal Harian <i data-lucide="calendar"></i>
+                </a>
+            </div>
+        </div>
+        <div class="hero-image">
+            <div class="abstract-shape">
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 5rem; font-weight: 900;">Fb</div>
+            </div>
+        </div>
+    </section>
+
+    <section class="features" id="pengumuman">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem;">
+            <div style="text-align: left;">
+                <h2 style="font-size: 2.5rem; font-weight: 800;">Pengumuman Terbaru</h2>
+                <p style="color: var(--text-muted);">Informasi penting dan jadwal mendalam untuk anggota kelas.</p>
+            </div>
+            <a href="{{ url_for('login') }}" style="color: var(--primary); font-weight: 700; text-decoration: none;">Lihat Semua <i data-lucide="arrow-right" style="width: 16px; vertical-align: middle;"></i></a>
+        </div>
+        
+        <div class="features-grid" style="text-align: left;">
+            {% for a in announcements %}
+            <div class="feature-card" style="padding: 2rem; border-left: 4px solid {{ '#ef4444' if a.category == 'Penting' else 'var(--primary)' }};">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                    <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary); font-size: 0.7rem;">{{ a.category }}</span>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ a.date_posted.strftime('%d %b %Y') }}</div>
+                </div>
+                <h3 style="font-size: 1.25rem; margin-bottom: 12px; font-weight: 700;">{{ a.title }}</h3>
+                <p style="font-size: 0.95rem; line-height: 1.6; color: #475569;">{{ a.content[:150] }}{{ '...' if a.content|length > 150 else '' }}</p>
+                {% if a.is_pinned %}
+                <div style="margin-top: 1.5rem; display: flex; align-items: center; gap: 6px; color: var(--primary); font-weight: 700; font-size: 0.8rem;">
+                    <i data-lucide="pin" style="width: 14px;"></i> Pinned Information
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <div style="grid-column: 1/-1; padding: 4rem; text-align: center; background: white; border-radius: 24px; opacity: 0.5;">
+                <i data-lucide="inbox" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
+                <p>Belum ada pengumuman kelas saat ini.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+
+    <section class="features" style="background: white;">
+        <h2 style="font-size: 2.5rem; font-weight: 800;">Layanan Famousbytee.b</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon"><i data-lucide="calendar"></i></div>
+                <h3>Jadwal Kuliah</h3>
+                <p>Akses jadwal kuliah terbaru yang selalu sinkron dengan database kelas.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i data-lucide="wallet"></i></div>
+                <h3>Transparansi Kas</h3>
+                <p>Pantau penggunaan dana kas kelas secara terbuka dan bertanggung jawab.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon"><i data-lucide="layout"></i></div>
+                <h3>Koordinasi Internal</h3>
+                <p>Portal satu pintu untuk seluruh kebutuhan administratif kelas Famousbytee.b.</p>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="logo" style="justify-content: center; color: white; margin-bottom: 1rem;"><i data-lucide="monitor"></i> Famousbytee.b</div>
+        <p>&copy; 2026 Famousbytee.b Community. All rights reserved.</p>
+    </footer>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

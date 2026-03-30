@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jadwal Kuliah Semester 2 - {{ classroom.name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --primary-light: #4895ef;
+            --secondary: #3f37c9;
+            --accent: #4cc9f0;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --glass-bg: rgba(255, 255, 255, 0.75);
+            --glass-border: rgba(255, 255, 255, 0.45);
+            --shadow: 0 10px 30px -5px rgba(67, 97, 238, 0.15);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 10px;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #f8faff 0%, #eef2ff 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 40px 20px;
+            overflow-x: hidden;
+        }
+
+        .app-container { width: 100%; max-width: 900px; position: relative; }
+
+        .blob {
+            position: fixed; width: 350px; height: 350px;
+            filter: blur(90px); opacity: 0.13; z-index: -1; border-radius: 50%;
+            animation: blobMove 22s infinite alternate ease-in-out;
+        }
+        .blob-1 { top: -80px; left: -80px; background: var(--primary-light); }
+        .blob-2 { bottom: -80px; right: -80px; background: var(--accent); animation-delay: -10s; }
+        @keyframes blobMove {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(80px, 60px) scale(1.15); }
+        }
+
+        header {
+            text-align: center; margin-bottom: 36px;
+            opacity: 0; transform: translateY(20px);
+            animation: slideUp 0.7s 0.1s forwards;
+        }
+        @keyframes slideUp { to { opacity: 1; transform: translateY(0); } }
+
+        .badge-university {
+            display: inline-block; padding: 6px 18px;
+            background: rgba(67, 97, 238, 0.1); color: var(--primary);
+            border-radius: 100px; font-weight: 600; font-size: 0.82rem;
+            margin-bottom: 14px; letter-spacing: 0.8px; text-transform: uppercase;
+        }
+
+        h1 {
+            font-size: clamp(1.9rem, 5vw, 2.7rem); font-weight: 800;
+            background: linear-gradient(to right, var(--secondary), var(--primary-light));
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            margin-bottom: 8px; line-height: 1.2;
+        }
+
+        .subtitle { color: var(--text-muted); font-size: 1rem; font-weight: 400; }
+
+        .actions {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 18px;
+        }
+        .session-info {
+            font-size: 0.88rem; font-weight: 500; color: var(--text-muted);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .btn-action {
+            display: flex; align-items: center; gap: 8px;
+            padding: 11px 22px; border-radius: var(--radius-sm);
+            font-family: 'Outfit', sans-serif; font-weight: 600;
+            font-size: 0.9rem; cursor: pointer; transition: var(--transition); border: none;
+        }
+        .btn-download { background: var(--text-main); color: white; }
+
+        .schedule-card {
+            background: var(--glass-bg); backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px); border-radius: var(--radius-lg);
+            border: 1px solid var(--glass-border); box-shadow: var(--shadow);
+            overflow: hidden; opacity: 1; width: 100%;
+        }
+
+        .card-header {
+            padding: 28px 32px;
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white; position: relative; overflow: hidden;
+        }
+        .class-code {
+            font-size: 0.75rem; text-transform: uppercase; letter-spacing: 2.5px;
+            opacity: 0.85; margin-bottom: 4px; font-weight: 700;
+        }
+        .card-header h2 { font-size: 1.5rem; font-weight: 700; }
+
+        .table-container { padding: 20px 24px; overflow-x: auto; }
+        table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        thead th {
+            padding: 6px 16px 14px; text-align: left; font-size: 0.75rem;
+            color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 600;
+        }
+
+        tbody.day-group { margin-bottom: 12px; }
+        tbody.day-group tr:first-child td { border-top: 1px solid #e8eef8; }
+        tbody.day-group tr:last-child td { border-bottom: 1px solid #e8eef8; }
+        tbody.day-group tr { background: white; transition: var(--transition); }
+        tbody.day-group tr:hover { background: #f5f8ff; }
+
+        td.day-cell {
+            padding: 0; width: 110px; vertical-align: middle; text-align: center;
+            border-right: 2px solid #e8eef8; border-radius: 0;
+        }
+        tbody.day-group tr:first-child td:first-child { border-radius: var(--radius-sm) 0 0 0; }
+        tbody.day-group tr:last-child td:first-child { border-radius: 0 0 0 var(--radius-sm); }
+        .day-name { font-weight: 700; color: var(--primary); font-size: 0.95rem; }
+
+        td.time-cell { padding: 16px 14px; width: 120px; border-right: 1px dashed #dde4f2; vertical-align: middle; }
+        td.subject-cell { padding: 16px 16px; vertical-align: middle; }
+        td.badge-cell { padding: 16px 14px; white-space: nowrap; text-align: right; vertical-align: middle; }
+
+        .time-range { font-size: 0.82rem; font-weight: 600; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+        .subject-name { font-weight: 700; color: var(--text-main); font-size: 0.97rem; }
+        .lecturer-name { font-size: 0.8rem; color: var(--text-muted); margin-top: 4px; }
+        .meta-badges { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+        .badge { padding: 4px 11px; border-radius: 8px; font-size: 0.73rem; font-weight: 700; }
+        .badge-sks { background: #f1f5f9; color: #475569; }
+        .badge-room { background: #e0f2fe; color: #0369a1; }
+
+        .gap-row td { height: 10px; background: transparent; border: none; padding: 0; }
+
+        .footer-card {
+            padding: 18px 30px; background: rgba(248,250,252,0.6);
+            border-top: 1px solid var(--glass-border); display: flex;
+            justify-content: space-between; align-items: center; font-size: 0.82rem; color: var(--text-muted);
+        }
+        .status-pill { width: 8px; height: 8px; border-radius: 50%; background: #10b981; box-shadow: 0 0 8px #10b981; display: inline-block; }
+
+        @media (max-width: 600px) {
+            td.day-cell { width: 70px; }
+            td.time-cell { width: 90px; }
+        }
+        
+        .spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+
+<body>
+    <div class="blob blob-1"></div>
+    <div class="blob blob-2"></div>
+
+    <div class="app-container">
+        <header>
+            <span class="badge-university">STMIK Bina Mulia Palu</span>
+            <h1>Jadwal Kuliah Semester 2</h1>
+            <p class="subtitle">Teknik Informatika &nbsp;·&nbsp; {{ classroom.batch }}</p>
+        </header>
+
+        <div class="actions">
+            <div class="session-info">
+                <i data-lucide="calendar"></i>
+                Public View &nbsp;·&nbsp; {{ classroom.name }}
+            </div>
+            <button class="btn-action btn-download" id="btn-dl" onclick="downloadPNG()">
+                <i data-lucide="download"></i> Simpan Jadwal
+            </button>
+        </div>
+
+        <div class="schedule-card" id="capture-area">
+            <div class="card-header">
+                <div class="class-code">INF · {{ classroom.name }}</div>
+                <h2>Jadwal Kuliah — Kelas {{ classroom.name }}</h2>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Hari</th>
+                            <th>Waktu</th>
+                            <th>Mata Kuliah</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+
+                    {% for day, shifts in grouped_schedules.items() %}
+                    <tbody class="day-group {{ 'single-row' if shifts|length == 1 else '' }}">
+                        {% for s in shifts %}
+                        <tr>
+                            {% if loop.first %}
+                            <td class="day-cell" rowspan="{{ shifts|length }}">
+                                <div class="day-label"><span class="day-name">{{ day }}</span></div>
+                            </td>
+                            {% endif %}
+                            <td class="time-cell"><span class="time-range">{{ s.time_start }} – {{ s.time_end }}</span></td>
+                            <td class="subject-cell">
+                                <div class="subject-name">{{ s.subject }}</div>
+                                <div class="lecturer-name">{{ s.lecturer }}</div>
+                            </td>
+                            <td class="badge-cell">
+                                <div class="meta-badges">
+                                    <span class="badge badge-room">{{ s.room }}</span>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tr class="gap-row"><td colspan="4"></td></tr>
+                    {% endfor %}
+
+                </table>
+            </div>
+            <div class="footer-card">
+                <div class="last-update">
+                    <span class="status-pill"></span> Live Data: {{ classroom.name }}
+                </div>
+                <div>STMIK Bina Mulia &copy; 2026</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        function downloadPNG() {
+            const el = document.getElementById('capture-area');
+            const btn = document.getElementById('btn-dl');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<i data-lucide="loader-2" class="spin"></i>&nbsp; Memproses...';
+            lucide.createIcons();
+
+            html2canvas(el, { scale: 2, backgroundColor: '#f8faff' }).then(canvas => {
+                const a = document.createElement('a');
+                a.download = `Jadwal-{{ classroom.name }}.png`;
+                a.href = canvas.toDataURL('image/png');
+                a.click();
+                btn.innerHTML = orig;
+                lucide.createIcons();
+            });
+        }
+    </script>
+</body>
+</html>

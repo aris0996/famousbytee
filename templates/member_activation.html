@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aktivasi Akun Member - Famousbytee.b</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --text-main: #1e293b;
+            --glass: rgba(255, 255, 255, 0.95);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Outfit', sans-serif; }
+        body {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e0e7ff 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .activation-card {
+            background: var(--glass);
+            width: 100%;
+            max-width: 450px;
+            padding: 3rem;
+            border-radius: 24px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.05);
+            border: 1px solid rgba(255,255,255,0.5);
+        }
+        .header { text-align: center; margin-bottom: 2.5rem; }
+        .icon-box {
+            width: 64px; height: 64px; background: rgba(67, 97, 238, 0.1);
+            color: var(--primary); border-radius: 16px; display: flex;
+            align-items: center; justify-content: center; margin: 0 auto 1.5rem;
+        }
+        h2 { font-weight: 800; color: var(--text-main); margin-bottom: 0.5rem; }
+        p { color: #64748b; font-size: 0.95rem; }
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 8px; color: #475569; }
+        input {
+            width: 100%; padding: 12px 16px; border-radius: 12px;
+            border: 2px solid #e2e8f0; font-size: 1rem; transition: all 0.3s;
+        }
+        input:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.1); }
+        .btn {
+            width: 100%; background: var(--primary); color: white; border: none;
+            padding: 14px; border-radius: 12px; font-weight: 700; cursor: pointer;
+            transition: transform 0.2s, background 0.2s; margin-top: 1rem;
+        }
+        .btn:hover { background: #3752d5; transform: translateY(-2px); }
+        .member-info {
+            background: #f1f5f9; padding: 1rem; border-radius: 12px; margin-bottom: 2rem;
+            text-align: center;
+        }
+        .flash { color: #dc2626; font-weight: 600; text-align: center; margin-bottom: 1rem; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <div class="activation-card">
+        <div class="header">
+            <div class="icon-box"><i data-lucide="shield-check" style="width: 32px; height: 32px;"></i></div>
+            <h2>Aktivasi Akun</h2>
+            <p>Halo Member Famousbytee.b!</p>
+        </div>
+
+        <div class="member-info">
+            <div style="font-size: 0.8rem; text-transform: uppercase; color: #64748b; letter-spacing: 1px; margin-bottom: 4px;">Identitas Member</div>
+            <div style="font-weight: 800; font-size: 1.1rem; color: var(--primary);">{{ student.full_name }}</div>
+            <div style="font-family: monospace; color: #475569;">NIM: {{ student.nim }}</div>
+        </div>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for m in messages %}<div class="flash">{{ m }}</div>{% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST">
+            <div class="form-group">
+                <label>Buat Password Baru</label>
+                <input type="password" name="password" placeholder="Min. 6 karakter" required>
+            </div>
+            <div class="form-group">
+                <label>Konfirmasi Password</label>
+                <input type="password" name="confirm_password" placeholder="Ulangi password" required>
+            </div>
+            <button type="submit" class="btn">Aktifkan Sekarang</button>
+        </form>
+
+        <p style="text-align: center; margin-top: 2rem; font-size: 0.85rem;">
+            Sudah punya password? <a href="{{ url_for('login') }}" style="color: var(--primary); text-decoration: none; font-weight: 700;">Login di sini</a>
+        </p>
+    </div>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

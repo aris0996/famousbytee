@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block content %}
+<header>
+    <h1>Manajemen Akses & User</h1>
+    <div style="display: flex; gap: 10px;">
+        <button class="btn" onclick="document.getElementById('modal-role').style.display='flex'">+ Role Baru</button>
+        <button class="btn" onclick="document.getElementById('modal-user').style.display='flex'">+ User Baru</button>
+    </div>
+</header>
+
+{% with messages = get_flashed_messages() %}
+    {% if messages %}
+        {% for message in messages %}
+            <div style="background: #eff6ff; color: #1d4ed8; padding: 1rem; border-radius: 12px; margin-bottom: 2rem; border: 1px solid #dbeafe; font-weight: 500;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div class="card">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+        <h3 style="font-size: 1.25rem; font-weight: 700;">Daftar Akun Pengelola Famousbytee.b</h3>
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Total: {{ users|length }} User</p>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>User / Profil</th>
+                <th>Role</th>
+                <th>Email</th>
+                <th>Status</th>
+                <th>Terakhir Aktif</th>
+                <th>Aksi</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <div style="background: rgba(67, 97, 238, 0.1); width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                            <i data-lucide="user" style="width: 20px;"></i>
+                        </div>
+                        <div>
+                            <div style="font-weight: 700;">{{ u.username }}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">{{ u.full_name or 'N/A' }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <span class="status-badge" style="background: #f1f5f9; color: var(--primary); border: 1px solid #e2e8f0;">
+                        {{ u.role.name }}
+                    </span>
+                </td>
+                <td style="font-size: 0.9rem;">{{ u.email or '-' }}</td>
+                <td>
+                    <span class="status-badge {{ 'status-aktif' if u.status == 'Active' else 'status-cuti' }}">
+                        {{ u.status }}
+                    </span>
+                </td>
+                <td style="font-size: 0.85rem; color: var(--text-muted);">
+                    {{ u.last_login.strftime('%d %b, %H:%M') if u.last_login else 'Belum Login' }}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 12px;">
+                        <button onclick="openEditModal('{{ u.id }}', '{{ u.full_name or '' }}', '{{ u.email or '' }}', '{{ u.role_id }}', '{{ u.status }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
+                            <i data-lucide="edit-3" style="width: 18px;"></i>
+                        </button>
+                        {% if u.id != current_user.id %}
+                        <a href="{{ url_for('delete_user', id=u.id) }}" onclick="return confirm('Apakah Anda yakin ingin menghapus user ini?')" style="color: #ef4444; padding: 5px;">
+                            <i data-lucide="trash-2" style="width: 18px;"></i>
+                        </a>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="margin-top: 2rem;">
+    <h3 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 2rem;">Konfigurasi Role & Hak Akses</h3>
+    <div class="roles-grid">
+        {% for role in roles %}
+        <div class="role-card" style="border-top: 4px solid {{ 'var(--primary)' if role.name == 'Admin' else '#cbd5e1' }};">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                <div>
+                    <h4 style="font-weight: 700; font-size: 1.1rem;">{{ role.name }}</h4>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">{{ role.description }}</p>
+                </div>
+                <div style="background: rgba(67, 97, 238, 0.1); padding: 8px; border-radius: 8px; color: var(--primary);">
+                    <i data-lucide="shield-check" style="width: 20px;"></i>
+                </div>
+            </div>
+            
+            <div style="margin-top: 1.5rem;">
+                <p style="font-size: 0.7rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">Permissions :</p>
+                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    {% if role.can_manage_students %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Mhs</span>{% endif %}
+                    {% if role.can_manage_schedule %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Jadwal</span>{% endif %}
+                    {% if role.can_manage_fund %}<span class="status-badge" style="background:#fff7ed; color:#9a3412; font-size: 0.75rem;">Kas</span>{% endif %}
+                    {% if role.can_manage_announcements %}<span class="status-badge" style="background:#fff7ed; color:#9a3412; font-size: 0.75rem;">Info</span>{% endif %}
+                    {% if role.can_manage_roles %}<span class="status-badge" style="background:#fefce8; color:#854d0e; font-size: 0.75rem;">Admin</span>{% endif %}
+                </div>
+            </div>
+            
+            {% if role.name != 'Admin' %}
+            <div style="margin-top: 1.5rem; text-align: right;">
+                <a href="{{ url_for('delete_role', id=role.id) }}" onclick="return confirm('Hapus role ini? User dengan role ini mungkin akan bermasalah.')" style="color: #ef4444; font-size: 0.8rem; text-decoration: none; font-weight: 600;">Hapus Role</a>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Modal User Baru -->
+<div id="modal-user" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 500px; padding: 2.5rem; animation: slideDown 0.3s ease;">
+        <h2 style="margin-bottom: 1.5rem;">Daftarkan User Baru</h2>
+        <form method="POST">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                <div class="form-group">
+                    <label>Nama Lengkap</label>
+                    <input type="text" name="full_name" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" name="email" class="form-control" required>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" class="form-control" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+            </div>
+            <div class="form-group" style="margin-top: 10px;">
+                <label>Pilih Role</label>
+                <select name="role_id" class="form-control" required>
+                    {% for r in roles %}
+                    <option value="{{ r.id }}">{{ r.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Buat Akun</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-user').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Edit User -->
+<div id="modal-edit-user" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 500px; padding: 2.5rem; animation: slideDown 0.3s ease;">
+        <h2 style="margin-bottom: 1.5rem;">Update Akun User</h2>
+        <form id="form-edit-user" method="POST">
+            <div class="form-group">
+                <label>Nama Lengkap</label>
+                <input type="text" name="full_name" id="edit-full-name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" name="email" id="edit-email" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Reset Password (Kosongkan jika tidak ganti)</label>
+                <input type="password" name="password" class="form-control" placeholder="Tulis password baru...">
+            </div>
+            <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 15px; margin-top: 10px;">
+                <div class="form-group">
+                    <label>Ubah Role</label>
+                    <select name="role_id" id="edit-role-id" class="form-control">
+                        {% for r in roles %}
+                        <option value="{{ r.id }}">{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Status Akun</label>
+                    <select name="status" id="edit-status" class="form-control">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Banned</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Simpan Perubahan</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-edit-user').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Modal Role Baru -->
+<div id="modal-role" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
+    <div class="card" style="width: 500px; padding: 2.5rem; animation: slideDown 0.3s ease;">
+        <h2 style="margin-bottom: 1.5rem;">Buat Konfigurasi Role</h2>
+        <form method="POST">
+            <div class="form-group">
+                <label>Nama Role</label>
+                <input type="text" name="role_name" class="form-control" placeholder="Contoh: Editor Konten" required>
+            </div>
+            <div class="form-group">
+                <label>Deskripsi Singkat</label>
+                <textarea name="role_desc" class="form-control" rows="2" placeholder="Jelaskan tupoksi role ini..." required></textarea>
+            </div>
+            <div style="margin-top: 1.5rem; padding: 1rem; background: #f8fafc; border-radius: 12px;">
+                <p style="font-size: 0.8rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 15px;">Pilih Izin Akses :</p>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" name="can_manage_students" style="width: 18px; height: 18px;"> Kelola Data Mahasiswa
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" name="can_manage_schedule" style="width: 18px; height: 18px;"> Kelola Jadwal Kuliah
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" name="can_manage_fund" style="width: 18px; height: 18px;"> Kelola Kas Kelas
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" name="can_manage_announcements" style="width: 18px; height: 18px;"> Kelola Pengumuman
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 10px; font-size: 0.95rem; cursor: pointer; font-weight: 500;">
+                        <input type="checkbox" name="can_manage_roles" style="width: 18px; height: 18px;"> Kelola Hak Akses (Security)
+                    </label>
+                </div>
+            </div>
+            <div style="display: flex; gap: 12px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex: 1;">Aktifkan Role</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-role').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    @keyframes slideDown {
+        from { transform: translateY(-30px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+</style>
+
+<script>
+function openEditModal(id, fullName, email, roleId, status) {
+    document.getElementById('form-edit-user').action = '/roles/edit/user/' + id;
+    document.getElementById('edit-full-name').value = fullName;
+    document.getElementById('edit-email').value = email;
+    document.getElementById('edit-role-id').value = roleId;
+    document.getElementById('edit-status').value = status;
+    document.getElementById('modal-edit-user').style.display = 'flex';
+}
+
+// Close modals when clicking outside
+window.onclick = function(event) {
+    const modals = [
+        document.getElementById('modal-user'), 
+        document.getElementById('modal-edit-user'), 
+        document.getElementById('modal-role')
+    ];
+    modals.forEach(modal => {
+        if (event.target == modal) {
+            modal.style.display = "none";
+        }
+    });
+}
+</script>
+{% endblock %}

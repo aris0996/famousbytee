@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% block content %}
+<header>
+    <h1>Log Aktivitas Sistem</h1>
+    <p>Riwayat tindakan administratif dalam portal Famousbytee.b</p>
+</header>
+
+<div class="card">
+    <div style="max-height: 600px; overflow-y: auto;">
+        <table style="width: 100%;">
+            <thead>
+                <tr>
+                    <th style="width: 20%;">Waktu</th>
+                    <th style="width: 15%;">Pengguna</th>
+                    <th style="width: 20%;">Tindakan</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in logs %}
+                <tr>
+                    <td style="font-size: 0.85rem; color: var(--text-muted);">
+                        {{ log.timestamp.strftime('%d %b %Y, %H:%M') }}
+                    </td>
+                    <td style="font-weight: 700;">
+                        {{ log.user.full_name or log.user.username }}
+                    </td>
+                    <td>
+                        <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
+                            {{ log.action }}
+                        </span>
+                    </td>
+                    <td style="font-size: 0.9rem;">{{ log.details or '-' }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 3rem; opacity: 0.5;">Belum ada log aktivitas.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

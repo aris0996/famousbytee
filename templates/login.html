@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - CampusLink</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --accent: #4cc9f0;
+            --bg: #f8faff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --transition: all 0.3s ease;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
+        .login-card {
+            background: white;
+            width: 100%;
+            max-width: 420px;
+            padding: 3rem 2.5rem;
+            border-radius: 24px;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        .login-card h1 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            color: var(--text-main);
+        }
+
+        .login-card p {
+            color: var(--text-muted);
+            margin-bottom: 2.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+            text-align: left;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            outline: none;
+            transition: var(--transition);
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.1);
+        }
+
+        .btn-login {
+            background: var(--primary);
+            color: white;
+            border: none;
+            width: 100%;
+            padding: 1rem;
+            border-radius: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: var(--transition);
+            margin-top: 1rem;
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(67, 97, 238, 0.4);
+        }
+
+        .flash-msg {
+            background: #ffe4e6;
+            color: #e11d48;
+            padding: 0.75rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div style="background: rgba(67, 97, 238, 0.1); width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: var(--primary); margin: 0 auto 1.5rem;">
+            <i data-lucide="monitor" style="width: 32px; height: 32px;"></i>
+        </div>
+        <h1>Portal Famousbytee.b</h1>
+        <p>Gunakan Username atau NIM untuk masuk.</p>
+ 
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="flash-msg">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+ 
+        <form action="{{ url_for('login') }}" method="POST">
+            <div class="form-group">
+                <label>Username / NIM</label>
+                <input type="text" name="username" class="form-control" placeholder="admin atau NIM Anda" required>
+            </div>
+            <div class="form-group" style="margin-bottom: 0.5rem;">
+                <label>Password</label>
+                <input type="password" name="password" class="form-control" placeholder="••••••••">
+            </div>
+            <p style="font-size: 0.75rem; text-align: left; margin-bottom: 1.5rem; line-height: 1.4;">
+                <i data-lucide="info" style="width: 12px; vertical-align: middle;"></i> 
+                Belum aktivasi? Masukkan NIM saja dan klik login untuk membuat password.
+            </p>
+            <button type="submit" class="btn-login">Masuk ke Portal</button>
+        </form>
+        
+        <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+            <a href="{{ url_for('index') }}" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem; font-weight: 600;">
+                <i data-lucide="arrow-left" style="width: 14px; vertical-align: middle;"></i> Kembali ke Home
+            </a>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

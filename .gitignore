@@ -1,0 +1,28 @@
+# [FAMOUSBYTE B PROJECT] - .gitignore
+
+# Python core
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Environments
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Project Data
+campus.db
+*.log
+instance/
+
+# IDE specific
+.vscode/
+.idea/
+.gemini/
+.env
+
+# MacOS
+.DS_Store
