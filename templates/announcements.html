@@ -11,68 +11,70 @@
 
 <div class="card">
     <h3>Daftar Pengumuman</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Prio</th>
-                <th>Tanggal</th>
-                <th>Kategori</th>
-                <th>Judul</th>
-                <th>Isi</th>
-                {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th style="width: 100px;">Aksi</th>{% endif %}
-            </tr>
-        </thead>
-        <tbody>
-            {% for a in announcements %}
-            <tr style="{{ 'background: rgba(67, 97, 238, 0.03);' if a.is_pinned else '' }}">
-                <td style="text-align: center;">
-                    {% if a.is_pinned %}
-                    <i data-lucide="pin" style="width: 16px; color: var(--primary); fill: var(--primary);"></i>
-                    {% else %}
-                    -
-                    {% endif %}
-                </td>
-                <td style="white-space: nowrap; font-size: 0.85rem;">{{ a.date_posted.strftime('%d %b %Y') }}</td>
-                <td>
-                    <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#ecfdf5; color: #065f46' if a.category == 'Info' else '#fef9c3; color: #854d0e' }}">
-                        {{ a.category }}
-                    </span>
-                </td>
-                <td style="font-weight: 700;">{{ a.title }}</td>
-                <td style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5;">
-                    {{ a.content[:60] }}{{ '...' if a.content|length > 60 else '' }}
-                </td>
-                <td>
-                    <div style="display: flex; gap: 10px;">
-                        <!-- Member View Action -->
-                        <button onclick="viewAnnouncement('{{ a.title }}', '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:var(--primary); border:none; color:white; padding: 5px 12px; border-radius: 6px; cursor:pointer; font-size: 0.8rem;">
-                            Baca Detail
-                        </button>
-                        
-                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-                        <button onclick="openEditAnn('{{ a.id }}', '{{ a.title }}', '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ a.content }}')" style="background:none; border:none; color:var(--primary); cursor:pointer;">
-                            <i data-lucide="edit-3" style="width: 16px;"></i>
-                        </button>
-                        <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus pengumuman ini?')" style="color: #ef4444;">
-                            <i data-lucide="trash-2" style="width: 16px;"></i>
-                        </a>
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    <th>Prio</th>
+                    <th>Tanggal</th>
+                    <th>Kategori</th>
+                    <th>Judul</th>
+                    <th>Isi</th>
+                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th style="width: 100px;">Aksi</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in announcements %}
+                <tr style="{{ 'background: rgba(67, 97, 238, 0.03);' if a.is_pinned else '' }}">
+                    <td style="text-align: center;">
+                        {% if a.is_pinned %}
+                        <i data-lucide="pin" style="width: 16px; color: var(--primary); fill: var(--primary);"></i>
+                        {% else %}
+                        -
                         {% endif %}
-                    </div>
-                </td>
-            </tr>
-            {% else %}
-            <tr>
-                <td colspan="{{ '6' if current_user.role.name != 'Member' else '5' }}" style="text-align: center; opacity: 0.5;">Belum ada pengumuman.</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+                    </td>
+                    <td style="white-space: nowrap; font-size: 0.85rem;">{{ a.date_posted.strftime('%d %b %Y') }}</td>
+                    <td>
+                        <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#ecfdf5; color: #065f46' if a.category == 'Info' else '#fef9c3; color: #854d0e' }}; white-space: nowrap;">
+                            {{ a.category }}
+                        </span>
+                    </td>
+                    <td style="font-weight: 700; min-width: 150px;">{{ a.title }}</td>
+                    <td style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; min-width: 250px;">
+                        {{ a.content[:60] }}{{ '...' if a.content|length > 60 else '' }}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 10px; white-space: nowrap;">
+                            <!-- Member View Action -->
+                            <button onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:var(--primary); border:none; color:white; padding: 5px 12px; border-radius: 6px; cursor:pointer; font-size: 0.8rem;">
+                                Baca Detail
+                            </button>
+                            
+                            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                            <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;">
+                                <i data-lucide="edit-3" style="width: 16px;"></i>
+                            </button>
+                            <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus pengumuman ini?')" style="color: #ef4444;">
+                                <i data-lucide="trash-2" style="width: 16px;"></i>
+                            </a>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="{{ '6' if current_user.role.name != 'Member' else '5' }}" style="text-align: center; opacity: 0.5;">Belum ada pengumuman.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
 </div>
 
 <!-- Modal Detail for Everyone -->
-<div id="modal-view-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
-    <div class="card" style="width: 600px; padding: 2.5rem; max-height: 80vh; overflow-y: auto;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem;">
+<div id="modal-view-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 600px; max-width: 100%; padding: 2.5rem; max-height: 90vh; overflow-y: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
             <div>
                 <span id="view-ann-cat" class="status-badge" style="margin-bottom: 10px; display: inline-block;"></span>
                 <h2 id="view-ann-title"></h2>
@@ -80,18 +82,18 @@
             </div>
             <button onclick="document.getElementById('modal-view-ann').style.display='none'" style="background:none; border:none; cursor:pointer; opacity:0.5;"><i data-lucide="x"></i></button>
         </div>
-        <div id="view-ann-content" style="line-height: 1.7; color: #475569; white-space: pre-wrap;"></div>
+        <div id="view-ann-content" style="line-height: 1.7; color: #475569; white-space: pre-wrap; font-size: 1rem;"></div>
         <button class="btn" style="width: 100%; margin-top: 2rem;" onclick="document.getElementById('modal-view-ann').style.display='none'">Tutup</button>
     </div>
 </div>
 
 <!-- Edit Modal -->
-<div id="modal-edit-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
-    <div class="card" style="width: 600px; padding: 2.5rem;">
+<div id="modal-edit-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem;">Update Pengumuman</h2>
         <form id="form-edit-ann" method="POST">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div class="form-group">
+            <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label>Kategori</label>
                     <select name="category" id="edit-ann-category" class="form-control">
                         <option value="Info">Informasi Umum</option>
@@ -99,7 +101,7 @@
                         <option value="Event">Kegiatan/Event</option>
                     </select>
                 </div>
-                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px; flex: 1; min-width: 200px;">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
                         <input type="checkbox" name="is_pinned" id="edit-ann-pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
                     </label>
@@ -141,13 +143,13 @@ function openEditAnn(id, title, category, pinned, content) {
 }
 </script>
 
-<!-- Modal -->
-<div id="modal-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
-    <div class="card" style="width: 600px; padding: 2.5rem;">
+<!-- Add Modal -->
+<div id="modal-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem;">Buat Pengumuman Baru</h2>
         <form method="POST">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div class="form-group">
+            <div style="display: flex; flex-wrap: wrap; gap: 15px;">
+                <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label>Kategori</label>
                     <select name="category" class="form-control" required>
                         <option value="Info">Informasi Umum</option>
@@ -155,7 +157,7 @@ function openEditAnn(id, title, category, pinned, content) {
                         <option value="Event">Kegiatan/Event</option>
                     </select>
                 </div>
-                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px;">
+                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px; flex: 1; min-width: 200px;">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
                         <input type="checkbox" name="is_pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
                     </label>

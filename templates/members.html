@@ -7,10 +7,10 @@
     </div>
 </header>
 
-<div style="display: grid; grid-template-columns: {{ '1fr' if current_user.role.name == 'Member' else '350px 1fr' }}; gap: 2rem; align-items: start;">
+<div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: start;">
     <!-- Form Side -->
     {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-    <div class="card" style="position: sticky; top: 2rem;">
+    <div class="card" style="flex: 1; min-width: 300px; max-width: 400px; position: sticky; top: 1rem;">
         <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;">
             <i data-lucide="user-plus" style="color: var(--primary);"></i> Tambah Anggota
         </h3>
@@ -35,62 +35,93 @@
                 Daftarkan Member
             </button>
         </form>
+        
+        <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9; text-align: center;">
+            <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1rem;">Punya banyak data sekaligus?</p>
+            <button class="btn" style="background: #f8fafc; color: var(--primary); border: 1px solid var(--primary); width: 100%;" onclick="document.getElementById('modal-bulk-member').style.display='flex'">
+                <i data-lucide="file-spreadsheet" style="width: 16px; vertical-align: middle; margin-right: 5px;"></i> Bulk Add (Mode Excel)
+            </button>
+        </div>
     </div>
     {% endif %}
 
     <!-- Table Side -->
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+    <div class="card" style="flex: 2; min-width: 320px; overflow-x: auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
             <h3>Daftar Anggota Aktif</h3>
             <span style="font-size: 0.85rem; background: #f1f5f9; padding: 4px 12px; border-radius: 100px; font-weight: 600;">{{ students|length }} Terdaftar</span>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Member</th>
-                    <th>NIM</th>
-                    <th>Status</th>
-                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th>Aksi</th>{% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for m in students %}
-                <tr>
-                    <td>
-                        <div style="font-weight: 700;">{{ m.full_name }}</div>
-                    </td>
-                    <td style="font-family: monospace; color: var(--text-muted);">{{ m.nim }}</td>
-                    <td>
-                        <span class="status-badge {{ 'status-aktif' if m.status == 'Aktif' else 'status-cuti' }}">
-                            {{ m.status }}
-                        </span>
-                    </td>
-                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-                    <td>
-                        <div style="display: flex; gap: 10px;">
-                            <button onclick="openEditMember('{{ m.id }}', '{{ m.nim }}', '{{ m.full_name }}', '{{ m.status }}')" style="background:none; border:none; cursor:pointer; color:var(--primary);">
-                                <i data-lucide="edit-3" style="width: 18px;"></i>
-                            </button>
-                            <a href="{{ url_for('delete_member', id=m.id) }}" onclick="return confirm('Hapus member ini?')" style="color: #ef4444;">
-                                <i data-lucide="trash-2" style="width: 18px;"></i>
-                            </a>
-                        </div>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="{{ '4' if current_user.role.name != 'Member' else '3' }}" style="text-align: center; opacity: 0.5; padding: 3rem;">Belum ada member terdaftar.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Member</th>
+                        <th>NIM</th>
+                        <th>Status</th>
+                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th>Aksi</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in students %}
+                    <tr>
+                        <td>
+                            <div style="font-weight: 700; white-space: nowrap;">{{ m.full_name }}</div>
+                        </td>
+                        <td style="font-family: monospace; color: var(--text-muted);">{{ m.nim }}</td>
+                        <td>
+                            <span class="status-badge {{ 'status-aktif' if m.status == 'Aktif' else 'status-cuti' }}">
+                                {{ m.status }}
+                            </span>
+                        </td>
+                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                        <td>
+                            <div style="display: flex; gap: 12px;">
+                                <button onclick="openEditMember('{{ m.id }}', '{{ m.nim }}', '{{ m.full_name }}', '{{ m.status }}')" style="background:none; border:none; cursor:pointer; color:var(--primary);">
+                                    <i data-lucide="edit-3" style="width: 18px;"></i>
+                                </button>
+                                <a href="{{ url_for('delete_member', id=m.id) }}" onclick="return confirm('Hapus member ini?')" style="color: #ef4444;">
+                                    <i data-lucide="trash-2" style="width: 18px;"></i>
+                                </a>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ '4' if current_user.role.name != 'Member' else '3' }}" style="text-align: center; opacity: 0.5; padding: 3rem;">Belum ada member terdaftar.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Add Modal -->
+<div id="modal-bulk-member" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2001; padding: 1rem;">
+    <div class="card" style="width: 600px; max-width: 100%; padding: 2rem;">
+        <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="copy" style="color: var(--primary);"></i> Bulk Import Member
+        </h2>
+        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem;">
+            Copy-paste data dari file Excel atau Spreadsheet Anda di sini.<br>
+            Format: <strong>NIM ; Nama ; Status</strong> (Pisahkan dengan titik koma atau koma).
+        </p>
+        <form action="{{ url_for('bulk_add_members') }}" method="POST">
+            <div class="form-group">
+                <textarea name="bulk_data" class="form-control" rows="10" placeholder="Contoh :&#10;2024001 ; Budi Santoso ; Aktif&#10;2024002 ; Siti Aminah ; Aktif" required></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                <button type="submit" class="btn" style="flex:1;">Proses Data</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-bulk-member').style.display='none'">Batal</button>
+            </div>
+        </form>
     </div>
 </div>
 
 <!-- Edit Modal -->
-<div id="modal-edit-member" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
-    <div class="card" style="width: 450px; padding: 2.5rem;">
+<div id="modal-edit-member" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 450px; max-width: 100%; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem;">Update Data Member</h2>
         <form id="form-edit-member" method="POST">
             <div class="form-group">

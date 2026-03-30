@@ -37,25 +37,69 @@
             min-height: 100vh;
         }
 
-        /* Sidebar Styling */
+        /* Mobile & Sidebar Toggle Support */
         .sidebar {
             width: 260px;
             background: var(--sidebar-bg);
             color: var(--sidebar-text);
-            padding: 2rem 1.5rem;
+            padding: 1.5rem 1rem;
             display: flex;
             flex-direction: column;
             flex-shrink: 0;
+            transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1), padding 0.4s;
+            position: relative;
+            z-index: 100;
+        }
+
+        .sidebar.minimized {
+            width: 80px;
+            padding: 1.5rem 0.5rem;
+        }
+
+        .sidebar.minimized .sidebar-brand span, 
+        .sidebar.minimized .nav-link span,
+        .sidebar.minimized .btn-logout span {
+            display: none;
+        }
+
+        .sidebar.minimized .nav-link {
+            justify-content: center;
+            padding: 0.75rem;
         }
 
         .sidebar-brand {
-            font-size: 1.5rem;
+            font-size: 1.25rem;
             font-weight: 800;
             color: white;
-            margin-bottom: 3rem;
+            margin-bottom: 2.5rem;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            padding: 0 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+        }
+
+        .toggle-sidebar {
+            position: absolute;
+            right: -12px;
+            top: 25px;
+            width: 24px;
+            height: 24px;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: 2px solid var(--bg);
+            z-index: 101;
+            transition: var(--transition);
+        }
+
+        .sidebar.minimized .toggle-sidebar {
+            transform: rotate(180deg);
         }
 
         .nav-list {
@@ -77,6 +121,8 @@
             border-radius: 12px;
             transition: var(--transition);
             font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
         }
 
         .nav-link:hover, .nav-link.active {
@@ -97,20 +143,84 @@
             padding: 0.75rem 1rem;
             text-decoration: none;
             font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
         }
 
-        /* Main Content Styling */
+        /* Responsive Content */
         .main-content {
             flex: 1;
-            padding: 2rem 3rem;
+            padding: 2rem;
             overflow-y: auto;
+            transition: var(--transition);
+        }
+
+        @media (max-width: 1024px) {
+            .main-content { padding: 1.5rem; }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                position: fixed;
+                left: -280px;
+                top: 0;
+                bottom: 0;
+                width: 260px !important;
+                height: 100vh;
+                z-index: 1000;
+                box-shadow: 10px 0 30px rgba(0,0,0,0.1);
+            }
+            .sidebar.active {
+                left: 0;
+            }
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: rgba(0,0,0,0.5);
+                backdrop-filter: blur(4px);
+                z-index: 999;
+            }
+            .sidebar.active + .sidebar-overlay {
+                display: block;
+            }
+            .nav-list { display: flex; flex-direction: column; }
+            .toggle-sidebar { display: none; }
+            .mobile-toggle {
+                display: flex;
+                position: fixed;
+                bottom: 2rem;
+                right: 2rem;
+                background: var(--primary);
+                color: white;
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 20px rgba(67, 97, 238, 0.4);
+                z-index: 998;
+                border: none;
+                cursor: pointer;
+            }
+            .main-content { padding: 1rem; width: 100%; min-width: 0; }
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+
+        @media (min-width: 769px) {
+            .mobile-toggle { display: none; }
         }
 
         header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 2.5rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+            gap: 1rem;
         }
 
         h1 {
@@ -125,6 +235,26 @@
             box-shadow: var(--shadow);
             border: 1px solid rgba(0, 0, 0, 0.03);
             margin-bottom: 2rem;
+        }
+
+        .roles-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .role-card {
+            background: #fff;
+            padding: 1.5rem;
+            border-radius: 1.2rem;
+            border: 1px solid #e2e8f0;
+            transition: var(--transition);
+        }
+
+        .role-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
         }
 
         .stats-grid {
@@ -269,67 +399,100 @@
     </style>
 </head>
 <body>
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             <i data-lucide="monitor"></i>
-            Famousbytee.b
+            <span>Famousbytee.b</span>
+            <div class="toggle-sidebar" onclick="toggleSidebar()">
+                <i data-lucide="chevron-left" id="toggle-icon"></i>
+            </div>
         </div>
         <nav class="nav-list">
             <div class="nav-item">
                 <a href="{{ url_for('dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
-                    <i data-lucide="layout-dashboard"></i> {{ 'Home Info' if current_user.role.name == 'Member' else 'Dashboard' }}
+                    <i data-lucide="layout-dashboard"></i> <span>{{ 'Home Info' if current_user.role.name == 'Member' else 'Dashboard' }}</span>
                 </a>
             </div>
 
             <div class="nav-item">
                 <a href="{{ url_for('manage_announcements') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
-                    <i data-lucide="megaphone"></i> Pengumuman
+                    <i data-lucide="megaphone"></i> <span>Pengumuman</span>
                 </a>
             </div>
 
             <div class="nav-item">
                 <a href="{{ url_for('manage_fund') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
-                    <i data-lucide="wallet"></i> {{ 'Transparansi Kas' if current_user.role.name == 'Member' else 'Uang Kas' }}
+                    <i data-lucide="wallet"></i> <span>{{ 'Transparansi Kas' if current_user.role.name == 'Member' else 'Uang Kas' }}</span>
                 </a>
             </div>
             
             {% if current_user.role.name in ['Admin', 'Pengurus'] %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_members') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
-                    <i data-lucide="users"></i> Members
+                    <i data-lucide="users"></i> <span>Members</span>
                 </a>
             </div>
             {% endif %}
 
             <div class="nav-item">
                 <a href="{{ url_for('manage_schedule') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
-                    <i data-lucide="calendar"></i> {{ 'Lihat Jadwal' if current_user.role.name == 'Member' else 'Jadwal Kuliah' }}
+                    <i data-lucide="calendar"></i> <span>{{ 'Lihat Jadwal' if current_user.role.name == 'Member' else 'Jadwal Kuliah' }}</span>
                 </a>
             </div>
 
             {% if current_user.role.can_manage_roles %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_roles') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
-                    <i data-lucide="shield-check"></i> Admin & Role
+                    <i data-lucide="shield-check"></i> <span>Admin & Role</span>
                 </a>
             </div>
             <div class="nav-item">
                 <a href="{{ url_for('view_logs') }}" class="nav-link {{ 'active' if request.endpoint == 'view_logs' else '' }}">
-                    <i data-lucide="file-text"></i> Log Aktivitas
+                    <i data-lucide="file-text"></i> <span>Log Aktivitas</span>
                 </a>
             </div>
             {% endif %}
         </nav>
         <a href="{{ url_for('logout') }}" class="btn-logout">
-            <i data-lucide="log-out"></i> Logout
+            <i data-lucide="log-out"></i> <span>Logout</span>
         </a>
     </aside>
+    <div class="sidebar-overlay" onclick="toggleMobileNav()"></div>
+
+    <button class="mobile-toggle" onclick="toggleMobileNav()">
+        <i data-lucide="menu" id="mobile-icon"></i>
+    </button>
 
     <main class="main-content">
         {% block content %}{% endblock %}
     </main>
 
     <script>
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('minimized');
+            localStorage.setItem('sidebarMinimized', sidebar.classList.contains('minimized'));
+        }
+
+        function toggleMobileNav() {
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('mobile-icon');
+            sidebar.classList.toggle('active');
+            sidebar.classList.toggle('minimized', false);
+            
+            if(sidebar.classList.contains('active')) {
+                icon.setAttribute('data-lucide', 'x');
+            } else {
+                icon.setAttribute('data-lucide', 'menu');
+            }
+            lucide.createIcons();
+        }
+
+        // Apply saved preference
+        if (localStorage.getItem('sidebarMinimized') === 'true') {
+            document.getElementById('sidebar').classList.add('minimized');
+        }
+
         lucide.createIcons();
     </script>
 </body>

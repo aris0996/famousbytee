@@ -26,3 +26,8 @@ instance/
 
 # MacOS
 .DS_Store
+
+# Secrets and Dynamic Data
+config.py
+static/upload/
+!static/upload/.gitkeep

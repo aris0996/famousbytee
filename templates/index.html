@@ -3,7 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CampusLink - Portal Akademik STMIK Bina Mulia</title>
+    
+    <!-- SEO Meta Tags -->
+    <title>Famousbytee.b - Portal Kelas Eksklusif</title>
+    <meta name="description" content="Portal Resmi Kelas Famousbytee.b. Akses jadwal harian, transparansi kas kelas, dan pengumuman internal dalam satu platform terintegrasi.">
+    <meta name="keywords" content="famousbytee, portal kelas, manajemen kelas, kas kelas, jadwal kuliah">
+    <meta name="author" content="arisdev">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="{{ request.url }}">
+    <meta property="og:title" content="Famousbytee.b - Portal Kelas Jauh Lebih Mudah">
+    <meta property="og:description" content="Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kas kelas eksklusif Famousbytee.b.">
+    <meta property="og:image" content="{{ url_for('static', filename='og-image.jpg') }}">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -121,7 +134,7 @@
         </div>
         <div class="hero-image">
             <div class="abstract-shape">
-                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 5rem; font-weight: 900;">Fb</div>
+                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 5rem; font-weight: 900;"></div>
             </div>
         </div>
     </section>
@@ -180,9 +193,16 @@
         </div>
     </section>
 
-    <footer>
-        <div class="logo" style="justify-content: center; color: white; margin-bottom: 1rem;"><i data-lucide="monitor"></i> Famousbytee.b</div>
-        <p>&copy; 2026 Famousbytee.b Community. All rights reserved.</p>
+    <footer id="footer">
+        <div class="footer-logo" style="display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.4rem; margin-bottom: 2rem;">
+            <i data-lucide="monitor"></i> Famousbytee.b Portal
+        </div>
+        <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform eksklusif untuk integrasi data, koordinasi harian, dan transparansi internal kelas Famousbytee.b.</p>
+        
+        <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; opacity: 0.8;">
+            <p>&copy; 2026 Famousbytee.b Community. All rights reserved.</p>
+            <p style="margin-top: 10px; font-weight: 600;">Created by <a href="https://instagram.com/ars_0996" target="_blank" style="color: var(--accent); text-decoration: none;">@ars_0996</a> | BY arisdev</p>
+        </div>
     </footer>
 
     <script>

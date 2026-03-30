@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<header>
+<header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
     <div>
         <h1>Dashboard Pengurus Famousbytee.b</h1>
         <p style="color: var(--text-muted);">Selamat datang, {{ current_user.username }}. Pantau koordinasi kelas Anda secara real-time.</p>
     </div>
-    <div style="display: flex; gap: 10px;">
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         {% if current_user.role.name in ['Admin', 'Pengurus'] %}
         <a href="{{ url_for('manage_announcements') }}" class="btn" style="text-decoration: none;">+ Buat Pengumuman</a>
         <a href="{{ url_for('manage_fund') }}" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none;">+ Entri Kas</a>
@@ -38,9 +38,9 @@
     </div>
 </div>
 
-<div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 2rem;">
+<div style="display: flex; flex-wrap: wrap; gap: 2rem;">
     <!-- Recent Announcements -->
-    <div class="card">
+    <div class="card" style="flex: 1; min-width: 320px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem; font-weight: 700;">Pengumuman Terbaru</h2>
             <a href="{{ url_for('manage_announcements') }}" style="color: var(--primary); text-decoration: none; font-size: 0.9rem; font-weight: 600;">Lihat Semua</a>
@@ -53,7 +53,7 @@
                     <span style="font-size: 0.75rem; color: var(--text-muted);">{{ a.date_posted.strftime('%d %b') }}</span>
                 </div>
                 <div style="font-weight: 700; font-size: 1.05rem; margin-bottom: 6px;">{{ a.title }}</div>
-                <div style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{{ a.content }}</div>
+                <div style="font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">{{ a.content }}</div>
             </div>
             {% else %}
             <p style="text-align: center; opacity: 0.5; padding: 2rem;">Belum ada pengumuman.</p>
@@ -62,29 +62,31 @@
     </div>
 
     <!-- Recent Students -->
-    <div class="card">
+    <div class="card" style="flex: 1.2; min-width: 320px;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem; font-weight: 700;">Update Member Terkini</h2>
             <a href="{{ url_for('manage_members') }}" style="color: var(--primary); text-decoration: none; font-size: 0.9rem; font-weight: 600;">Semua Member</a>
         </div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Nama</th>
-                    <th>NIM</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in recent_students %}
-                <tr>
-                    <td style="font-weight: 600;">{{ s.full_name }}</td>
-                    <td style="font-size: 0.9rem; color: var(--text-muted);">{{ s.nim }}</td>
-                    <td><span class="status-badge {{ 'status-aktif' if s.status == 'Aktif' else 'status-cuti' }}" style="font-size: 0.75rem;">{{ s.status }}</span></td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Nama</th>
+                        <th>NIM</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in recent_students %}
+                    <tr>
+                        <td style="font-weight: 600; white-space: nowrap;">{{ s.full_name }}</td>
+                        <td style="font-size: 0.9rem; color: var(--text-muted);">{{ s.nim }}</td>
+                        <td><span class="status-badge {{ 'status-aktif' if s.status == 'Aktif' else 'status-cuti' }}" style="font-size: 0.75rem;">{{ s.status }}</span></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 {% endblock %}

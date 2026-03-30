@@ -147,6 +147,36 @@ def manage_members():
     members = Student.query.filter_by(classroom_id=class_fb.id).all()
     return render_template('members.html', students=members)
 
+@app.route('/members/bulk', methods=['POST'])
+@login_required
+def bulk_add_members():
+    if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
+    data = request.form.get('bulk_data')
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    
+    added_count = 0
+    lines = data.strip().split('\n')
+    for line in lines:
+        if ';' in line: parts = line.split(';')
+        elif ',' in line: parts = line.split(',')
+        else: continue
+        
+        if len(parts) >= 2:
+            nim = parts[0].strip()
+            name = parts[1].strip()
+            status = parts[2].strip() if len(parts) >= 3 else 'Aktif'
+            
+            # Check if exists
+            if not Student.query.filter_by(nim=nim).first():
+                new_s = Student(nim=nim, full_name=name, status=status, classroom_id=class_fb.id)
+                db.session.add(new_s)
+                added_count += 1
+                
+    db.session.commit()
+    log_activity("Bulk Add Member", f"Berhasil menambah {added_count} mahasiswa.")
+    flash(f'Berhasil menambah {added_count} mahasiswa baru.')
+    return redirect(url_for('manage_members'))
+
 @app.route('/members/edit/<int:id>', methods=['POST'])
 @login_required
 def edit_member(id):

@@ -10,10 +10,10 @@
     </a>
 </header>
 
-<div style="display: grid; grid-template-columns: {{ '1fr' if current_user.role.name == 'Member' else '350px 1fr' }}; gap: 2rem; align-items: start;">
+<div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: start;">
     <!-- Form Side -->
     {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-    <div class="card" style="position: sticky; top: 2rem;">
+    <div class="card" style="flex: 1; min-width: 300px; max-width: 400px; position: sticky; top: 1rem;">
         <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;">
             <i data-lucide="plus" style="color: var(--primary); font-weight: 800;"></i> Tambah Matkul
         </h3>
@@ -29,12 +29,12 @@
                     <option value="Sabtu">Sabtu</option>
                 </select>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="form-group">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <div class="form-group" style="flex: 1; min-width: 100px;">
                     <label>Waktu Mulai</label>
                     <input type="time" name="time_start" class="form-control" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="flex: 1; min-width: 100px;">
                     <label>Waktu Selesai</label>
                     <input type="time" name="time_end" class="form-control" required>
                 </div>
@@ -59,57 +59,59 @@
     {% endif %}
 
     <!-- Table Side -->
-    <div class="card">
+    <div class="card" style="flex: 2; min-width: 320px; overflow-x: auto;">
         <h3 style="margin-bottom: 1.5rem;">Daftar Mata Kuliah</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Hari & Jam</th>
-                    <th>Detail Matkul</th>
-                    <th>Ruang</th>
-                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th>Aksi</th>{% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for s in schedules %}
-                <tr>
-                    <td style="white-space: nowrap;">
-                        <div style="font-weight: 800; color: var(--primary);">{{ s.day }}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted);">{{ s.time_start }} - {{ s.time_end }}</div>
-                    </td>
-                    <td>
-                        <div style="font-weight: 700; font-size: 1.05rem;">{{ s.subject }}</div>
-                        <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
-                            <i data-lucide="user" style="width: 14px;"></i> {{ s.lecturer }}
-                        </div>
-                    </td>
-                    <td><span class="status-badge" style="background:#f1f5f9; color:var(--text-main); font-weight: 700; font-family: monospace;">{{ s.room }}</span></td>
-                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-                    <td>
-                        <div style="display: flex; gap: 10px;">
-                            <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', '{{ s.subject }}', '{{ s.lecturer }}', '{{ s.room }}')" style="background:none; border:none; color:var(--primary); cursor:pointer;">
-                                <i data-lucide="edit-3" style="width: 18px;"></i>
-                            </button>
-                            <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus jadwal ini?')" style="color: #ef4444;">
-                                <i data-lucide="trash-2" style="width: 18px;"></i>
-                            </a>
-                        </div>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="{{ '4' if current_user.role.name != 'Member' else '3' }}" style="text-align: center; opacity: 0.5; padding: 3rem;">Jadwal perkuliahan masih kosong.</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Hari & Jam</th>
+                        <th>Detail Matkul</th>
+                        <th>Ruang</th>
+                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th>Aksi</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in schedules %}
+                    <tr>
+                        <td style="white-space: nowrap;">
+                            <div style="font-weight: 800; color: var(--primary);">{{ s.day }}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">{{ s.time_start }} - {{ s.time_end }}</div>
+                        </td>
+                        <td>
+                            <div style="font-weight: 700; font-size: 1.05rem; min-width: 180px;">{{ s.subject }}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px;">
+                                <i data-lucide="user" style="width: 14px;"></i> {{ s.lecturer }}
+                            </div>
+                        </td>
+                        <td><span class="status-badge" style="background:#f1f5f9; color:var(--text-main); font-weight: 700; font-family: monospace; white-space: nowrap;">{{ s.room }}</span></td>
+                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                        <td>
+                            <div style="display: flex; gap: 12px;">
+                                <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject|replace('`','\\`') }}`, `{{ s.lecturer|replace('`','\\`') }}`, `{{ s.room|replace('`','\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;">
+                                    <i data-lucide="edit-3" style="width: 18px;"></i>
+                                </button>
+                                <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus jadwal ini?')" style="color: #ef4444;">
+                                    <i data-lucide="trash-2" style="width: 18px;"></i>
+                                </a>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{{ '4' if current_user.role.name != 'Member' else '3' }}" style="text-align: center; opacity: 0.5; padding: 3rem;">Jadwal perkuliahan masih kosong.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
 
 <!-- Edit Modal -->
-<div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000;">
-    <div class="card" style="width: 500px; padding: 2.5rem;">
+<div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 500px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem;">Update Jadwal Matkul</h2>
         <form id="form-edit-sched" method="POST">
             <div class="form-group">
@@ -123,12 +125,12 @@
                     <option value="Sabtu">Sabtu</option>
                 </select>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                <div class="form-group">
+            <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                <div class="form-group" style="flex: 1; min-width: 100px;">
                     <label>Mulai</label>
                     <input type="time" name="time_start" id="edit-start" class="form-control" required>
                 </div>
-                <div class="form-group">
+                <div class="form-group" style="flex: 1; min-width: 100px;">
                     <label>Selesai</label>
                     <input type="time" name="time_end" id="edit-end" class="form-control" required>
                 </div>

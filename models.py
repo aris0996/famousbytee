@@ -88,3 +88,8 @@ class BatchFund(db.Model):
     is_edited = db.Column(db.Boolean, default=False)
     edit_reason = db.Column(db.String(255))
     last_edited_by = db.Column(db.String(100))
+class SystemSetting(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True, nullable=False)
+    value = db.Column(db.Text)
+    description = db.Column(db.String(255))
