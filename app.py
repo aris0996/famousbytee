@@ -43,7 +43,7 @@ def inject_settings():
     if 'web_title' not in settings: settings['web_title'] = 'Famousbytee.b Portal'
     if 'web_logo' not in settings: settings['web_logo'] = 'monitor'
     if 'favicon_url' not in settings: settings['favicon_url'] = '/static/favicon.ico'
-    return dict(site_settings=settings)
+    return dict(site_settings=settings, datetime=datetime)
 
 @app.errorhandler(404)
 def page_not_found(e):
@@ -289,13 +289,13 @@ def delete_member(id):
 @app.route('/schedule', methods=['GET', 'POST'])
 @login_required
 def manage_schedule():
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
     if request.method == 'POST' and not current_user.role.can_manage_schedule:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
-    
     if request.method == 'POST':
+        # Single Add logic (remains as is)
         sched = Schedule(
             classroom_id=class_fb.id, 
             day=request.form['day'], 
@@ -307,11 +307,84 @@ def manage_schedule():
         )
         db.session.add(sched)
         db.session.commit()
-        log_activity("Tambah Jadwal", f"Matkul: {sched.subject}, Hari: {sched.day}")
+        log_activity("Tambah Jadwal", f"Matkul: {sched.subject}")
         return redirect(url_for('manage_schedule'))
     
+    # 1. Get All Schedules
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
-    return render_template('schedule.html', schedules=schedules)
+    
+    # 2. Logic to Find 'Active' and 'Next' Subject
+    now = datetime.now()
+    current_day_str = now.strftime('%A')
+    # Map English day to Indonesian to match DB
+    day_map = {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'}
+    today_indo = day_map.get(current_day_str, 'Minggu')
+    current_time_str = now.strftime('%H:%M')
+    
+    active_subject = None
+    next_subject = None
+    
+    today_schedules = sorted([s for s in schedules if s.day == today_indo], key=lambda x: x.time_start)
+    
+    for s in today_schedules:
+        if s.time_start <= current_time_str <= s.time_end:
+            active_subject = s
+        elif s.time_start > current_time_str and not next_subject:
+            next_subject = s
+            
+    return render_template('schedule.html', 
+                         schedules=schedules, 
+                         active_subject=active_subject, 
+                         next_subject=next_subject,
+                         today_indo=today_indo)
+
+@app.route('/schedule/batch', methods=['POST'])
+@login_required
+def schedule_batch():
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    
+    if 'file' not in request.files: return redirect(url_for('manage_schedule'))
+    file = request.files['file']
+    if file.filename == '': return redirect(url_for('manage_schedule'))
+    
+    if file and file.filename.endswith('.csv'):
+        stream = StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_input = csv.DictReader(stream)
+        count_new = 0
+        count_upd = 0
+        
+        for row in csv_input:
+            sid = row.get('id')
+            if sid and sid.strip().isdigit():
+                existing = Schedule.query.get(int(sid))
+                if existing:
+                    existing.day = row['day']
+                    existing.time_start = row['time_start']
+                    existing.time_end = row['time_end']
+                    existing.subject = row['subject']
+                    existing.lecturer = row.get('lecturer', '-')
+                    existing.room = row.get('room', '-')
+                    count_upd += 1
+                    continue
+            
+            ns = Schedule(
+                classroom_id=class_fb.id,
+                day=row['day'],
+                time_start=row['time_start'],
+                time_end=row['time_end'],
+                subject=row['subject'],
+                lecturer=row.get('lecturer', '-'),
+                room=row.get('room', '-')
+            )
+            db.session.add(ns)
+            count_new += 1
+            
+        db.session.commit()
+        log_activity("Batch Update Jadwal", f"Baru: {count_new}, Update: {count_upd}")
+        flash(f'Sukses: {count_new} jadwal baru ditambahkan, {count_upd} jadwal diperbarui.')
+        
+    return redirect(url_for('manage_schedule'))
 
 @app.route('/schedule/edit/<int:id>', methods=['POST'])
 @login_required
@@ -337,6 +410,34 @@ def delete_schedule(id):
     db.session.delete(s)
     db.session.commit()
     return redirect(url_for('manage_schedule'))
+
+# Suggestion #15: Download Template CSV with Current Data
+@app.route('/schedule/template')
+@login_required
+def download_schedule_template():
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
+    
+    # Headers dengan ID untuk pendeteksian UPDATE
+    headers = ['id', 'day', 'time_start', 'time_end', 'subject', 'lecturer', 'room']
+    
+    si = StringIO()
+    cw = csv.writer(si)
+    cw.writerow(headers)
+    
+    if schedules:
+        for s in schedules:
+            cw.writerow([s.id, s.day, s.time_start, s.time_end, s.subject, s.lecturer, s.room])
+    else:
+        # Contoh penginputan jika data kosong (ID dikosongkan)
+        cw.writerow(['', 'Senin', '08:00', '10:00', 'Pemrograman Web (CONTOH)', 'Dr. Jhon Doe', 'Lab 01'])
+        cw.writerow(['', 'Selasa', '13:00', '15:30', 'Basis Data (CONTOH)', 'Alice, M.Kom', 'Lab 02'])
+    
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = "attachment; filename=master_jadwal_famousbytee.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
 
 @app.route('/announcements', methods=['GET', 'POST'])
 @login_required
