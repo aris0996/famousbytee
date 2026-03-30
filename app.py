@@ -406,7 +406,5 @@ def init_db():
             db.session.add(f1)
             db.session.commit()
 
-if __name__ == '__main__':
-    if not os.path.exists('campus.db'):
-        init_db()
-    app.run(debug=True)
+# Mod_wsgi akan mencari objek "application" secara langsung dari file ini.
+# Gunakan "python -m flask run" atau jalankan "wsgi.py" untuk pengembangan lokal.
