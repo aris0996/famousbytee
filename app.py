@@ -1,8 +1,9 @@
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting
+from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead
 import os
+from PIL import Image
 import csv
 from io import StringIO
 from flask import send_from_directory, make_response
@@ -127,19 +128,44 @@ def member_activation(nim):
 @login_required
 def logout():
     logout_user()
-    return redirect(url_for('login'))
+    return redirect(url_for('index'))
 
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
-    return render_template('index.html', announcements=announcements)
+    announcements = Announcement.query.filter_by(is_public=True).order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
+    # Fetch top 8 latest public photos for the landing page (ONLY PUBLISHED)
+    photos = GalleryPhoto.query.filter_by(is_public=True, status='Published').order_by(GalleryPhoto.created_at.desc()).limit(8).all()
+    return render_template('index.html', announcements=announcements, photos=photos)
 
 def log_activity(action, details=None):
-    log = ActivityLog(user_id=current_user.id, action=action, details=details)
-    db.session.add(log)
-    db.session.commit()
+    if current_user.is_authenticated:
+        enriched_details = f"[{current_user.role.name}] {details}" if details else f"[{current_user.role.name}]"
+        log = ActivityLog(user_id=current_user.id, action=action, details=enriched_details)
+        db.session.add(log)
+        db.session.commit()
+
+def get_fund_target():
+    """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""
+    try:
+        start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
+        rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
+        
+        start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
+        daily_rate = int(rate_setting.value) if rate_setting else 1000
+    except:
+        start_date = datetime(2024, 3, 30).date()
+        daily_rate = 1000
+
+    today = datetime.now().date()
+    target = 0
+    if today >= start_date:
+        curr = start_date
+        while curr <= today:
+            if curr.weekday() < 5: # Monday (0) to Friday (4)
+                target += daily_rate
+            curr += timedelta(days=1)
+    return target
+
 
 @app.route('/logs')
 @login_required
@@ -164,14 +190,8 @@ def dashboard():
     member_info = None
     if current_user.student_id:
         student = current_user.student
-        start_date = datetime(2024, 3, 30).date()
-        today = datetime.now().date()
-        target_payment = 0
-        if today >= start_date:
-            curr = start_date
-            while curr <= today:
-                if curr.weekday() < 5: target_payment += 1500 # Tarif default
-                curr += timedelta(days=1)
+        target_payment = get_fund_target()
+
         
         total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
             BatchFund.student_id == student.id, 
@@ -186,7 +206,40 @@ def dashboard():
             'arrears': max(0, target_payment - total_paid)
         }
 
-    # 3. Data Statistik Admin/Pengurus (jika punya izin)
+    # 3. GALLERY SNEAK PEEK (Latest 4 Published)
+    gallery_preview = GalleryPhoto.query.filter_by(status='Published').order_by(GalleryPhoto.created_at.desc()).limit(4).all()
+
+    # 4. NEXT CLASS COUNTDOWN
+    # Map Indonesian days to weekday numbers
+    day_map = {'Senin': 0, 'Selasa': 1, 'Rabu': 2, 'Kamis': 3, 'Jumat': 4, 'Sabtu': 5, 'Minggu': 6}
+    now = datetime.now()
+    curr_day_num = now.weekday()
+    curr_time_str = now.strftime('%H:%M')
+    
+    schedules = Schedule.query.all()
+    next_class = None
+    min_diff = float('inf')
+    
+    for s in schedules:
+        sched_day_num = day_map.get(s.day)
+        if sched_day_num is None: continue
+        
+        # Calculate time diff in minutes
+        # We simplify: only look at today's remaining classes or tomorrow's first class if today is done
+        if sched_day_num == curr_day_num:
+            if s.start_time > curr_time_str:
+                h_s, m_s = map(int, s.start_time.split(':'))
+                h_c, m_c = now.hour, now.minute
+                diff = (h_s * 60 + m_s) - (h_c * 60 + m_c)
+                if diff < min_diff:
+                    min_diff = diff
+                    next_class = s
+        # For simplicity, we only show "Today's" next class for now as per user requested "Starting in X hours"
+    
+    # 5. UNREAD ANNOUNCEMENTS
+    read_ids = [r.announcement_id for r in AnnouncementRead.query.filter_by(user_id=current_user.id).all()]
+
+    # 6. Data Statistik Admin/Pengurus (jika punya izin)
     admin_stats = None
     recent_students = []
     if current_user.role.name in ['Admin', 'Pengurus']:
@@ -206,7 +259,45 @@ def dashboard():
                          recent_announcements=recent_announcements,
                          member_info=member_info,
                          admin_stats=admin_stats,
-                         recent_students=recent_students)
+                         recent_students=recent_students,
+                         gallery_preview=gallery_preview,
+                         next_class=next_class,
+                         time_diff=min_diff if min_diff != float('inf') else None,
+                         read_ids=read_ids)
+
+@app.route('/announcements/read/<int:id>')
+@login_required
+def mark_announcement_read(id):
+    try:
+        # Check if already read
+        exists = AnnouncementRead.query.filter_by(announcement_id=id, user_id=current_user.id).first()
+        if not exists:
+            read = AnnouncementRead(announcement_id=id, user_id=current_user.id)
+            db.session.add(read)
+            db.session.commit()
+        return {'status': 'success'}
+    except:
+        return {'status': 'error'}, 500
+
+@app.route('/profile', methods=['GET', 'POST'])
+@login_required
+def profile():
+    if request.method == 'POST':
+        # Limit what can be changed
+        current_user.email = request.form.get('email', current_user.email)
+        current_user.bio = request.form.get('bio', '')
+        current_user.whatsapp = request.form.get('whatsapp', '')
+        
+        new_pass = request.form.get('new_password')
+        if new_pass:
+            current_user.password = new_pass
+            
+        db.session.commit()
+        log_activity("Update Profil")
+        flash('Profil berhasil diperbarui!')
+        return redirect(url_for('profile'))
+        
+    return render_template('profile.html')
 
 @app.route('/members', methods=['GET', 'POST'])
 @login_required
@@ -386,6 +477,39 @@ def schedule_batch():
         
     return redirect(url_for('manage_schedule'))
 
+@app.route('/schedule/bulk', methods=['POST'])
+@login_required
+def bulk_add_schedule():
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    data = request.form.get('bulk_data')
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    
+    added_count = 0
+    lines = data.strip().split('\n')
+    for line in lines:
+        parts = []
+        if ';' in line: parts = [p.strip() for p in line.split(';')]
+        elif '\t' in line: parts = [p.strip() for p in line.split('\t')]
+        else: continue
+        
+        if len(parts) >= 5: # day, start, end, subject, lecturer, room
+            s = Schedule(
+                classroom_id=class_fb.id,
+                day=parts[0],
+                time_start=parts[1],
+                time_end=parts[2],
+                subject=parts[3],
+                lecturer=parts[4],
+                room=parts[5] if len(parts) > 5 else '-'
+            )
+            db.session.add(s)
+            added_count += 1
+            
+    db.session.commit()
+    log_activity("Bulk Tambah Jadwal", f"Ditambahkan: {added_count} jadwal")
+    flash(f'{added_count} jadwal berhasil ditambahkan secara kolektif.')
+    return redirect(url_for('manage_schedule'))
+
 @app.route('/schedule/edit/<int:id>', methods=['POST'])
 @login_required
 def edit_schedule(id):
@@ -451,11 +575,12 @@ def manage_announcements():
             title=request.form['title'], 
             content=request.form['content'],
             category=request.form['category'],
-            is_pinned='is_pinned' in request.form
+            is_pinned='is_pinned' in request.form,
+            is_public='is_public' in request.form
         )
         db.session.add(ann)
         db.session.commit()
-        log_activity("Tambah Pengumuman", f"Judul: {ann.title}")
+        log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
     
     announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
@@ -470,6 +595,7 @@ def edit_announcement(id):
     ann.content = request.form['content']
     ann.category = request.form['category']
     ann.is_pinned = 'is_pinned' in request.form
+    ann.is_public = 'is_public' in request.form
     db.session.commit()
     log_activity("Edit Pengumuman", f"Judul: {ann.title}")
     flash('Pengumuman diperbarui.')
@@ -544,14 +670,8 @@ def manage_fund():
     total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
     balance = total_in - total_out
     
-    start_date = datetime(2024, 3, 30).date()
-    today = datetime.now().date()
-    target_payment = 0
-    if today >= start_date:
-        current = start_date
-        while current <= today:
-            if current.weekday() < 5: target_payment += 1000
-            current += timedelta(days=1)
+    target_payment = get_fund_target()
+
     
     member_statuses = []
     your_status = None
@@ -570,7 +690,7 @@ def manage_fund():
                          students=students, 
                          member_statuses=member_statuses, 
                          your_status=your_status,
-                         target_daily=1000,
+                         target_daily=int(SystemSetting.query.filter_by(key='fund_daily_rate').first().value) if SystemSetting.query.filter_by(key='fund_daily_rate').first() else 1000,
                          today_date=datetime.now().strftime('%Y-%m-%d'))
 
 @app.route('/fund/edit/<int:id>', methods=['POST'])
@@ -703,7 +823,8 @@ def manage_settings():
     
     if request.method == 'POST':
         # 1. Handle Text Settings
-        for key in ['web_title', 'web_logo', 'favicon_url']:
+        for key in ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_daily_rate']:
+
             if key in request.form:
                 setting = SystemSetting.query.filter_by(key=key).first()
                 if setting: setting.value = request.form[key]
@@ -828,6 +949,7 @@ def edit_role(id):
     role.can_view_logs = 'can_view_logs' in request.form
     role.can_export_data = 'can_export_data' in request.form
     role.can_edit_settings = 'can_edit_settings' in request.form
+    role.can_manage_gallery = 'can_manage_gallery' in request.form
     db.session.commit()
     log_activity("Edit Role", f"Nama: {role.name}")
     return redirect(url_for('manage_roles'))
@@ -852,6 +974,235 @@ def public_view(class_name):
     grouped_schedules = {k: v for k, v in grouped_schedules.items() if v}
     return render_template('public_schedule.html', classroom=classroom, grouped_schedules=grouped_schedules)
 
+import uuid
+from PIL import Image
+
+def process_image_upload(file):
+    if not file: return None
+    try:
+        gallery_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery')
+        thumb_dir = os.path.join(gallery_dir, 'thumbnails')
+        os.makedirs(gallery_dir, exist_ok=True)
+        os.makedirs(thumb_dir, exist_ok=True)
+
+        filename_base = uuid.uuid4().hex
+        filename = f"{filename_base}.webp"
+        filepath = os.path.join(gallery_dir, filename)
+        thumbpath = os.path.join(thumb_dir, filename)
+
+        img = Image.open(file.stream)
+        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+        
+        # Save Original as WebP
+        img.save(filepath, 'WEBP', quality=85)
+        
+        # Create and Save Thumbnail
+        img.thumbnail((400, 400)) # Maintain aspect ratio
+        img.save(thumbpath, 'WEBP', quality=75)
+        return filename
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None
+
+@app.route('/gallery')
+@login_required
+def manage_gallery():
+    # Admin/Pengurus can see all (including pending), Members can only see Published
+    if current_user.role.name in ['Admin', 'Pengurus']:
+        photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
+    else:
+        # Show Published ones, PLUS photos uploaded by user that are still Pending
+        photos = GalleryPhoto.query.filter(
+            (GalleryPhoto.status == 'Published') | 
+            ((GalleryPhoto.status == 'Pending') & (GalleryPhoto.uploaded_by == current_user.id))
+        ).order_by(GalleryPhoto.created_at.desc()).all()
+        
+    return render_template('gallery.html', photos=photos)
+
+@app.route('/gallery/upload', methods=['POST'])
+@login_required
+def upload_gallery():
+    files = request.files.getlist('photos')
+    if not files or files[0].filename == '':
+        flash('Tidak ada file yang dipilih.')
+        return redirect(url_for('manage_gallery'))
+    
+    tags = request.form.get('tags', '')
+    is_public = 'is_public' in request.form
+    
+    # Force private if normal member without gallery powers
+    is_admin_power = (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery) or (current_user.role.name in ['Admin', 'Pengurus'])
+    
+    status = 'Published' if is_admin_power else 'Pending'
+    if not is_admin_power:
+        is_public = False # Member uploads are internal first
+            
+    count = 0
+    for file in files:
+        if file and (file.filename.endswith(('.png', '.jpg', '.jpeg', '.webp'))):
+            filename = process_image_upload(file)
+            if filename:
+                photo = GalleryPhoto(
+                    filename=filename,
+                    thumbnail=filename,
+                    caption=request.form.get('caption', ''),
+                    is_public=is_public,
+                    uploaded_by=current_user.id,
+                    status=status,
+                    tags=tags
+                )
+                db.session.add(photo)
+                count += 1
+                
+    db.session.commit()
+    log_activity("Upload Foto Galeri", f"{count} foto diunggah (Status: {status}).")
+    if status == 'Pending':
+        flash(f'{count} foto berhasil diunggah. Menunggu persetujuan Admin untuk dipublikasikan.')
+    else:
+        flash(f'{count} foto berhasil diunggah dan dipublikasikan.')
+    return redirect(url_for('manage_gallery'))
+
+@app.route('/gallery/delete/<int:id>')
+@login_required
+def delete_gallery(id):
+    photo = GalleryPhoto.query.get_or_404(id)
+    # Check permission
+    can_manage = (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery) or (current_user.role.name in ['Admin', 'Pengurus'])
+    
+    if not can_manage and photo.uploaded_by != current_user.id:
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_gallery'))
+    
+    # Delete Actual Files
+    try:
+        path = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery', photo.filename)
+        thumb = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery', 'thumbnails', photo.thumbnail)
+        if os.path.exists(path): os.remove(path)
+        if os.path.exists(thumb): os.remove(thumb)
+    except Exception as e:
+        print(f"File delete error: {e}")
+
+    log_activity("Hapus Foto", f"ID: {photo.id}")
+    db.session.delete(photo)
+    db.session.commit()
+    flash('Foto berhasil dihapus.')
+    return redirect(url_for('manage_gallery'))
+
+@app.route('/gallery/approve/<int:id>')
+@login_required
+def approve_gallery(id):
+    if not (current_user.role.name in ['Admin', 'Pengurus'] or (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery)):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_gallery'))
+        
+    photo = GalleryPhoto.query.get_or_404(id)
+    photo.status = 'Published'
+    db.session.commit()
+    log_activity("Approve Foto", f"ID: {photo.id}")
+    flash(f'Foto oleh {photo.user.full_name} disetujui.')
+    return redirect(url_for('manage_gallery'))
+
+@app.route('/gallery/reject/<int:id>')
+@login_required
+def reject_gallery(id):
+    if not (current_user.role.name in ['Admin', 'Pengurus'] or (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery)):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_gallery'))
+        
+    photo = GalleryPhoto.query.get_or_404(id)
+    # Delete files directly on reject as per user request
+    try:
+        path = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery', photo.filename)
+        thumb = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery', 'thumbnails', photo.thumbnail)
+        if os.path.exists(path): os.remove(path)
+        if os.path.exists(thumb): os.remove(thumb)
+    except: pass
+    
+    log_activity("Reject Foto", f"ID: {photo.id}, Uploader: {photo.user.username}")
+    db.session.delete(photo)
+    db.session.commit()
+    flash('Foto ditolak dan dihapus permanen.')
+    return redirect(url_for('manage_gallery'))
+
+@app.route('/gallery/toggle/<int:id>')
+@login_required
+def toggle_gallery_visibility(id):
+    if not hasattr(current_user.role, 'can_manage_gallery') or not current_user.role.can_manage_gallery:
+        if current_user.role.name not in ['Admin', 'Pengurus']: 
+            return redirect(url_for('manage_gallery'))
+        
+    p = GalleryPhoto.query.get_or_404(id)
+    p.is_public = not p.is_public
+    db.session.commit()
+    return redirect(url_for('manage_gallery'))
+
+@app.route('/gallery/public')
+def public_gallery():
+    # ONLY FETCH PUBLISHED AND PUBLIC PHOTOS
+    photos = GalleryPhoto.query.filter_by(is_public=True, status='Published').order_by(GalleryPhoto.created_at.desc()).all()
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    return render_template('gallery_public.html', photos=photos, classroom=class_fb)
+
+@app.route('/gallery/comment/<int:photo_id>', methods=['POST'])
+@login_required
+def add_photo_comment(photo_id):
+    photo = GalleryPhoto.query.get_or_404(photo_id)
+    body = request.form.get('body', '').strip()
+    if body:
+        comment = PhotoComment(photo_id=photo.id, user_id=current_user.id, body=body)
+        db.session.add(comment)
+        db.session.commit()
+        
+        # Real-time AJAX support
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            # Identify name for UI
+            name = (current_user.student.full_name if current_user.student else current_user.username)
+            if len(name) > 15: name = name[:15] + "..."
+            
+            return {
+                'status': 'success',
+                'comment': {
+                    'id': comment.id,
+                    'user': name,
+                    'body': comment.body,
+                    'time': comment.created_at.strftime('%d %b %H:%M')
+                }
+            }
+        
+        flash('Komentar ditambahkan.')
+    return redirect(request.referrer or url_for('manage_gallery'))
+
+@app.route('/gallery/comment/delete/<int:id>')
+@login_required
+def delete_photo_comment(id):
+    comment = PhotoComment.query.get_or_404(id)
+    # Allow deletion if Admin/Pengurus or if the user owns the comment
+    can_delete = False
+    if current_user.role.name in ['Admin', 'Pengurus']:
+        can_delete = True
+    elif hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery:
+        can_delete = True
+    elif current_user.id == comment.user_id:
+        can_delete = True
+        
+    if can_delete:
+        db.session.delete(comment)
+        db.session.commit()
+        flash('Komentar dihapus.')
+    else:
+        flash('Akses ditolak.')
+    return redirect(request.referrer or url_for('manage_gallery'))
+
+@app.route('/gallery/download/<int:id>')
+@login_required
+def download_gallery_photo(id):
+    photo = GalleryPhoto.query.get_or_404(id)
+    # Ensure only members can download original resolution
+    # (Since it's login_required, any logged in user can download)
+    directory = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery')
+    return send_from_directory(directory, photo.filename, as_attachment=True)
+
+
 from sqlalchemy import text
 
 def init_db():
@@ -873,10 +1224,14 @@ def init_db():
                 user_cols = [c['name'] for c in inspector.get_columns('user')]
                 if 'student_id' not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER NULL"))
+                if 'bio' not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN bio VARCHAR(255) NULL"))
+                if 'whatsapp' not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN whatsapp VARCHAR(20) NULL"))
                 
                 # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
-                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings']:
+                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery']:
                     if col not in role_cols:
                         conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
                 
@@ -889,6 +1244,25 @@ def init_db():
                 if 'tags' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100) NULL"))
                 
+                # D. Sinkronisasi tabel 'announcement'
+                ann_cols = [c['name'] for c in inspector.get_columns('announcement')]
+                if 'is_public' not in ann_cols:
+                    conn.execute(text("ALTER TABLE announcement ADD COLUMN is_public BOOLEAN DEFAULT 1"))
+                
+                # E. Sinkronisasi tabel 'gallery_photo'
+                gallery_cols = [c['name'] for c in inspector.get_columns('gallery_photo')]
+                if 'status' not in gallery_cols:
+                    conn.execute(text("ALTER TABLE gallery_photo ADD COLUMN status VARCHAR(20) DEFAULT 'Published'"))
+
+                # F. Sinkronisasi tabel 'announcement_read'
+                try:
+                    # Check if table exists
+                    inspector.get_columns('announcement_read')
+                except:
+                    # If it fails, create via create_all which is already called, 
+                    # but this is for extra safety in our self-healing engine
+                    db.create_all()
+
                 conn.commit()
                 print("Status: Sinkronisasi Skema (Multi-Engine) Berhasil.")
         except Exception as e:
@@ -902,19 +1276,19 @@ def init_db():
                     name='Admin', description='Akses penuh koordinasi sistem.', 
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=True,
-                    can_view_logs=True, can_export_data=True, can_edit_settings=True
+                    can_view_logs=True, can_export_data=True, can_edit_settings=True, can_manage_gallery=True
                 )
                 staff_r = Role(
                     name='Pengurus', description='Manajemen data operasional.', 
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=False,
-                    can_view_logs=True, can_export_data=True, can_edit_settings=False
+                    can_view_logs=True, can_export_data=True, can_edit_settings=False, can_manage_gallery=True
                 )
                 member_r = Role(
                     name='Member', description='Akses dashboard anggota.', 
                     can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, 
                     can_manage_announcements=False, can_manage_roles=False,
-                    can_view_logs=False, can_export_data=False, can_edit_settings=False
+                    can_view_logs=False, can_export_data=False, can_edit_settings=False, can_manage_gallery=False
                 )
                 db.session.add_all([admin_r, staff_r, member_r])
                 db.session.commit()
@@ -946,7 +1320,10 @@ def init_db():
                 db.session.add_all([
                     SystemSetting(key='web_logo', value='monitor', description='Ikon Logo (Lucide Icon)'),
                     SystemSetting(key='web_title', value='Famousbytee.b Portal', description='Judul Utama Portal'),
-                    SystemSetting(key='favicon_url', value='/static/favicon.ico', description='URL Favicon')
+                    SystemSetting(key='favicon_url', value='/static/favicon.ico', description='URL Favicon'),
+                    SystemSetting(key='fund_start_date', value='2024-03-30', description='Tanggal Mulai Kas (YYYY-MM-DD)'),
+                    SystemSetting(key='fund_daily_rate', value='1000', description='Iuran Harian Kas (Senin-Jumat)')
+
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")

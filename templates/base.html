@@ -414,6 +414,12 @@
         </div>
         <nav class="nav-list">
             <div class="nav-item">
+                <a href="{{ url_for('index') }}" class="nav-link">
+                    <i data-lucide="home"></i> <span>Beranda Utama (Publik)</span>
+                </a>
+            </div>
+            
+            <div class="nav-item">
                 <a href="{{ url_for('dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
                     <i data-lucide="layout-dashboard"></i> <span>{{ 'Home Info' if current_user.role.name == 'Member' else 'Dashboard' }}</span>
                 </a>
@@ -445,6 +451,12 @@
                 </a>
             </div>
 
+            <div class="nav-item">
+                <a href="{{ url_for('manage_gallery') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_gallery' else '' }}">
+                    <i data-lucide="image"></i> <span>{{ 'Dokumentasi Kelas' if current_user.role.name == 'Member' else 'Galeri Kelas' }}</span>
+                </a>
+            </div>
+
             {% if current_user.role.can_manage_roles %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_settings') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_settings' else '' }}">
@@ -462,6 +474,12 @@
                 </a>
             </div>
             {% endif %}
+            
+            <div class="nav-item">
+                <a href="{{ url_for('profile') }}" class="nav-link {{ 'active' if request.endpoint == 'profile' else '' }}">
+                    <i data-lucide="user-circle"></i> <span>Profil Saya</span>
+                </a>
+            </div>
         </nav>
         <a href="{{ url_for('logout') }}" class="btn-logout">
             <i data-lucide="log-out"></i> <span>Logout</span>

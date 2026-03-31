@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Galeri Kelas {{ classroom.name }}</title>
+    <!-- Modern Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #4361ee;
+            --secondary: #3f37c9;
+            --bg-color: #f8fafc;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0; padding: 0;
+            background: var(--bg-color);
+            color: #1e293b;
+        }
+
+        /* Hero Section Premium */
+        .gallery-hero {
+            background: linear-gradient(135deg, var(--bg-color) 0%, #e2e8f0 100%);
+            padding: 5rem 2rem 3rem;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+
+        /* Abstract blobs */
+        .gallery-hero::before {
+            content: ''; position: absolute; top: -50px; left: -50px; width: 300px; height: 300px;
+            background: radial-gradient(circle, rgba(67, 97, 238, 0.1) 0%, transparent 70%); border-radius: 50%;
+        }
+
+        .gallery-hero::after {
+            content: ''; position: absolute; bottom: 0; right: -50px; width: 400px; height: 400px;
+            background: radial-gradient(circle, rgba(16, 185, 129, 0.05) 0%, transparent 70%); border-radius: 50%;
+        }
+
+        .hero-title {
+            font-size: 3rem; font-weight: 800; letter-spacing: -1px; margin-bottom: 1rem;
+            background: linear-gradient(45deg, var(--primary), #10b981);
+            -webkit-background-clip: text; 
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero-desc {
+            font-size: 1.1rem; color: #64748b; max-width: 600px; margin: 0 auto 2rem;
+            line-height: 1.6;
+        }
+
+        /* Core Masonry Setup */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .masonry-grid {
+            column-count: 1;
+            column-gap: 1.5rem;
+        }
+        @media (min-width: 640px) { .masonry-grid { column-count: 2; } }
+        @media (min-width: 1024px) { .masonry-grid { column-count: 3; } }
+        @media (min-width: 1280px) { .masonry-grid { column-count: 4; } }
+
+        .masonry-item {
+            break-inside: avoid;
+            margin-bottom: 1.5rem;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+            background: #cbd5e1; /* Pre-load background */
+            cursor: pointer;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .masonry-item:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(67, 97, 238, 0.25);
+        }
+
+        .masonry-item img {
+            width: 100%; height: auto; display: block;
+            opacity: 0; transition: opacity 0.5s ease;
+        }
+
+        .photo-overlay {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            padding: 2rem 1.5rem 1.5rem;
+            background: linear-gradient(to top, rgba(15, 23, 42, 0.9) 0%, transparent 100%);
+            color: white;
+            opacity: 0;
+            transform: translateY(20px);
+            transition: all 0.3s ease;
+        }
+
+        .masonry-item:hover .photo-overlay {
+            opacity: 1; transform: translateY(0);
+        }
+
+        .tag {
+            background: rgba(255,255,255,0.2); backdrop-filter: blur(4px);
+            padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 600;
+        }
+
+        /* Fixed Footer */
+        .footer-nav {
+            text-align: center; padding: 2rem; margin-top: 2rem;
+            border-top: 1px solid rgba(0,0,0,0.05); color: #94a3b8; font-size: 0.9rem;
+        }
+
+        .btn-back {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: white; border: 1px solid #e2e8f0; padding: 10px 20px;
+            border-radius: 12px; font-weight: 700; color: var(--primary); text-decoration: none;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); transition: 0.2s;
+        }
+        .btn-back:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); transform: translateY(-2px); }
+
+        /* Fullscreen Lightbox */
+        .lightbox {
+            display: none; position: fixed; z-index: 9999;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(8px);
+            align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .lightbox.show { opacity: 1; }
+        .lightbox img {
+            max-width: 90%; max-height: 85vh; border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+            transform: scale(0.95); transition: transform 0.3s ease;
+        }
+        .lightbox.show img { transform: scale(1); }
+        .lightbox-close {
+            position: absolute; top: 2rem; right: 2rem;
+            background: rgba(255,255,255,0.1); border: none; color: white;
+            width: 48px; height: 48px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: background 0.2s;
+        }
+        .lightbox-close:hover { background: rgba(255,255,255,0.2); }
+        .lightbox-caption {
+            position: absolute; bottom: 2rem; color: white; font-weight: 600; font-size: 1.2rem;
+            text-align: center; width: 100%; text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <section class="gallery-hero">
+        <a href="{{ url_for('index') }}" class="btn-back" style="position: absolute; top: 2rem; left: 2rem; z-index: 10;">
+            <i data-lucide="arrow-left" style="width: 16px;"></i> Beranda Utama
+        </a>
+        <h1 class="hero-title">Memori Kelas {{ classroom.name }}</h1>
+        <p class="hero-desc">Kumpulan memori visual dan jejak rekam dokumentasi yang dibagikan secara publik oleh members kelas.</p>
+    </section>
+
+    <div class="container">
+        <div class="masonry-grid">
+            {% for photo in photos %}
+            <div class="masonry-item" 
+                 data-url="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}"
+                 data-caption="{{ photo.caption or 'Dokumentasi Publik' }}"
+                 onclick="openLightbox(this)">
+                 
+                <!-- Using Thumbnail for lazy loading -->
+                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" 
+                     alt="{{ photo.caption }}" 
+                     loading="lazy" 
+                     onload="this.style.opacity=1;">
+                     
+                <div class="photo-overlay">
+                    <h3 style="margin: 0 0 5px 0; font-size: 1.1rem; text-shadow: 0 2px 4px rgba(0,0,0,0.8);">{{ photo.caption or 'Dokumentasi Publik' }}</h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; opacity: 0.8;">
+                        <span><i data-lucide="calendar" style="width: 12px; vertical-align: middle;"></i> {{ photo.created_at.strftime('%d %b %Y') }}</span>
+                        {% if photo.tags %}<span class="tag">{{ photo.tags }}</span>{% endif %}
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div style="column-span: all; padding: 5rem; text-align: center; color: #94a3b8; background: white; border-radius: 20px; border: 2px dashed #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                <i data-lucide="image-off" style="width: 64px; height: 64px; opacity: 0.3; margin-bottom: 1rem;"></i>
+                <h2 style="margin: 0 0 0.5rem 0;">Galeri Masih Kosong</h2>
+                <p style="margin: 0;">Pengurus belum mengatur satupun dokumentasi menjadi Publik.</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- The actual Full-Resolution Lightbox -->
+    <div id="lightbox" class="lightbox">
+        <button class="lightbox-close" onclick="closeLightbox()"><i data-lucide="x"></i></button>
+        <img id="lightbox-img" src="" alt="High Res">
+        <div id="lightbox-caption" class="lightbox-caption"></div>
+    </div>
+
+    <div class="footer-nav">
+        Hak Cipta &copy; 2024 Kelas {{ classroom.name }}.<br>Ditenagai oleh Portal Famousbytee.
+    </div>
+
+    <script>
+        lucide.createIcons();
+        
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        const lightboxCaption = document.getElementById('lightbox-caption');
+
+        function openLightbox(element) {
+            const url = element.getAttribute('data-url');
+            const caption = element.getAttribute('data-caption');
+            lightboxImg.src = url;
+            lightboxCaption.innerText = caption;
+            lightbox.style.display = 'flex';
+            setTimeout(() => lightbox.classList.add('show'), 10);
+            document.body.style.overflow = 'hidden'; 
+        }
+
+        function closeLightbox() {
+            lightbox.classList.remove('show');
+            setTimeout(() => {
+                lightbox.style.display = 'none';
+                lightboxImg.src = '';
+                document.body.style.overflow = '';
+            }, 300);
+        }
+        
+        // Cepat tutup lightbox kalau click luar gambar
+        lightbox.addEventListener('click', (e) => {
+            if(e.target === lightbox) closeLightbox();
+        });
+    </script>
+</body>
+</html>

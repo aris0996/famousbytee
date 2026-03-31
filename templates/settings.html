@@ -68,7 +68,29 @@
             </div>
         </div>
 
-        <div style="margin-top: 2.5rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+        <div style="margin-top: 1.5rem; padding: 1.5rem; background: #fffbeb; border-radius: 16px; border: 1px solid #fde68a;">
+             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                   <i data-lucide="calculator" style="color: #d97706;"></i>
+                </div>
+                <h4 style="font-size: 1rem;">Konfigurasi Kas/Iuran</h4>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>Tanggal Mulai Perhitungan</label>
+                    <input type="date" name="fund_start_date" class="form-control" value="{{ settings.get('fund_start_date', '2024-03-30') }}">
+                </div>
+                <div class="form-group">
+                    <label>Nominal Harian (Senin-Jumat)</label>
+                    <input type="number" name="fund_daily_rate" class="form-control" value="{{ settings.get('fund_daily_rate', '1000') }}">
+                </div>
+            </div>
+            <p style="font-size: 0.7rem; color: #92400e; margin-top: 5px;">
+                <i data-lucide="info" style="width: 12px; vertical-align: middle;"></i> 
+                Sistem akan menghitung iuran otomatis dari tanggal mulai dipilih hingga hari ini (hanya Senin-Jumat).
+            </p>
+        </div>
+
             <button type="submit" class="btn" style="width: 200px;">Simpan Perubahan</button>
         </div>
     </form>

@@ -1,0 +1,462 @@
+{% extends 'base.html' %}
+{% block content %}
+<header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 2rem;">
+    <div>
+        <h1>Galeri & Dokumentasi</h1>
+        <p style="color: var(--text-muted);">Kenangan dan arsip visual kelas Famousbytee.b</p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <a href="{{ url_for('public_gallery') }}" target="_blank" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none; padding: 10px 15px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
+            <i data-lucide="external-link" style="width: 18px;"></i> Live Gallery
+        </a>
+        <button class="btn" style="background: var(--primary); padding: 10px 15px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;" onclick="document.getElementById('modal-upload').style.display='flex'">
+            <i data-lucide="upload-cloud" style="width: 18px;"></i> Upload Foto
+        </button>
+    </div>
+</header>
+
+<div class="masonry-grid" id="gallery-container">
+    {% for photo in photos %}
+    <div class="masonry-item card" style="padding: 0; overflow: hidden; position: relative;" onclick="if(event.target.tagName !== 'A' && event.target.tagName !== 'BUTTON' && !event.target.closest('button') && !event.target.closest('a')) openLightbox(this.querySelector('img'), '{{ photo.id }}')">
+        <!-- Skeleton pre-load -->
+        <div class="skeleton-loader"></div>
+        
+        <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" 
+             data-highres="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}"
+             alt="{{ photo.caption }}" 
+             loading="lazy" 
+             onload="this.previousElementSibling.style.display='none'; this.style.opacity=1;">
+             
+        <!-- Visibility Badge -->
+        <div style="position: absolute; top: 12px; right: 12px; display: flex; gap: 8px;">
+            {% if photo.is_public %}
+                <span style="background: rgba(16, 185, 129, 0.9); color: white; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.1);"><i data-lucide="globe" style="width:12px; height:12px; vertical-align:middle;"></i> Publik</span>
+            {% else %}
+                <span style="background: rgba(245, 158, 11, 0.9); color: white; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; backdrop-filter: blur(4px); box-shadow: 0 4px 10px rgba(0,0,0,0.1);"><i data-lucide="lock" style="width:12px; height:12px; vertical-align:middle;"></i> Member</span>
+            {% endif %}
+        </div>
+             
+        <div class="photo-info">
+            <h4 style="margin: 0; font-size: 0.95rem;">{{ photo.caption or 'Tanpa Keterangan' }}</h4>
+            <div style="font-size: 0.75rem; color: #cbd5e1; margin-top: 4px; display: flex; justify-content: space-between;">
+                <span>{{ photo.created_at.strftime('%d %b %Y') }} &bull; <i data-lucide="message-circle" style="width:10px; vertical-align:middle;"></i> {{ photo.comments|length }}</span>
+                {% if photo.tags %}<span style="color: #93c5fd;">{{ photo.tags }}</span>{% endif %}
+            </div>
+
+            {% if photo.status == 'Pending' %}
+            <div style="margin-top: 10px; padding: 6px; background: rgba(251, 191, 36, 0.2); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 8px; text-align: center;">
+                <span style="font-size: 0.7rem; font-weight: 800; color: #f59e0b;"><i data-lucide="clock" style="width: 12px; height: 12px; vertical-align: middle;"></i> Menunggu Moderasi</span>
+                {% if current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus'] %}
+                <div style="display: flex; gap: 5px; margin-top: 8px;">
+                    <a href="{{ url_for('approve_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #10b981; color: white;"><i data-lucide="check" style="width: 10px;"></i> Approve</a>
+                    <a href="{{ url_for('reject_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #ef4444; color: white;"><i data-lucide="x" style="width: 10px;"></i> Reject</a>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+            
+            {% if current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus'] %}
+            <div class="photo-controls" style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <a href="{{ url_for('toggle_gallery_visibility', id=photo.id) }}" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 600;">{{ 'Set Private' if photo.is_public else 'Set Publik' }}</a>
+                <a href="{{ url_for('delete_gallery', id=photo.id) }}" onclick="return confirm('Hapus permanen foto ini?')" style="background: rgba(239, 68, 68, 0.8); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none;"><i data-lucide="trash-2" style="width:14px; height:14px;"></i></a>
+            </div>
+            {% endif %}
+            
+            <div style="margin-top: 10px;">
+                <a href="{{ url_for('download_gallery_photo', id=photo.id) }}" class="btn" style="width: 100%; display: block; text-align: center; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); font-size: 0.75rem; padding: 6px; text-decoration: none; color: white;"><i data-lucide="download" style="width: 12px; vertical-align: middle;"></i> Download Original Resolution</a>
+            </div>
+
+        </div>
+        <div id="comments-data-{{ photo.id }}" style="display: none;">
+            <div style="padding: 1rem; flex: 1; overflow-y: auto;">
+                {% for c in photo.comments %}
+                <div id="comment-item-{{ c.id }}" style="margin-bottom: 1rem; font-size: 0.9rem; background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <strong style="color: var(--primary);">
+                            {% set name = (c.user.student.full_name if c.user.student else c.user.full_name or c.user.username) %}
+                            {{ (name[:18] + '...') if name|length > 18 else name }}
+                        </strong>
+                        <span style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                            {{ c.created_at.strftime('%d %b %H:%M') }}
+                            {% if current_user.id == c.user_id or (current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus']) %}
+                            <a href="{{ url_for('delete_photo_comment', id=c.id) }}" onclick="return confirm('Hapus komentar?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></a>
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div style="color: #334155; line-height: 1.4;">{{ c.body }}</div>
+                </div>
+                {% else %}
+                <p style="text-align: center; color: var(--text-muted); font-size: 0.9rem; margin-top: 2rem;">Belum ada komentar.</p>
+                {% endfor %}
+            </div>
+            <div style="padding: 1rem; border-top: 1px solid #e2e8f0; background: #f8fafc;">
+                <form onsubmit="submitComment(event, this, '{{ photo.id }}')" style="display: flex; gap: 10px;">
+                    <input type="text" name="body" class="form-control" placeholder="Tulis komentar..." required style="flex: 1; border-radius: 20px;">
+                    <button type="submit" class="btn" style="border-radius: 20px; padding: 0.5rem 1rem;"><i data-lucide="send" style="width:16px;"></i></button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div style="column-span: all; padding: 4rem; text-align: center; color: var(--text-muted); background: white; border-radius: 20px; border: 2px dashed #e2e8f0; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <i data-lucide="image-off" style="width: 48px; height: 48px; opacity: 0.3; margin-bottom: 1rem;"></i>
+        <h3 style="margin-bottom: 0.5rem;">Belum ada memori.</h3>
+        <p style="margin: 0;">Unggah foto pertama kelas Anda sekarang!</p>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Upload Modal -->
+<div id="modal-upload" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
+    <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem;">
+        <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="upload-cloud" style="color: var(--primary);"></i> Tambah Momen</h2>
+        <form action="{{ url_for('upload_gallery') }}" method="POST" enctype="multipart/form-data">
+            
+            <div class="upload-zone" id="drop-zone" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 2rem; text-align: center; background: #f8fafc; cursor: pointer; margin-bottom: 1.5rem; transition: background 0.2s;">
+                <i data-lucide="image" style="width: 40px; height: 40px; color: #94a3b8; margin-bottom: 10px;"></i>
+                <p style="margin: 0; color: var(--text-main); font-weight: 600;">Klik atau Tarik Foto Kesini (Max. 5 Foto)</p>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 5px;">Mendukung: JPG, PNG. (Otomatis dikompres ke WebP)</p>
+                <input type="file" name="photos" id="file-input" accept="image/*" multiple style="display: none;">
+            </div>
+            <div id="file-list" style="margin-bottom: 1.5rem; font-size: 0.85rem; color: var(--primary); font-weight: 600;"></div>
+
+            <div class="form-group">
+                <label>Caption / Keterangan Event</label>
+                <input type="text" name="caption" class="form-control" placeholder="Contoh: Bukber Kelas 2024" required>
+            </div>
+            <div class="form-group">
+                <label>Tags (Opsional)</label>
+                <input type="text" name="tags" class="form-control" placeholder="Contoh: #Event #Bukber">
+            </div>
+            
+            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+            <div class="form-group" style="padding: 1rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0; color: #166534;">
+                    <input type="checkbox" name="is_public" value="1" checked style="width: 18px; height: 18px;">
+                    <div>
+                        <strong style="display: block;">Tayangkan Publik</strong>
+                        <span style="font-size: 0.8rem; font-weight: 400; opacity: 0.8;">Orang luar bisa melihat foto ini di halaman jadwal publik.</span>
+                    </div>
+                </label>
+            </div>
+            {% else %}
+            <!-- Member uploads are private by default -->
+            <div style="font-size: 0.8rem; color: var(--text-muted); background: #f8fafc; padding: 10px; border-radius: 8px; margin-bottom: 1rem;">
+                <i data-lucide="info" style="width: 14px; height: 14px; vertical-align: middle;"></i> Foto yang Anda unggah otomatis bersifat <strong>Internal (Private)</strong> hingga disetujui Admin.
+            </div>
+            {% endif %}
+
+            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+                <button type="submit" class="btn" style="flex:1;">Mulai Upload & Optimasi</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; padding: 0 1.5rem;" onclick="document.getElementById('modal-upload').style.display='none'">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Lightbox Modal with Comments -->
+<div id="lightbox" class="lightbox">
+    <div class="lightbox-container card" style="display: flex; max-width: 95%; width: 1200px; height: 85vh; padding: 0; overflow: hidden; background: white; flex-direction: row; position: relative;">
+        <button class="lightbox-close" onclick="closeLightbox()" style="position: absolute; top: 1rem; right: 1rem; z-index: 1000; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);"><i data-lucide="x"></i></button>
+        <div style="flex: 2; background: #000; display: flex; align-items: center; justify-content: center; position: relative;">
+            <img id="lightbox-img" src="" alt="High Res" style="max-width: 100%; max-height: 100%; box-shadow: none; border-radius: 0;">
+            <!-- Mobile Toggle -->
+            <button id="mobile-comment-toggle" onclick="toggleMobileComments()" style="display: none; position: absolute; bottom: 1.5rem; left: 50%; transform: translateX(-50%); background: rgba(255,255,255,0.9); color: var(--text-main); border: none; padding: 10px 20px; border-radius: 30px; font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.2); align-items: center; gap: 8px;">
+                <i data-lucide="message-circle"></i> Diskusi & Komentar
+            </button>
+        </div>
+        <div style="flex: 1; min-width: 320px; display: flex; flex-direction: column; background: white;" id="lightbox-sidebar">
+            <div style="padding: 1.5rem; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0; font-size: 1.1rem; color: var(--text-main);">Komentar</h3>
+                <button id="mobile-sidebar-close" onclick="toggleMobileComments()" style="display: none; background: none; border: none; cursor: pointer; color: var(--text-muted);"><i data-lucide="chevron-down"></i></button>
+            </div>
+            <!-- Dynamic comments injected here -->
+            <div id="lightbox-comments-container" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Masonry Layout */
+    .masonry-grid {
+        column-count: 1;
+        column-gap: 1.5rem;
+    }
+    @media (min-width: 640px) { .masonry-grid { column-count: 2; } }
+    @media (min-width: 1024px) { .masonry-grid { column-count: 3; } }
+    @media (min-width: 1280px) { .masonry-grid { column-count: 4; } }
+    
+    .masonry-item {
+        break-inside: avoid;
+        margin-bottom: 1.5rem;
+        cursor: pointer;
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        background: #0f172a; /* Dark background before image loads */
+    }
+    
+    .masonry-item:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    }
+
+    .masonry-item img {
+        width: 100%;
+        height: auto;
+        display: block;
+        opacity: 0;
+        transition: opacity 0.5s ease;
+    }
+
+    .skeleton-loader {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite linear;
+        border-radius: 20px;
+    }
+
+    @keyframes loading {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+
+    .photo-info {
+        position: absolute;
+        bottom: 0; left: 0; right: 0;
+        padding: 2rem 1.5rem 1.5rem;
+        background: linear-gradient(to top, rgba(15, 23, 42, 0.95), rgba(15, 23, 42, 0));
+        color: white;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+    }
+
+    .masonry-item:hover .photo-info {
+        transform: translateY(0);
+    }
+    
+    @media (max-width: 1024px) {
+        .photo-info {
+            transform: translateY(0);
+            background: linear-gradient(to top, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.6) 80%, rgba(15, 23, 42, 0) 100%);
+            padding-top: 5rem;
+            opacity: 1;
+        }
+    }
+
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Lightbox Features */
+    .lightbox {
+        display: none;
+        position: fixed;
+        z-index: 9999;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.9);
+        backdrop-filter: blur(10px);
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    .lightbox.show { opacity: 1; }
+    .lightbox img {
+        max-width: 90%;
+        max-height: 90vh;
+        border-radius: 12px;
+        box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);
+    }
+    .lightbox-close {
+        position: absolute;
+        top: 2rem; right: 2rem;
+        background: rgba(255,255,255,0.1); border: none; color: white;
+        width: 48px; height: 48px; border-radius: 50%;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
+        transition: background 0.2s;
+    }
+    .lightbox-close:hover { background: rgba(255,255,255,0.2); }
+
+    /* IG Style for Mobile */
+    @media (max-width: 768px) {
+        .lightbox-container {
+            flex-direction: column !important;
+            height: 95vh !important;
+            width: 95% !important;
+            max-width: 100% !important;
+            border-radius: 12px !important;
+        }
+        .lightbox-container > div:first-child {
+            flex: none !important;
+            height: 40% !important;
+            width: 100% !important;
+        }
+        #lightbox-sidebar {
+            min-width: 0 !important;
+            flex: 1 !important;
+            width: 100% !important;
+            display: none !important; /* Hidden by default on mobile */
+        }
+        .lightbox-container > div:first-child {
+            flex: 1 !important;
+            height: 100% !important;
+            width: 100% !important;
+        }
+        #mobile-comment-toggle {
+            display: flex !important;
+        }
+        #mobile-sidebar-close {
+            display: block !important;
+        }
+        .lightbox-close {
+            top: 0.5rem !important; right: 0.5rem !important;
+            width: 32px; height: 32px;
+            background: rgba(0,0,0,0.6) !important;
+        }
+        #lightbox-sidebar.mobile-open {
+            display: flex !important;
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 60%;
+            background: white;
+            z-index: 100;
+            border-top-left-radius: 20px;
+            border-top-right-radius: 20px;
+            animation: slideUp 0.3s ease-out;
+        }
+    }
+    @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+</style>
+
+<script>
+    // Drag and Drop Upload UI Linkage
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const fileList = document.getElementById('file-list');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+    dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.style.background = '#e2e8f0'; });
+    dropZone.addEventListener('dragleave', () => dropZone.style.background = '#f8fafc');
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropZone.style.background = '#f8fafc';
+        fileInput.files = e.dataTransfer.files;
+        updateFileList();
+    });
+    fileInput.addEventListener('change', updateFileList);
+
+    function updateFileList() {
+        if(fileInput.files.length > 0) {
+            fileList.innerHTML = `Terpilih: ${fileInput.files.length} foto siap diproses.`;
+            dropZone.style.borderColor = 'var(--primary)';
+        }
+    }
+
+    // Lightbox Subroutine
+    const lightbox = document.getElementById('lightbox');
+    const lightboxImg = document.getElementById('lightbox-img');
+
+    function openLightbox(imgElement, photoId) {
+        const highResUrl = imgElement.getAttribute('data-highres');
+        lightboxImg.src = highResUrl;
+        
+        // Inject Comments
+        const commentsData = document.getElementById('comments-data-' + photoId);
+        document.getElementById('lightbox-comments-container').innerHTML = commentsData.innerHTML;
+        
+        lightbox.style.display = 'flex';
+        // Need a tiny delay for CSS transition to kick in
+        setTimeout(() => {
+            lightbox.classList.add('show');
+            lucide.createIcons();
+        }, 10);
+        document.body.style.overflow = 'hidden'; // Prevent scrolling
+    }
+
+    function closeLightbox() {
+        lightbox.classList.remove('show');
+        document.getElementById('lightbox-sidebar').classList.remove('mobile-open');
+        setTimeout(() => {
+            lightbox.style.display = 'none';
+            lightboxImg.src = '';
+            document.getElementById('lightbox-comments-container').innerHTML = ''; // Clear
+            document.body.style.overflow = '';
+        }, 300);
+    }
+
+    function toggleMobileComments() {
+        document.getElementById('lightbox-sidebar').classList.toggle('mobile-open');
+        lucide.createIcons(); // Refresh icons inside the sidebar
+        // Scroll to bottom when opening
+        const container = document.querySelector('#lightbox-comments-container > div:first-child');
+        if(container) container.scrollTop = container.scrollHeight;
+    }
+
+    async function submitComment(event, form, photoId) {
+        event.preventDefault();
+        const input = form.querySelector('input[name="body"]');
+        const body = input.value.trim();
+        if(!body) return;
+
+        const formData = new FormData();
+        formData.append('body', body);
+
+        try {
+            const response = await fetch(`/gallery/comment/${photoId}`, {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                body: formData
+            });
+
+            const data = await response.json();
+            if(data.status === 'success') {
+                input.value = ''; // Clear input
+                
+                // Construct comment HTML
+                const html = `
+                    <div style="margin-bottom: 1rem; font-size: 0.9rem; background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; animation: fadeIn 0.4s ease;">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                            <strong style="color: var(--primary);">${data.comment.user}</strong>
+                            <span style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+                                ${data.comment.time}
+                                <a href="/gallery/comment/delete/${data.comment.id}" onclick="return confirm('Hapus komentar?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></a>
+                            </span>
+                        </div>
+                        <div style="color: #334155; line-height: 1.4;">${data.comment.body}</div>
+                    </div>
+                `;
+                
+                // Inject to the live containers (both hidden and active)
+                const hiddenContainer = document.querySelector(`#comments-data-${photoId} > div:first-child`);
+                const activeContainer = document.querySelector('#lightbox-comments-container > div:first-child');
+                
+                if(hiddenContainer) {
+                    const noComments = hiddenContainer.querySelector('p');
+                    if(noComments) noComments.remove();
+                    hiddenContainer.insertAdjacentHTML('beforeend', html);
+                }
+                
+                if(activeContainer) {
+                    const noComments = activeContainer.querySelector('p');
+                    if(noComments) noComments.remove();
+                    activeContainer.insertAdjacentHTML('beforeend', html);
+                    activeContainer.scrollTop = activeContainer.scrollHeight;
+                }
+                
+                lucide.createIcons();
+            }
+        } catch(e) {
+            console.error('Comment Error:', e);
+            alert('Gagal mengirim komentar.');
+        }
+    }
+
+    // Close when clicking background overlay
+    lightbox.addEventListener('click', (e) => {
+        if (e.target === lightbox) closeLightbox();
+    });
+</script>
+{% endblock %}

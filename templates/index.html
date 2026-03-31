@@ -117,7 +117,11 @@
         <ul class="nav-links">
             <li><a href="#">Beranda</a></li>
             <li><a href="{{ url_for('public_view', class_name='Famousbytee.b') }}">Jadwal</a></li>
+            {% if current_user.is_authenticated %}
+            <li><a href="{{ url_for('dashboard') }}" class="btn-login" style="background:var(--text-main);">Dashboard Saya</a></li>
+            {% else %}
             <li><a href="{{ url_for('login') }}" class="btn-login">Login Portal</a></li>
+            {% endif %}
         </ul>
     </nav>
 
@@ -127,7 +131,11 @@
             <h1>Koordinasi Kelas <span>Jauh Lebih Mudah</span></h1>
             <p>Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kas kelas eksklusif Famousbytee.b.</p>
             <div class="hero-btns">
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('dashboard') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem; background: var(--text-main);">Buka Dashboard Utama</a>
+                {% else %}
                 <a href="{{ url_for('login') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem;">Masuk ke Portal Member</a>
+                {% endif %}
                 <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" style="text-decoration: none; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; margin-left: 20px;">
                     Lihat Jadwal Harian <i data-lucide="calendar"></i>
                 </a>
@@ -139,6 +147,33 @@
             </div>
         </div>
     </section>
+
+    {% if photos %}
+    <section class="features" style="background: white; padding-top: 4rem;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
+            <div style="text-align: left;">
+                <h2 style="font-size: 2.5rem; font-weight: 800;">Memory & Dokumentasi</h2>
+                <p style="color: var(--text-muted);">Cuplikan keseruan dari galeri publik kelas.</p>
+            </div>
+            <a href="{{ url_for('public_gallery') }}" style="color: var(--primary); font-weight: 700; text-decoration: none;">Lihat Galeri <i data-lucide="arrow-right" style="width: 16px; vertical-align: middle;"></i></a>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; text-align: left;">
+            {% for photo in photos %}
+            <a href="{{ url_for('public_gallery') }}" style="display: block; position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); group;">
+                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;">
+                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 15px 15px; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); color: white; transform: translateY(100%); transition: transform 0.3s ease;" class="hover-overlay">
+                    <p style="margin: 0; font-size: 0.8rem; font-weight: 600;">{{ photo.caption or 'Lihat Detail' }}</p>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        <style>
+            .hover-overlay { opacity: 0; }
+            a:hover .hover-overlay { transform: translateY(0); opacity: 1; }
+            a:hover img { transform: scale(1.1); }
+        </style>
+    </section>
+    {% endif %}
 
     <section class="features" id="pengumuman">
         <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem;">

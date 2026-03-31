@@ -29,5 +29,6 @@ instance/
 
 # Secrets and Dynamic Data
 config.py
-static/upload/
-!static/upload/.gitkeep
+static/uploads/
+static/uploads/gallery/
+!static/uploads/.gitkeep

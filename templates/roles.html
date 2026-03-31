@@ -27,39 +27,45 @@
 <div class="card">
     <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">
         <h3 style="font-size: 1.25rem; font-weight: 700;">Daftar Akun Pengelola Famousbytee.b</h3>
-        <p style="color: var(--text-muted); font-size: 0.9rem;">Total: {{ users|length }} User</p>
+        <div style="display: flex; align-items: center; gap: 10px;">
+            <div style="position: relative;">
+                <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
+                <input type="text" id="search-user" placeholder="Cari user/email..." onkeyup="filterUsers()" style="padding: 7px 12px 7px 34px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.85rem; width: 220px;">
+            </div>
+            <p id="user-count" style="color: var(--text-muted); font-size: 0.9rem; font-weight: 600; white-space: nowrap;">Total: {{ users|length }} User</p>
+        </div>
     </div>
     <div style="overflow-x: auto;">
-        <table>
+        <table id="user-table">
             <thead>
-                <tr>
-                    <th>User / Profil</th>
-                    <th>Role</th>
-                    <th>Linked Identity</th>
-                    <th>Status</th>
-                    <th>Aksi</th>
+                <tr style="background: #f8fafc; border-bottom: 2px solid #f1f5f9;">
+                    <th style="padding: 1rem; text-align: left;">User / Profil</th>
+                    <th style="padding: 1rem; text-align: left;">Role</th>
+                    <th style="padding: 1rem; text-align: left;">Linked Identity</th>
+                    <th style="padding: 1rem; text-align: left;">Status</th>
+                    <th style="padding: 1rem; text-align: right;">Aksi</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="user-body">
                 {% for u in users %}
-                <tr>
-                    <td>
+                <tr class="user-row" style="border-bottom: 1px solid #f1f5f9;">
+                    <td style="padding: 1rem;">
                         <div style="display: flex; align-items: center; gap: 12px; min-width: 160px;">
-                            <div style="background: rgba(67, 97, 238, 0.1); width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--primary);">
-                                <i data-lucide="user" style="width: 20px;"></i>
+                            <div style="background: rgba(67, 97, 238, 0.1); width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--primary);">
+                                <i data-lucide="user" style="width: 18px;"></i>
                             </div>
                             <div>
-                                <div style="font-weight: 700;">{{ u.username }}</div>
-                                <div style="font-size: 0.8rem; color: var(--text-muted);">{{ u.email or 'No Email' }}</div>
+                                <div class="username-target" style="font-weight: 700; font-size: 0.95rem;">{{ u.username }}</div>
+                                <div class="email-target" style="font-size: 0.8rem; color: var(--text-muted);">{{ u.email or 'No Email' }}</div>
                             </div>
                         </div>
                     </td>
-                    <td>
-                        <span class="status-badge" style="background: #f1f5f9; color: var(--primary); border: 1px solid #e2e8f0; white-space: nowrap;">
+                    <td style="padding: 1rem;">
+                        <span class="status-badge" style="background: #f1f5f9; color: var(--primary); border: 1px solid #e2e8f0; white-space: nowrap; font-size: 0.75rem;">
                             {{ u.role.name }}
                         </span>
                     </td>
-                    <td>
+                    <td style="padding: 1rem;">
                         {% if u.student %}
                             <div style="font-size: 0.9rem; font-weight: 600;">{{ u.student.full_name }}</div>
                             <div style="font-size: 0.75rem; color: var(--text-muted);">NIM: {{ u.student.nim }}</div>
@@ -67,13 +73,13 @@
                             <span style="font-size: 1.1rem; opacity: 0.3;">-</span>
                         {% endif %}
                     </td>
-                    <td>
-                        <span class="status-badge {{ 'status-aktif' if u.status == 'Active' else 'status-cuti' }}">
+                    <td style="padding: 1rem;">
+                        <span class="status-badge {{ 'status-aktif' if u.status == 'Active' else 'status-cuti' }}" style="font-size: 0.75rem;">
                             {{ u.status }}
                         </span>
                     </td>
-                    <td>
-                        <div style="display: flex; gap: 12px;">
+                    <td style="padding: 1rem; text-align: right;">
+                        <div style="display: flex; gap: 12px; justify-content: flex-end;">
                             <button onclick="openEditModal('{{ u.id }}', `{{ u.full_name|replace('`','\\`') or '' }}`, `{{ u.email|replace('`','\\`') or '' }}`, '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
                                 <i data-lucide="edit-3" style="width: 18px;"></i>
                             </button>
@@ -88,6 +94,13 @@
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+    <div id="user-pagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #f1f5f9;">
+        <span id="user-p-info" style="font-size: 0.85rem; color: #64748b; font-weight: 600;"></span>
+        <div style="display: flex; gap: 8px;">
+            <button id="user-p-prev" onclick="changeUserPage(-1)" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #64748b; transition: 0.2s;"><i data-lucide="chevron-left" style="width: 16px;"></i></button>
+            <button id="user-p-next" onclick="changeUserPage(1)" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #64748b; transition: 0.2s;"><i data-lucide="chevron-right" style="width: 16px;"></i></button>
+        </div>
     </div>
 </div>
 
@@ -109,14 +122,15 @@
             <div style="margin-top: 1.5rem;">
                 <p style="font-size: 0.7rem; font-weight: 800; color: var(--text-muted); text-transform: uppercase; margin-bottom: 10px; letter-spacing: 0.5px;">Permissions :</p>
                 <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    {% if role.can_manage_students %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Mhs</span>{% endif %}
-                    {% if role.can_manage_schedule %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Jadwal</span>{% endif %}
-                    {% if role.can_manage_fund %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Kas</span>{% endif %}
-                    {% if role.can_manage_announcements %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Info</span>{% endif %}
-                    {% if role.can_manage_roles %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Admin</span>{% endif %}
-                    {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Logs</span>{% endif %}
-                    {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Export</span>{% endif %}
-                    {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Settings</span>{% endif %}
+                    {% if role.can_manage_students %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Data Mahasiswa</span>{% endif %}
+                    {% if role.can_manage_schedule %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Ubah Jadwal</span>{% endif %}
+                    {% if role.can_manage_fund %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Keuangan/Kas</span>{% endif %}
+                    {% if role.can_manage_announcements %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Pengumuman</span>{% endif %}
+                    {% if role.can_manage_roles %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Akses Admin</span>{% endif %}
+                    {% if role.can_manage_gallery %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Galeri & Moderasi</span>{% endif %}
+                    {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Sistem Logs</span>{% endif %}
+                    {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Eksport Data CSV</span>{% endif %}
+                    {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">App Settings</span>{% endif %}
                 </div>
             </div>
             
@@ -126,7 +140,7 @@
                         <a href="{{ url_for('delete_role', id=role.id) }}" onclick="return confirm('Hapus role ini?')" style="color: #ef4444; font-size: 0.8rem; text-decoration: none; font-weight: 600;">Hapus</a>
                      {% endif %}
                 </div>
-                <button onclick='openEditRoleModal("{{ role.id }}", "{{ role.name }}", "{{ role.description }}", {mS:{{ "true" if role.can_manage_students else "false" }},mSc:{{ "true" if role.can_manage_schedule else "false" }},mF:{{ "true" if role.can_manage_fund else "false" }},mAn:{{ "true" if role.can_manage_announcements else "false" }},mR:{{ "true" if role.can_manage_roles else "false" }},vL:{{ "true" if role.can_view_logs else "false" }},eD:{{ "true" if role.can_export_data else "false" }},eS:{{ "true" if role.can_edit_settings else "false" }}})' style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                <button onclick='openEditRoleModal("{{ role.id }}", "{{ role.name }}", "{{ role.description }}", {mS:{{ "true" if role.can_manage_students else "false" }},mSc:{{ "true" if role.can_manage_schedule else "false" }},mF:{{ "true" if role.can_manage_fund else "false" }},mAn:{{ "true" if role.can_manage_announcements else "false" }},mR:{{ "true" if role.can_manage_roles else "false" }},vL:{{ "true" if role.can_view_logs else "false" }},eD:{{ "true" if role.can_export_data else "false" }},eS:{{ "true" if role.can_edit_settings else "false" }},mG:{{ "true" if role.can_manage_gallery else "false" }}})' style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                     <i data-lucide="settings" style="width: 14px;"></i> Edit Izin
                 </button>
             </div>
@@ -138,7 +152,7 @@
 <!-- Modal User Baru -->
 <div id="modal-user" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.1rem; animation: slideDown 0.3s ease;">
-        <h2 style="margin-bottom: 1.5rem;">Daftarkan User Baru</h2>
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Daftarkan User Baru</h2>
         <form method="POST">
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1;"><label>Nama Tampilan</label><input type="text" name="full_name" class="form-control" required></div>
@@ -150,7 +164,7 @@
             </div>
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1.2;"><label>Role Utama</label><select name="role_id" class="form-control">{% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
-                <div class="form-group" style="flex: 1.8;"><label>Hubungkan ke Member (Mahasiswa)</label>
+                <div class="form-group" style="flex: 1.8;"><label>Hubungkan ke Member</label>
                     <select name="student_id" class="form-control">
                         <option value="none">-- Tidak Dihubungkan --</option>
                         {% for s in students %}
@@ -167,29 +181,28 @@
     </div>
 </div>
 
-<!-- Modal Edit User -->
+<!-- Edit User Modal -->
 <div id="modal-edit-user" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.1rem;">
-        <h2 style="margin-bottom: 1.5rem;">Update User</h2>
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Update User</h2>
         <form id="form-edit-user" method="POST">
             <div class="form-group"><label>Nama Tampilan</label><input type="text" name="full_name" id="edit-full-name" class="form-control"></div>
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1;"><label>Email</label><input type="email" name="email" id="edit-email" class="form-control"></div>
-                <div class="form-group" style="flex: 1;"><label>Password (Opsional)</label><input type="password" name="password" class="form-control" placeholder="Kosongkan jika tidak ganti"></div>
+                <div class="form-group" style="flex: 1;"><label>Password (Opsional)</label><input type="password" name="password" class="form-control" placeholder="Biarkan kosong"></div>
             </div>
             <div style="display: flex; gap: 15px;">
                 <div class="form-group" style="flex: 1;"><label>Role</label><select name="role_id" id="edit-role-id" class="form-control">{% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
                 <div class="form-group" style="flex: 1;"><label>Status</label><select name="status" id="edit-status" class="form-control"><option value="Active">Active</option><option value="Inactive">Banned</option></select></div>
             </div>
             <div class="form-group">
-                <label>Hubungkan ke Member (Mahasiswa)</label>
+                <label>Hubungkan ke Member</label>
                 <select name="student_id" id="edit-student-id" class="form-control">
                     <option value="none">-- Pilih Member --</option>
                     {% for s in students %}
                         <option value="{{ s.id }}">{{ s.full_name }} ({{ s.nim }})</option>
                     {% endfor %}
                 </select>
-                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Menghubungkan user ini ke data member akan mengaktifkan Dashboard Member di dashboard utamanya.</p>
             </div>
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Simpan</button>
@@ -199,22 +212,23 @@
     </div>
 </div>
 
-<!-- (Modal Role Baru & Modal Edit Role tetap sama) -->
+<!-- Modal Role -->
 <div id="modal-role" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem; animation: slideDown 0.3s ease;">
-        <h2 style="margin-bottom: 1.5rem;">Buat Konfigurasi Role</h2>
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Buat Konfigurasi Role</h2>
         <form method="POST">
             <div class="form-group"><label>Nama Role</label><input type="text" name="role_name" class="form-control" required></div>
             <div class="form-group"><label>Deskripsi</label><textarea name="role_desc" class="form-control" required></textarea></div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 1rem; background: #f8fafc; border-radius: 12px; margin-top: 1rem;">
-                <label style="cursor: pointer;"><input type="checkbox" name="can_manage_students"> Mhs</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_manage_schedule"> Jadwal</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_manage_fund"> Kas</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_manage_announcements"> Info</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_manage_roles"> Admin</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_view_logs"> Logs</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_export_data"> Export</label>
-                <label style="cursor: pointer;"><input type="checkbox" name="can_edit_settings"> Settings</label>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 10px; padding: 1.2rem; background: #f8fafc; border-radius: 12px; margin-top: 1rem; max-height: 250px; overflow-y: auto;">
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_students"> Manajemen Mahasiswa</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_schedule"> Manajemen Jadwal</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund"> Kas Keuangan</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements"> Pengumuman</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles"> Akses Admin/Roles</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs"> Lihat Log Sistem</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data"> Export Data CSV</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings"> Edit Pengaturan</label>
             </div>
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Aktifkan</button>
@@ -226,19 +240,20 @@
 
 <div id="modal-edit-role" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem;">
-        <h2 style="margin-bottom: 1.5rem;">Edit Hak Akses</h2>
+        <h2 style="margin-bottom: 1.5rem; font-size: 1.25rem;">Edit Hak Akses</h2>
         <form id="form-edit-role" method="POST">
             <div class="form-group"><label>Nama Role</label><input type="text" name="role_name" id="edit-role-name" class="form-control"></div>
             <div class="form-group"><label>Deskripsi</label><textarea name="role_desc" id="edit-role-desc" class="form-control"></textarea></div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 1rem; background: #f8fafc; border-radius: 12px;">
-                <label><input type="checkbox" name="can_manage_students" id="edit-can-m-students"> Mhs</label>
-                <label><input type="checkbox" name="can_manage_schedule" id="edit-can-m-sched"> Jadwal</label>
-                <label><input type="checkbox" name="can_manage_fund" id="edit-can-m-fund"> Kas</label>
-                <label><input type="checkbox" name="can_manage_announcements" id="edit-can-m-ann"> Info</label>
-                <label><input type="checkbox" name="can_manage_roles" id="edit-can-m-roles"> Admin</label>
-                <label><input type="checkbox" name="can_view_logs" id="edit-can-v-logs"> Logs</label>
-                <label><input type="checkbox" name="can_export_data" id="edit-can-e-data"> Export</label>
-                <label><input type="checkbox" name="can_edit_settings" id="edit-can-e-settings"> Settings</label>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 10px; padding: 1.2rem; background: #f8fafc; border-radius: 12px; margin-top: 1rem; max-height: 250px; overflow-y: auto;">
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_students" id="edit-can-m-students"> Manajemen Mahasiswa</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_schedule" id="edit-can-m-sched"> Manajemen Jadwal</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund" id="edit-can-m-fund"> Kas Keuangan</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements" id="edit-can-m-ann"> Pengumuman</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery" id="edit-can-m-gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles" id="edit-can-m-roles"> Akses Admin/Roles</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs" id="edit-can-v-logs"> Lihat Log Sistem</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data" id="edit-can-e-data"> Export Data CSV</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings" id="edit-can-e-settings"> Edit Pengaturan</label>
             </div>
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Update</button>
@@ -248,8 +263,59 @@
     </div>
 </div>
 
-<style> @keyframes slideDown { from { transform: translateY(-30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } </style>
+<style> @keyframes slideDown { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } } </style>
 <script>
+let curUserPage = 1;
+const usersPerPage = 10;
+
+function filterUsers() {
+    const q = document.getElementById('search-user').value.toLowerCase();
+    const rows = document.querySelectorAll('.user-row');
+    let matched = 0;
+    
+    rows.forEach(r => {
+        const u = r.querySelector('.username-target').innerText.toLowerCase();
+        const e = r.querySelector('.email-target').innerText.toLowerCase();
+        if (u.includes(q) || e.includes(q)) {
+            r.dataset.match = "true"; matched++;
+        } else {
+            r.dataset.match = "false";
+        }
+    });
+    
+    document.getElementById('user-count').innerText = `Total: ${matched} User`;
+    curUserPage = 1;
+    updateUserUI();
+}
+
+function updateUserUI() {
+    const rows = Array.from(document.querySelectorAll('.user-row')).filter(r => r.dataset.match !== "false");
+    const total = rows.length;
+    const totalPages = Math.ceil(total / usersPerPage) || 1;
+    
+    if (curUserPage > totalPages) curUserPage = totalPages;
+    const start = (curUserPage - 1) * usersPerPage;
+    const end = start + usersPerPage;
+    
+    document.querySelectorAll('.user-row').forEach(r => r.style.display = 'none');
+    rows.slice(start, end).forEach(r => r.style.display = 'table-row');
+    
+    const info = document.getElementById('user-p-info');
+    info.innerText = total > 0 ? `Hal ${curUserPage} / ${totalPages}` : 'Tidak ada hasil';
+    
+    document.getElementById('user-p-prev').disabled = curUserPage <= 1;
+    document.getElementById('user-p-next').disabled = curUserPage >= totalPages;
+    document.getElementById('user-p-prev').style.opacity = curUserPage <= 1 ? 0.3 : 1;
+    document.getElementById('user-p-next').style.opacity = curUserPage >= totalPages ? 0.3 : 1;
+}
+
+function changeUserPage(d) {
+    curUserPage += d;
+    updateUserUI();
+}
+
+document.addEventListener('DOMContentLoaded', () => { filterUsers(); });
+
 function openEditRoleModal(id, name, desc, p) {
     document.getElementById('form-edit-role').action = '/roles/edit/role/' + id;
     document.getElementById('edit-role-name').value = name;
@@ -262,6 +328,7 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-v-logs').checked = p.vL;
     document.getElementById('edit-can-e-data').checked = p.eD;
     document.getElementById('edit-can-e-settings').checked = p.eS;
+    document.getElementById('edit-can-m-gallery').checked = p.mG;
     document.getElementById('modal-edit-role').style.display = 'flex';
 }
 function openEditModal(id, fullName, email, roleId, status, studentId) {

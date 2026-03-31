@@ -1,97 +1,144 @@
 {% extends 'base.html' %}
 {% block content %}
-<header>
+<header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
     <h1>Pengumuman Class Famousbytee.b</h1>
-    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-    <button class="btn" onclick="document.getElementById('modal-ann').style.display='flex'">
-        <i data-lucide="plus"></i> Tambah Pengumuman
-    </button>
-    {% endif %}
+    <div style="display: flex; gap: 10px; align-items: center;">
+        <div style="position: relative;">
+            <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
+            <input type="text" id="search-ann" placeholder="Cari pengumuman..." onkeyup="filterAnn()" style="padding: 7px 12px 7px 34px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.85rem; width: 220px;">
+        </div>
+        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        <button class="btn" onclick="document.getElementById('modal-ann').style.display='flex'">
+            <i data-lucide="plus"></i> Tambah
+        </button>
+        {% endif %}
+    </div>
 </header>
 
-<div class="card">
-    <h3>Daftar Pengumuman</h3>
-    <div style="overflow-x: auto;">
-        <table>
+<div class="announcement-container" id="ann-list">
+    <!-- Desktop Table (Hidden on Mobile) -->
+    <div class="card desktop-only" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">
+        <table style="width: 100%; border-collapse: collapse;">
             <thead>
-                <tr>
-                    <th>Prio</th>
-                    <th>Tanggal</th>
-                    <th>Kategori</th>
-                    <th>Judul</th>
-                    <th>Isi</th>
-                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th style="width: 100px;">Aksi</th>{% endif %}
+                <tr style="background: #f8fafc;">
+                    <th style="padding: 1rem; text-align: center; width: 50px;">Pin</th>
+                    <th style="padding: 1rem; text-align: left; width: 150px;">Detail</th>
+                    <th style="padding: 1rem; text-align: left;">Judul & Isi</th>
+                    <th style="padding: 1rem; text-align: right; width: 150px;">Aksi</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="ann-body-desktop">
                 {% for a in announcements %}
-                <tr style="{{ 'background: rgba(67, 97, 238, 0.03);' if a.is_pinned else '' }}">
+                <tr class="ann-item" data-title="{{ a.title|lower }}" data-content="{{ a.content|lower }}" style="border-top: 1px solid #f1f5f9; {{ 'background: #fdf2f2;' if a.category == 'Penting' else 'background: #fcfaff;' if a.is_pinned else '' }}">
                     <td style="text-align: center;">
-                        {% if a.is_pinned %}
-                        <i data-lucide="pin" style="width: 16px; color: var(--primary); fill: var(--primary);"></i>
-                        {% else %}
-                        -
-                        {% endif %}
+                        {% if a.is_pinned %}<i data-lucide="pin" style="width: 16px; color: var(--primary); fill: var(--primary);"></i>{% else %}-{% endif %}
                     </td>
-                    <td style="white-space: nowrap; font-size: 0.85rem;">{{ a.date_posted.strftime('%d %b %Y') }}</td>
-                    <td>
-                        <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#ecfdf5; color: #065f46' if a.category == 'Info' else '#fef9c3; color: #854d0e' }}; white-space: nowrap;">
-                            {{ a.category }}
+                    <td style="padding: 1rem;">
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">{{ a.date_posted.strftime('%d %b %Y') }}</div>
+                        <span class="status-badge" style="background: {{ '#dcfce7; color: #166534' if a.is_public else '#fee2e2; color: #991b1b' }}; font-size: 0.65rem; padding: 2px 8px;">
+                            {{ 'Publik' if a.is_public else 'Internal' }}
                         </span>
                     </td>
-                    <td style="font-weight: 700; min-width: 150px;">{{ a.title }}</td>
-                    <td style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.5; min-width: 250px;">
-                        {{ a.content[:60] }}{{ '...' if a.content|length > 60 else '' }}
+                    <td style="padding: 1rem;">
+                        <div style="font-weight: 700; margin-bottom: 4px;">{{ a.title }}</div>
+                        <div style="font-size: 0.85rem; color: #64748b;">{{ a.content[:100] }}{{ '...' if a.content|length > 100 else '' }}</div>
                     </td>
-                    <td>
-                        <div style="display: flex; gap: 10px; white-space: nowrap;">
-                            <!-- Member View Action -->
-                            <button onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:var(--primary); border:none; color:white; padding: 5px 12px; border-radius: 6px; cursor:pointer; font-size: 0.8rem;">
-                                Baca Detail
-                            </button>
-                            
+                    <td style="text-align: right; padding: 1rem;">
+                        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                            <button class="btn btn-sm" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="padding: 5px 15px; font-size: 0.75rem;">Baca</button>
                             {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-                            <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;">
-                                <i data-lucide="edit-3" style="width: 16px;"></i>
-                            </button>
-                            <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus pengumuman ini?')" style="color: #ef4444;">
-                                <i data-lucide="trash-2" style="width: 16px;"></i>
-                            </a>
+                                <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ 'true' if a.is_public else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
+                                <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 18px;"></i></a>
                             {% endif %}
                         </div>
                     </td>
-                </tr>
-                {% else %}
-                <tr>
-                    <td colspan="{{ '6' if current_user.role.name != 'Member' else '5' }}" style="text-align: center; opacity: 0.5;">Belum ada pengumuman.</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <!-- Mobile Grid (Hidden on Desktop) -->
+    <div class="mobile-only" id="ann-body-mobile" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
+        {% for a in announcements %}
+        <div class="card ann-item-mobile" data-title="{{ a.title|lower }}" data-content="{{ a.content|lower }}" style="padding: 1.25rem; {{ 'border-left: 4px solid var(--primary);' if a.is_pinned else '' }} position: relative;" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
+                <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#eff6ff; color: #1d4ed8' }}; font-size: 0.7rem;">
+                    {{ a.category }}
+                </span>
+                <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">{{ a.date_posted.strftime('%d %b %Y') }}</span>
+            </div>
+            <h4 style="margin: 0 0 0.5rem 0; font-weight: 800;">{{ a.title }}</h4>
+            <p style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.5;">{{ a.content[:100] }}...</p>
+            
+            <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
+                <span style="font-size: 0.7rem; color: {{ '#059669' if a.is_public else '#dc2626' }}; font-weight: 700;">
+                    <i data-lucide="{{ 'globe' if a.is_public else 'shield-alert' }}" style="width: 12px; vertical-align: middle;"></i> {{ 'Publik' if a.is_public else 'Internal' }}
+                </span>
+                <span style="color: var(--primary); font-weight: 800; font-size: 0.8rem;">Baca &rarr;</span>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Empty State -->
+    <div id="ann-empty" style="display: none; text-align: center; padding: 4rem 2rem; opacity: 0.5;">
+        <i data-lucide="info" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
+        <p>Tidak ada pengumuman yang sesuai kata kunci.</p>
+    </div>
+
+    <!-- Pagination -->
+    <div id="ann-pagination" style="display: flex; justify-content: space-between; align-items: center; padding-top: 1rem; border-top: 1px solid #f1f5f9; margin-top: 1rem;">
+        <span id="ann-p-info" style="font-size: 0.85rem; color: #64748b; font-weight: 600;"></span>
+        <div style="display: flex; gap: 8px;">
+            <button id="ann-p-prev" onclick="changeAnnPage(-1)" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #64748b;"><i data-lucide="chevron-left" style="width: 16px;"></i></button>
+            <button id="ann-p-next" onclick="changeAnnPage(1)" style="width: 32px; height: 32px; border-radius: 8px; border: 1px solid #e2e8f0; background: white; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #64748b;"><i data-lucide="chevron-right" style="width: 16px;"></i></button>
+        </div>
+    </div>
 </div>
 
+<style>
+    .desktop-only { display: block; }
+    .mobile-only { display: none; }
+    @media (max-width: 768px) {
+        .desktop-only { display: none; }
+        .mobile-only { display: flex; }
+    }
+</style>
+
 <!-- Modal Detail for Everyone -->
-<div id="modal-view-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-    <div class="card" style="width: 600px; max-width: 100%; padding: 2.5rem; max-height: 90vh; overflow-y: auto;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-            <div>
-                <span id="view-ann-cat" class="status-badge" style="margin-bottom: 10px; display: inline-block;"></span>
-                <h2 id="view-ann-title"></h2>
-                <p id="view-ann-date" style="font-size: 0.85rem; color: var(--text-muted);"></p>
-            </div>
-            <button onclick="document.getElementById('modal-view-ann').style.display='none'" style="background:none; border:none; cursor:pointer; opacity:0.5;"><i data-lucide="x"></i></button>
+<div id="modal-view-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(8px); align-items: center; justify-content: center; z-index: 5000; padding: 1.5rem;">
+    <div class="card" style="width: 600px; max-width: 100%; padding: 0; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5);">
+        <!-- Modal Header -->
+        <div style="padding: 1.3rem 2rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <div id="view-ann-cat" class="status-badge" style="margin: 0;"></div>
+            <button onclick="document.getElementById('modal-view-ann').style.display='none'" style="background: white; border: 1px solid #e2e8f0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                <i data-lucide="x" style="width: 18px; color: #64748b;"></i>
+            </button>
         </div>
-        <div id="view-ann-content" style="line-height: 1.7; color: #475569; white-space: pre-wrap; font-size: 1rem;"></div>
-        <button class="btn" style="width: 100%; margin-top: 2rem;" onclick="document.getElementById('modal-view-ann').style.display='none'">Tutup</button>
+        <!-- Modal Body -->
+        <div style="padding: 2rem; max-height: 65vh; overflow-y: auto;">
+            <p id="view-ann-date" style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.75rem; font-weight: 600;"></p>
+            <h2 id="view-ann-title" style="margin: 0 0 1.5rem 0; font-size: 1.5rem; font-weight: 800; line-height: 1.3; color: #0f172a;"></h2>
+            <div id="view-ann-content" style="line-height: 1.7; color: #334155; white-space: pre-wrap; font-size: 1rem;"></div>
+        </div>
+        <!-- Modal Footer -->
+        <div style="padding: 1.2rem 2rem; border-top: 1px solid #f1f5f9; background: white;">
+            <button class="btn" style="width: 100%; height: 45px; border-radius: 12px; font-weight: 700;" onclick="document.getElementById('modal-view-ann').style.display='none'">Tutup</button>
+        </div>
     </div>
 </div>
 
 <!-- Edit Modal -->
 <div id="modal-edit-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
-        <h2 style="margin-bottom: 1.5rem;">Update Pengumuman</h2>
-        <form id="form-edit-ann" method="POST">
+    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 0; border-radius: 24px; overflow: hidden;">
+        <div style="padding: 1.5rem 2rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; font-size: 1.2rem;">Update Pengumuman</h2>
+            <button onclick="document.getElementById('modal-edit-ann').style.display='none'" style="background: white; border: 1px solid #e2e8f0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <i data-lucide="x" style="width: 18px; color: #64748b;"></i>
+            </button>
+        </div>
+        <form id="form-edit-ann" method="POST" style="padding: 2rem;">
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label>Kategori</label>
@@ -101,18 +148,21 @@
                         <option value="Event">Kegiatan/Event</option>
                     </select>
                 </div>
-                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px; flex: 1; min-width: 200px;">
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; flex: 1; min-width: 200px;">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
-                        <input type="checkbox" name="is_pinned" id="edit-ann-pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
+                        <input type="checkbox" name="is_pinned" id="edit-ann-pinned" style="width: 18px; height: 18px;"> Pin di Atas
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: #166534;">
+                        <input type="checkbox" name="is_public" id="edit-ann-public" style="width: 18px; height: 18px;"> Akses Publik
                     </label>
                 </div>
             </div>
             <div class="form-group" style="margin-top: 10px;">
-                <label>Judul Pengumuman</label>
+                <label>Judul</label>
                 <input type="text" name="title" id="edit-ann-title" class="form-control" required>
             </div>
             <div class="form-group">
-                <label>Isi Pengumuman</label>
+                <label>Isi</label>
                 <textarea name="content" id="edit-ann-content" class="form-control" rows="5" required></textarea>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 2rem;">
@@ -124,30 +174,85 @@
 </div>
 
 <script>
-function viewAnnouncement(title, cat, date, content) {
-    document.getElementById('view-ann-title').innerText = title;
-    document.getElementById('view-ann-cat').innerText = cat;
-    document.getElementById('view-ann-cat').className = 'status-badge ' + (cat == 'Penting' ? 'status-aktif' : 'status-cuti'); // reuse styles
-    document.getElementById('view-ann-date').innerText = 'Diposting pada: ' + date;
-    document.getElementById('view-ann-content').innerText = content;
-    document.getElementById('modal-view-ann').style.display = 'flex';
+let curAnnPage = 1;
+const annPerPage = 6;
+
+function filterAnn() {
+    const q = document.getElementById('search-ann').value.toLowerCase();
+    const dItems = document.querySelectorAll('.ann-item');
+    const mItems = document.querySelectorAll('.ann-item-mobile');
+    
+    dItems.forEach(it => it.dataset.match = (it.dataset.title.includes(q) || it.dataset.content.includes(q)));
+    mItems.forEach(it => it.dataset.match = (it.dataset.title.includes(q) || it.dataset.content.includes(q)));
+    
+    curAnnPage = 1;
+    updateAnnUI();
 }
 
-function openEditAnn(id, title, category, pinned, content) {
+function updateAnnUI() {
+    const isMobile = window.innerWidth <= 768;
+    const items = Array.from(document.querySelectorAll(isMobile ? '.ann-item-mobile' : '.ann-item')).filter(it => it.dataset.match !== "false");
+    const total = items.length;
+    const totalPages = Math.ceil(total / annPerPage) || 1;
+    
+    if (curAnnPage > totalPages) curAnnPage = totalPages;
+    const start = (curAnnPage - 1) * annPerPage;
+    const end = start + annPerPage;
+    
+    document.querySelectorAll('.ann-item, .ann-item-mobile').forEach(it => it.style.display = 'none');
+    items.slice(start, end).forEach(it => it.style.display = (isMobile ? 'flex' : 'table-row'));
+    
+    document.getElementById('ann-empty').style.display = total === 0 ? 'block' : 'none';
+    document.getElementById('ann-pagination').style.display = total === 0 ? 'none' : 'flex';
+    document.getElementById('ann-p-info').innerText = total > 0 ? `Hal ${curAnnPage} / ${totalPages}` : '';
+    
+    document.getElementById('ann-p-prev').disabled = curAnnPage <= 1;
+    document.getElementById('ann-p-next').disabled = curAnnPage >= totalPages;
+    document.getElementById('ann-p-prev').style.opacity = curAnnPage <= 1 ? 0.3 : 1;
+    document.getElementById('ann-p-next').style.opacity = curAnnPage >= totalPages ? 0.3 : 1;
+}
+
+function changeAnnPage(d) {
+    curAnnPage += d;
+    updateAnnUI();
+}
+
+window.addEventListener('resize', updateAnnUI);
+document.addEventListener('DOMContentLoaded', () => { filterAnn(); updateAnnUI(); });
+
+function viewAnnouncement(title, cat, date, content, id) {
+    document.getElementById('view-ann-title').innerText = title;
+    document.getElementById('view-ann-cat').innerText = cat;
+    document.getElementById('view-ann-cat').style.background = (cat == 'Penting' ? '#fef2f2' : (cat == 'Event' ? '#fef9c3' : '#eff6ff'));
+    document.getElementById('view-ann-cat').style.color = (cat == 'Penting' ? '#991b1b' : (cat == 'Event' ? '#854d0e' : '#1d4ed8'));
+    document.getElementById('view-ann-date').innerText = 'Diterbitkan: ' + date;
+    document.getElementById('view-ann-content').innerText = content;
+    document.getElementById('modal-view-ann').style.display = 'flex';
+    if(id) fetch(`/announcements/read/${id}`);
+    lucide.createIcons();
+}
+
+function openEditAnn(id, title, category, pinned, ispublic, content) {
     document.getElementById('form-edit-ann').action = '/announcements/edit/' + id;
     document.getElementById('edit-ann-title').value = title;
     document.getElementById('edit-ann-category').value = category;
     document.getElementById('edit-ann-pinned').checked = (pinned === 'true');
+    document.getElementById('edit-ann-public').checked = (ispublic === 'true');
     document.getElementById('edit-ann-content').value = content;
     document.getElementById('modal-edit-ann').style.display = 'flex';
 }
 </script>
 
-<!-- Add Modal -->
+<!-- Add Modal (Keep as is) -->
 <div id="modal-ann" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 2.5rem;">
-        <h2 style="margin-bottom: 1.5rem;">Buat Pengumuman Baru</h2>
-        <form method="POST">
+    <div class="card" style="width: 600px; max-width: 100%; max-height: 90vh; overflow-y: auto; padding: 0; border-radius: 24px; overflow: hidden;">
+        <div style="padding: 1.5rem 2rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0; font-size: 1.25rem;">Buat Pengumuman Baru</h2>
+            <button onclick="document.getElementById('modal-ann').style.display='none'" style="background: white; border: 1px solid #e2e8f0; width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                <i data-lucide="x" style="width: 18px; color: #64748b;"></i>
+            </button>
+        </div>
+        <form method="POST" style="padding: 2rem;">
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label>Kategori</label>
@@ -157,19 +262,22 @@ function openEditAnn(id, title, category, pinned, content) {
                         <option value="Event">Kegiatan/Event</option>
                     </select>
                 </div>
-                <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 10px; flex: 1; min-width: 200px;">
+                <div class="form-group" style="display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; flex: 1; min-width: 200px;">
                     <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: var(--primary);">
-                        <input type="checkbox" name="is_pinned" style="width: 20px; height: 20px;"> Pin di Halaman Depan
+                        <input type="checkbox" name="is_pinned" style="width: 18px; height: 18px;"> Pin di Atas
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 12px; cursor: pointer; font-weight: 700; color: #166534;">
+                        <input type="checkbox" name="is_public" style="width: 18px; height: 18px;" checked> Tampil ke Publik
                     </label>
                 </div>
             </div>
             <div class="form-group" style="margin-top: 10px;">
-                <label>Judul Pengumuman</label>
-                <input type="text" name="title" class="form-control" placeholder="Contoh: Rapat Evaluasi Angkatan" required>
+                <label>Judul</label>
+                <input type="text" name="title" class="form-control" placeholder="Judul Pengumuman" required>
             </div>
             <div class="form-group">
-                <label>Isi Pengumuman</label>
-                <textarea name="content" class="form-control" rows="5" placeholder="Tulis rincian pengumuman di sini..." required></textarea>
+                <label>Isi</label>
+                <textarea name="content" class="form-control" rows="5" placeholder="Tulis isi pengumuman..." required></textarea>
             </div>
             <div style="display: flex; gap: 10px; margin-top: 2rem;">
                 <button type="submit" class="btn" style="flex: 1;">Publikasikan</button>

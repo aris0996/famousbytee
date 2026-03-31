@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block content %}
+<header style="margin-bottom: 2.5rem;">
+    <h1>Profil & Akun Saya</h1>
+    <p style="color: var(--text-muted);">Kelola identitas sosial dan keamanan akun Anda.</p>
+</header>
+
+<div style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem;">
+    <!-- Sidebar Profile Card -->
+    <aside>
+        <div class="card" style="text-align: center; padding: 2.5rem;">
+            <div style="width: 100px; height: 100px; background: var(--primary); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; font-size: 2.5rem; font-weight: 800; box-shadow: 0 10px 20px rgba(67, 97, 238, 0.2);">
+                {{ (current_user.student.full_name[0] if current_user.student else current_user.username[0])|upper }}
+            </div>
+            <h2 style="margin-bottom: 0.5rem;">{{ current_user.student.full_name if current_user.student else current_user.username }}</h2>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">{{ current_user.role.name }} Kelas {{ site_settings.get('web_title', 'Famousbytee.b').split(' ')[0] }}</p>
+            
+            <div style="text-align: left; background: #f8fafc; padding: 1.5rem; border-radius: 12px; margin-top: 1.5rem;">
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Username / NIM</label>
+                    <span style="font-weight: 600;">{{ current_user.username }}</span>
+                </div>
+                <div>
+                    <label style="display: block; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Status Akun</label>
+                    <span style="color: #10b981; font-weight: 600;">{{ current_user.status }}</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Settings Main Card -->
+    <main>
+        <div class="card" style="padding: 2.5rem;">
+            <form action="{{ url_for('profile') }}" method="POST">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                    <div class="form-group">
+                        <label>Alamat Email</label>
+                        <input type="email" name="email" value="{{ current_user.email or '' }}" class="form-control" placeholder="nama@email.com">
+                        <small style="color: var(--text-muted);">Digunakan untuk notifikasi penting.</small>
+                    </div>
+                    <div class="form-group">
+                        <label>WhatsApp (Opsional)</label>
+                        <input type="text" name="whatsapp" value="{{ current_user.whatsapp or '' }}" class="form-control" placeholder="08xxxxxxxxxx">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 2rem;">
+                    <label>Bio Singkat</label>
+                    <textarea name="bio" class="form-control" rows="3" placeholder="Ceritakan sedikit tentang Anda...">{{ current_user.bio or '' }}</textarea>
+                </div>
+
+                <hr style="border: 0; border-top: 1px solid #f1f5f9; margin-bottom: 2rem;">
+
+                <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="key" style="color: var(--primary);"></i> Keamanan Kata Sandi</h3>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 2rem;">
+                    <div class="form-group">
+                        <label>Kata Sandi Baru</label>
+                        <input type="password" name="new_password" class="form-control" placeholder="Kosongkan jika tidak diganti">
+                    </div>
+                    <div class="form-group">
+                        <label>Informasi</label>
+                        <p style="font-size: 0.85rem; color: #94a3b8; padding: 10px; background: #fffbeb; border-radius: 8px; border: 1px solid #fef3c7;">Gunakan kata sandi yang kuat untuk menjaga keamanan akun Anda.</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
+                    <button type="submit" class="btn">Simpan Perubahan</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Non-editable Section -->
+        <div style="margin-top: 2rem; background: #fef2f2; border: 1px solid #fee2e2; padding: 1.5rem; border-radius: 20px;">
+            <div style="display: flex; gap: 15px; align-items: flex-start;">
+                <i data-lucide="alert-circle" style="color: #ef4444; flex-shrink: 0;"></i>
+                <div>
+                    <h4 style="color: #991b1b; margin: 0 0 5px 0;">Identitas Akademik Dikunci</h4>
+                    <p style="margin: 0; font-size: 0.85rem; color: #b91c1c; opacity: 0.8;">Nama lengkap dan NIM Anda terhubung langsung dengan basis data resmi mahasiswa. Jika terdapat kesalahan data akademik, silakan hubungi <strong>Admin/Pengurus Kelas</strong> untuk sinkronisasi ulang.</p>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<style>
+    @media (max-width: 900px) {
+        div[style*="grid-template-columns: 350px 1fr"] {
+            grid-template-columns: 1fr !important;
+        }
+    }
+</style>
+<script>
+    lucide.createIcons();
+</script>
+{% endblock %}
