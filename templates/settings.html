@@ -98,6 +98,38 @@
             </p>
         </div>
 
+        <div style="margin-top: 1.5rem; padding: 1.5rem; background: #f0fdf4; border-radius: 16px; border: 1px solid #bbf7d0;">
+             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
+                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                   <i data-lucide="share-2" style="color: #166534;"></i>
+                </div>
+                <h4 style="font-size: 1rem;">Social Media & SEO</h4>
+            </div>
+            <div class="form-group">
+                <label>Deskripsi Web (SEO Description)</label>
+                <textarea name="web_desc" class="form-control" rows="2">{{ site_settings.get('web_desc', '') }}</textarea>
+            </div>
+            <div class="form-group">
+                <label>SEO Keywords (Pisahkan dengan koma)</label>
+                <input type="text" name="seo_keywords" class="form-control" value="{{ site_settings.get('seo_keywords', '') }}" placeholder="portal, kelas, famousbytee...">
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="form-group">
+                    <label>Link Instagram</label>
+                    <input type="text" name="social_ig" class="form-control" value="{{ site_settings.get('social_ig', '#') }}">
+                </div>
+                <div class="form-group">
+                    <label>Link WhatsApp Group</label>
+                    <input type="text" name="social_wa" class="form-control" value="{{ site_settings.get('social_wa', '#') }}">
+                </div>
+            </div>
+            <div style="margin-top:10px; padding: 10px; background: white; border-radius: 8px; border: 1px solid #d1fae5; font-size: 0.8rem;">
+                <i data-lucide="info" style="width: 14px; vertical-align: middle;"></i> 
+                Sitemap Otomatis: <a href="/sitemap.xml" target="_blank" style="color: #16a34a; font-weight: 700; text-decoration: none;">Lihat /sitemap.xml</a>
+            </div>
+        </div>
+
+        <div style="margin-top: 2rem;">
             <button type="submit" class="btn" style="width: 200px;">Simpan Perubahan</button>
         </div>
     </form>

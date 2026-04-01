@@ -7,8 +7,8 @@
     <!-- SEO Meta Tags -->
     <title>{{ site_settings.get('web_title', 'Famousbytee.b - Portal Kelas Eksklusif') }}</title>
     <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
-    <meta name="description" content="Portal Resmi Kelas Famousbytee.b. Akses jadwal harian, transparansi kas kelas, dan pengumuman internal dalam satu platform terintegrasi.">
-    <meta name="keywords" content="famousbytee, portal kelas, manajemen kelas, kas kelas, jadwal kuliah">
+    <meta name="description" content="{{ site_settings.get('web_desc', 'Portal Resmi Kelas Famousbytee.b') }}">
+    <meta name="keywords" content="{{ site_settings.get('seo_keywords', 'famousbytee, portal, kelas') }}">
     <meta name="author" content="arisdev">
     
     <!-- Open Graph / Facebook -->
@@ -248,7 +248,12 @@
         <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform eksklusif untuk integrasi data, koordinasi harian, dan transparansi internal kelas Famousbytee.b.</p>
         
         <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; opacity: 0.8;">
-            <p>&copy; 2026 Famousbytee.b Community. All rights reserved.</p>
+            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Famousbytee.b Portal') }}. All rights reserved.</p>
+            <div style="display: flex; gap: 1.5rem; justify-content: center; margin: 1.5rem 0;">
+                <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" style="color: white; opacity: 0.7;"><i data-lucide="instagram"></i></a>
+                <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" style="color: white; opacity: 0.7;"><i data-lucide="message-circle"></i></a>
+                <a href="/sitemap.xml" target="_blank" style="color: white; opacity: 0.7;" title="Sitemap"><i data-lucide="file-code"></i></a>
+            </div>
             <p style="margin-top: 10px; font-weight: 600;">Created by <a href="https://instagram.com/ars_0996" target="_blank" style="color: var(--accent); text-decoration: none;">@ars_0996</a> | BY arisdev</p>
         </div>
     </footer>

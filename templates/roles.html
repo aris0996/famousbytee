@@ -80,7 +80,7 @@
                     </td>
                     <td style="padding: 1rem; text-align: right;">
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button onclick="openEditModal('{{ u.id }}', `{{ u.full_name|replace('`','\\`') or '' }}`, `{{ u.email|replace('`','\\`') or '' }}`, '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
+                            <button onclick="openEditModal('{{ u.id }}', '{{ u.full_name|replace('\'','\\\'') or '' }}', '{{ u.email|replace('\'','\\\'') or '' }}', '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
                                 <i data-lucide="edit-3" style="width: 18px;"></i>
                             </button>
                             {% if u.id != current_user.id %}
@@ -131,6 +131,7 @@
                     {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Sistem Logs</span>{% endif %}
                     {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Eksport Data CSV</span>{% endif %}
                     {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">App Settings</span>{% endif %}
+                    {% if role.can_use_api %}<span class="status-badge" style="background:#fef3c7; color:#92400e; font-size: 0.75rem;">Akses API</span>{% endif %}
                 </div>
             </div>
             
@@ -140,7 +141,20 @@
                         <a href="{{ url_for('delete_role', id=role.id) }}" onclick="return confirm('Hapus role ini?')" style="color: #ef4444; font-size: 0.8rem; text-decoration: none; font-weight: 600;">Hapus</a>
                      {% endif %}
                 </div>
-                <button onclick='openEditRoleModal("{{ role.id }}", "{{ role.name }}", "{{ role.description }}", {mS:{{ "true" if role.can_manage_students else "false" }},mSc:{{ "true" if role.can_manage_schedule else "false" }},mF:{{ "true" if role.can_manage_fund else "false" }},mAn:{{ "true" if role.can_manage_announcements else "false" }},mR:{{ "true" if role.can_manage_roles else "false" }},vL:{{ "true" if role.can_view_logs else "false" }},eD:{{ "true" if role.can_export_data else "false" }},eS:{{ "true" if role.can_edit_settings else "false" }},mG:{{ "true" if role.can_manage_gallery else "false" }}})' style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
+                <button 
+                    onclick="openEditRoleModal('{{ role.id }}', '{{ role.name }}', '{{ role.description }}', {
+                        mS: {{ 'true' if role.can_manage_students else 'false' }},
+                        mSc: {{ 'true' if role.can_manage_schedule else 'false' }},
+                        mF: {{ 'true' if role.can_manage_fund else 'false' }},
+                        mAn: {{ 'true' if role.can_manage_announcements else 'false' }},
+                        mR: {{ 'true' if role.can_manage_roles else 'false' }},
+                        vL: {{ 'true' if role.can_view_logs else 'false' }},
+                        eD: {{ 'true' if role.can_export_data else 'false' }},
+                        eS: {{ 'true' if role.can_edit_settings else 'false' }},
+                        mG: {{ 'true' if role.can_manage_gallery else 'false' }},
+                        api: {{ 'true' if role.can_use_api else 'false' }}
+                    })" 
+                    style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                     <i data-lucide="settings" style="width: 14px;"></i> Edit Izin
                 </button>
             </div>
@@ -229,6 +243,7 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data"> Export Data CSV</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings"> Edit Pengaturan</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem; color: #92400e; font-weight: 700;"><input type="checkbox" name="can_use_api"> Aktifkan Akses API</label>
             </div>
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Aktifkan</button>
@@ -254,6 +269,7 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs" id="edit-can-v-logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data" id="edit-can-e-data"> Export Data CSV</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings" id="edit-can-e-settings"> Edit Pengaturan</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem; color: #92400e; font-weight: 700;"><input type="checkbox" name="can_use_api" id="edit-can-use-api"> Aktifkan Akses API</label>
             </div>
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Update</button>
@@ -329,6 +345,7 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-e-data').checked = p.eD;
     document.getElementById('edit-can-e-settings').checked = p.eS;
     document.getElementById('edit-can-m-gallery').checked = p.mG;
+    document.getElementById('edit-can-use-api').checked = p.api;
     document.getElementById('modal-edit-role').style.display = 'flex';
 }
 function openEditModal(id, fullName, email, roleId, status, studentId) {

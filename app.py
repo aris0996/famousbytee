@@ -43,9 +43,11 @@ def inject_settings():
     # Defaults
     if 'web_title' not in settings: settings['web_title'] = 'Famousbytee.b Portal'
     if 'web_logo' not in settings: settings['web_logo'] = 'monitor'
+    if 'web_desc' not in settings: settings['web_desc'] = 'Portal Resmi Kelas Famousbytee.b'
+    if 'social_ig' not in settings: settings['social_ig'] = '#'
+    if 'social_wa' not in settings: settings['social_wa'] = '#'
     
     # Logic for Branding Assets
-    # Priority: Uploaded File Path > Lucide Icon / Default URL
     settings['logo_display_path'] = settings.get('web_logo_path')
     settings['favicon_display_url'] = settings.get('favicon_path') or settings.get('favicon_url', '/static/favicon.ico')
     
@@ -57,7 +59,18 @@ def page_not_found(e):
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    return render_template('errors/500.html'), 500
+    # Log the error details here if needed
+    error_msg = str(e)
+    return render_template('errors/500.html', error=error_msg), 500
+
+@app.route('/report-error', methods=['POST'])
+def report_error():
+    err_body = request.form.get('error_details')
+    page = request.form.get('page_url')
+    # Auto log the error report
+    log_activity("Error Report", f"User reported error on {page}: {err_body[:200]}")
+    flash('Terima kasih! Laporan galat telah dikirim ke Admin.')
+    return redirect(url_for('dashboard'))
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -636,7 +649,7 @@ def manage_fund():
             amount=float(request.form['amount']), 
             type=request.form['type'], 
             category=request.form['category'],
-            evidence_note=request.form['note'],
+            evidence_note=request.form.get('note', ''), # FIXED: prevent BadRequestKeyError
             recorded_by=current_user.username,
             date=datetime.strptime(request.form['date'], '%Y-%m-%d'),
             student_id=int(student_id) if student_id and student_id != 'none' else None,
@@ -828,7 +841,9 @@ def manage_settings():
     
     if request.method == 'POST':
         # 1. Handle Text Settings
-        for key in ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_daily_rate']:
+        text_keys = ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_daily_rate', 
+                     'web_desc', 'social_ig', 'social_wa', 'seo_keywords']
+        for key in text_keys:
             if key in request.form:
                 val = request.form[key]
                 setting = SystemSetting.query.filter_by(key=key).first()
@@ -977,6 +992,7 @@ def edit_role(id):
     role.can_export_data = 'can_export_data' in request.form
     role.can_edit_settings = 'can_edit_settings' in request.form
     role.can_manage_gallery = 'can_manage_gallery' in request.form
+    role.can_use_api = 'can_use_api' in request.form
     db.session.commit()
     log_activity("Edit Role", f"Nama: {role.name}")
     return redirect(url_for('manage_roles'))
@@ -1020,14 +1036,15 @@ def process_image_upload(file):
         img = Image.open(file.stream)
         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
         
-        # Save Preview/Standard (High-res but WebP compressed for speed)
-        # We keep original resolution but compress quality to 60%
-        img.save(filepath, 'WEBP', quality=60)
+        # Save Preview/Standard (Optimized and Resized)
+        preview_img = img.copy()
+        preview_img.thumbnail((1200, 1200)) # Resized to lightweight HD
+        preview_img.save(filepath, 'WEBP', quality=50) # 50% Quality for speed
         
-        # Create and Save Thumbnail (Small & Lightweight for grids)
+        # Create and Save Thumbnail (Tiny for grids)
         thumb_img = img.copy()
-        thumb_img.thumbnail((500, 500)) # Small grid size
-        thumb_img.save(thumbpath, 'WEBP', quality=50)
+        thumb_img.thumbnail((300, 300))
+        thumb_img.save(thumbpath, 'WEBP', quality=45)
         return filename
     except Exception as e:
         print(f"Error processing image: {e}")
@@ -1263,7 +1280,7 @@ def init_db():
                 
                 # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
-                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery']:
+                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery', 'can_use_api']:
                     if col not in role_cols:
                         conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
                 
@@ -1308,19 +1325,22 @@ def init_db():
                     name='Admin', description='Akses penuh koordinasi sistem.', 
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=True,
-                    can_view_logs=True, can_export_data=True, can_edit_settings=True, can_manage_gallery=True
+                    can_view_logs=True, can_export_data=True, can_edit_settings=True, can_manage_gallery=True,
+                    can_use_api=True
                 )
                 staff_r = Role(
                     name='Pengurus', description='Manajemen data operasional.', 
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=False,
-                    can_view_logs=True, can_export_data=True, can_edit_settings=False, can_manage_gallery=True
+                    can_view_logs=True, can_export_data=True, can_edit_settings=False, can_manage_gallery=True,
+                    can_use_api=False
                 )
                 member_r = Role(
                     name='Member', description='Akses dashboard anggota.', 
                     can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, 
                     can_manage_announcements=False, can_manage_roles=False,
-                    can_view_logs=False, can_export_data=False, can_edit_settings=False, can_manage_gallery=False
+                    can_view_logs=False, can_export_data=False, can_edit_settings=False, can_manage_gallery=False,
+                    can_use_api=False
                 )
                 db.session.add_all([admin_r, staff_r, member_r])
                 db.session.commit()
@@ -1354,13 +1374,47 @@ def init_db():
                     SystemSetting(key='web_title', value='Famousbytee.b Portal', description='Judul Utama Portal'),
                     SystemSetting(key='favicon_url', value='/static/favicon.ico', description='URL Favicon'),
                     SystemSetting(key='fund_start_date', value='2024-03-30', description='Tanggal Mulai Kas (YYYY-MM-DD)'),
-                    SystemSetting(key='fund_daily_rate', value='1000', description='Iuran Harian Kas (Senin-Jumat)')
-
+                    SystemSetting(key='fund_daily_rate', value='1000', description='Iuran Harian Kas (Senin-Jumat)'),
+                    SystemSetting(key='web_desc', value='Portal Resmi Manajemen Kelas Famousbytee.b', description='Deskripsi Web (SEO)'),
+                    SystemSetting(key='social_ig', value='#', description='Link Instagram Kelas'),
+                    SystemSetting(key='social_wa', value='#', description='Link WhatsApp Group'),
+                    SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
         except Exception as e:
             print(f"Peringatan: Gagal inisialisasi pengaturan: {e}")
+
+# ----------------API & SITEMAP----------------
+from flask import jsonify
+
+@app.route('/api/students')
+@login_required
+def api_students():
+    if not current_user.role.can_use_api: return jsonify({'error': 'Unauthorized'}), 403
+    students = Student.query.all()
+    return jsonify([{'id': s.id, 'nim': s.nim, 'name': s.full_name, 'status': s.status} for s in students])
+
+@app.route('/api/announcements')
+@login_required
+def api_announcements():
+    if not current_user.role.can_use_api: return jsonify({'error': 'Unauthorized'}), 403
+    anns = Announcement.query.all()
+    return jsonify([{'id': a.id, 'title': a.title, 'category': a.category, 'date': a.date_posted} for a in anns])
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """Generates sitemap.xml dynamically."""
+    pages = []
+    # Static pages
+    for rule in app.url_map.iter_rules():
+        if "GET" in rule.methods and len(rule.arguments) == 0:
+            pages.append([url_for(rule.endpoint, _external=True), datetime.now().date()])
+    
+    sitemap_xml = render_template('sitemap.xml', pages=pages)
+    response = make_response(sitemap_xml)
+    response.headers["Content-Type"] = "application/xml"
+    return response
 
 # Inisialisasi database saat aplikasi dinyalakan
 init_db()
