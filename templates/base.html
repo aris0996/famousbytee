@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,7 +10,8 @@
     <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         :root {
@@ -59,7 +61,7 @@
             padding: 1.5rem 0.5rem;
         }
 
-        .sidebar.minimized .sidebar-brand span, 
+        .sidebar.minimized .sidebar-brand span,
         .sidebar.minimized .nav-link span,
         .sidebar.minimized .btn-logout span {
             display: none;
@@ -128,7 +130,8 @@
             overflow: hidden;
         }
 
-        .nav-link:hover, .nav-link.active {
+        .nav-link:hover,
+        .nav-link.active {
             background: rgba(255, 255, 255, 0.1);
             color: white;
         }
@@ -159,7 +162,9 @@
         }
 
         @media (max-width: 1024px) {
-            .main-content { padding: 1.5rem; }
+            .main-content {
+                padding: 1.5rem;
+            }
         }
 
         @media (max-width: 768px) {
@@ -171,11 +176,13 @@
                 width: 260px !important;
                 height: 100vh;
                 z-index: 1000;
-                box-shadow: 10px 0 30px rgba(0,0,0,0.1);
+                box-shadow: 10px 0 30px rgba(0, 0, 0, 0.1);
             }
+
             .sidebar.active {
                 left: 0;
             }
+
             .sidebar-overlay {
                 display: none;
                 position: fixed;
@@ -183,15 +190,24 @@
                 left: 0;
                 right: 0;
                 bottom: 0;
-                background: rgba(0,0,0,0.5);
+                background: rgba(0, 0, 0, 0.5);
                 backdrop-filter: blur(4px);
                 z-index: 999;
             }
-            .sidebar.active + .sidebar-overlay {
+
+            .sidebar.active+.sidebar-overlay {
                 display: block;
             }
-            .nav-list { display: flex; flex-direction: column; }
-            .toggle-sidebar { display: none; }
+
+            .nav-list {
+                display: flex;
+                flex-direction: column;
+            }
+
+            .toggle-sidebar {
+                display: none;
+            }
+
             .mobile-toggle {
                 display: flex;
                 position: fixed;
@@ -209,12 +225,22 @@
                 border: none;
                 cursor: pointer;
             }
-            .main-content { padding: 1rem; width: 100%; min-width: 0; }
-            .stats-grid { grid-template-columns: 1fr; }
+
+            .main-content {
+                padding: 1rem;
+                width: 100%;
+                min-width: 0;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
         }
 
         @media (min-width: 769px) {
-            .mobile-toggle { display: none; }
+            .mobile-toggle {
+                display: none;
+            }
         }
 
         header {
@@ -257,7 +283,7 @@
 
         .role-card:hover {
             transform: translateY(-5px);
-            box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
         }
 
         .stats-grid {
@@ -326,8 +352,15 @@
             font-weight: 600;
         }
 
-        .status-aktif { background: #dcfce7; color: #166534; }
-        .status-cuti { background: #fef9c3; color: #854d0e; }
+        .status-aktif {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .status-cuti {
+            background: #fef9c3;
+            color: #854d0e;
+        }
 
         .btn {
             background: var(--primary);
@@ -398,16 +431,17 @@
             color: var(--text-muted);
             font-size: 0.9rem;
         }
-
     </style>
 </head>
+
 <body>
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
             {% if site_settings.logo_display_path %}
-                <img src="{{ site_settings.logo_display_path }}" style="width: 38px; height: 38px; object-fit: contain; border-radius: 8px;">
+            <img src="{{ site_settings.logo_display_path }}"
+                style="width: 38px; height: 38px; object-fit: contain; border-radius: 8px;">
             {% else %}
-                <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
+            <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
             {% endif %}
             <span>{{ site_settings.get('web_title', 'Famousbytee.b').split(' ')[0] }}</span>
             <div class="toggle-sidebar" onclick="toggleSidebar()">
@@ -420,65 +454,79 @@
                     <i data-lucide="home"></i> <span>Beranda Utama (Publik)</span>
                 </a>
             </div>
-            
+
             <div class="nav-item">
-                <a href="{{ url_for('dashboard') }}" class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
-                    <i data-lucide="layout-dashboard"></i> <span>{{ 'Home Info' if current_user.role.name == 'Member' else 'Dashboard' }}</span>
+                <a href="{{ url_for('dashboard') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
+                    <i data-lucide="layout-dashboard"></i> <span>{{ 'Home Info' if current_user.role.name == 'Member'
+                        else 'Dashboard' }}</span>
                 </a>
             </div>
 
             <div class="nav-item">
-                <a href="{{ url_for('manage_announcements') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
+                <a href="{{ url_for('manage_announcements') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
                     <i data-lucide="megaphone"></i> <span>Pengumuman</span>
                 </a>
             </div>
 
             <div class="nav-item">
-                <a href="{{ url_for('manage_fund') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
-                    <i data-lucide="wallet"></i> <span>{{ 'Transparansi Kas' if current_user.role.name == 'Member' else 'Uang Kas' }}</span>
+                <a href="{{ url_for('manage_fund') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
+                    <i data-lucide="wallet"></i> <span>{{ 'Transparansi Kas' if current_user.role.name == 'Member' else
+                        'Uang Kas' }}</span>
                 </a>
             </div>
-            
+
             {% if current_user.role.name in ['Admin', 'Pengurus'] %}
             <div class="nav-item">
-                <a href="{{ url_for('manage_members') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
+                <a href="{{ url_for('manage_members') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
                     <i data-lucide="users"></i> <span>Members</span>
                 </a>
             </div>
             {% endif %}
 
             <div class="nav-item">
-                <a href="{{ url_for('manage_schedule') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
-                    <i data-lucide="calendar"></i> <span>{{ 'Lihat Jadwal' if current_user.role.name == 'Member' else 'Jadwal Kuliah' }}</span>
+                <a href="{{ url_for('manage_schedule') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
+                    <i data-lucide="calendar"></i> <span>{{ 'Lihat Jadwal' if current_user.role.name == 'Member' else
+                        'Jadwal Kuliah' }}</span>
                 </a>
             </div>
 
             <div class="nav-item">
-                <a href="{{ url_for('manage_gallery') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_gallery' else '' }}">
-                    <i data-lucide="image"></i> <span>{{ 'Dokumentasi Kelas' if current_user.role.name == 'Member' else 'Galeri Kelas' }}</span>
+                <a href="{{ url_for('manage_gallery') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_gallery' else '' }}">
+                    <i data-lucide="image"></i> <span>{{ 'Dokumentasi Kelas' if current_user.role.name == 'Member' else
+                        'Galeri Kelas' }}</span>
                 </a>
             </div>
 
             {% if current_user.role.can_manage_roles %}
             <div class="nav-item">
-                <a href="{{ url_for('manage_settings') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_settings' else '' }}">
+                <a href="{{ url_for('manage_settings') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_settings' else '' }}">
                     <i data-lucide="settings"></i> <span>Pengaturan Web</span>
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('manage_roles') }}" class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
+                <a href="{{ url_for('manage_roles') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
                     <i data-lucide="shield-check"></i> <span>Admin & Role</span>
                 </a>
             </div>
             <div class="nav-item">
-                <a href="{{ url_for('view_logs') }}" class="nav-link {{ 'active' if request.endpoint == 'view_logs' else '' }}">
+                <a href="{{ url_for('view_logs') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'view_logs' else '' }}">
                     <i data-lucide="file-text"></i> <span>Log Aktivitas</span>
                 </a>
             </div>
             {% endif %}
-            
+
             <div class="nav-item">
-                <a href="{{ url_for('profile') }}" class="nav-link {{ 'active' if request.endpoint == 'profile' else '' }}">
+                <a href="{{ url_for('profile') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'profile' else '' }}">
                     <i data-lucide="user-circle"></i> <span>Profil Saya</span>
                 </a>
             </div>
@@ -509,8 +557,8 @@
             const icon = document.getElementById('mobile-icon');
             sidebar.classList.toggle('active');
             sidebar.classList.toggle('minimized', false);
-            
-            if(sidebar.classList.contains('active')) {
+
+            if (sidebar.classList.contains('active')) {
                 icon.setAttribute('data-lucide', 'x');
             } else {
                 icon.setAttribute('data-lucide', 'menu');
@@ -526,4 +574,5 @@
         lucide.createIcons();
     </script>
 </body>
+
 </html>
