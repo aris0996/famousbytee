@@ -25,45 +25,52 @@
         </div>
 
         <div style="margin-top: 2rem; padding: 1.5rem; background: #f8faff; border-radius: 16px; border: 1px solid #eef2ff;">
-            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
-                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                    {% if settings.get('web_logo_path') %}
-                        <img src="{{ settings.get('web_logo_path') }}" style="max-width: 32px; max-height: 32px;">
+            <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem;">
+                <div style="background: white; width: 60px; height: 60px; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; overflow: hidden;">
+                    {% if site_settings.logo_display_path %}
+                        <img src="{{ site_settings.logo_display_path }}" style="width: 100%; height: 100%; object-fit: contain; padding: 5px;">
                     {% else %}
-                        <i data-lucide="{{ settings.get('web_logo', 'monitor') }}" style="color: var(--primary);"></i>
+                        <i data-lucide="{{ site_settings.web_logo or 'monitor' }}" style="color: var(--primary); width: 32px; height: 32px;"></i>
                     {% endif %}
                 </div>
-                <h4 style="font-size: 1rem;">Logo Portal Utama</h4>
+                <div>
+                    <h4 style="font-size: 1.1rem; color: #1e293b;">Logo Portal Utama</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted);">Muncul di Navbar & Sidebar.</p>
+                </div>
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px;">
                 <div class="form-group">
                     <label>Metode 1: Lucide Icon</label>
-                    <input type="text" name="web_logo" class="form-control" value="{{ settings.get('web_logo', 'monitor') }}" placeholder="monitor, zap, heart...">
+                    <input type="text" name="web_logo" class="form-control" value="{{ site_settings.web_logo or 'monitor' }}" placeholder="monitor, zap, star...">
+                    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;">Hanya aktif jika tidak ada file yang diupload.</p>
                 </div>
                 <div class="form-group">
-                    <label>Metode 2: Upload Gambar</label>
-                    <input type="file" name="logo_file" class="form-control" style="background: white;">
-                    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;">Format: PNG/JPG (Maks 1MB). Rekomendasi 128x128px.</p>
+                    <label>Metode 2: Upload Gambar (Auto-Compress)</label>
+                    <input type="file" name="logo_file" class="form-control" style="background: white;" accept="image/*">
+                    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 5px;">PNG/JPG/WebP. Akan dikompres otomatis ke WebP.</p>
                 </div>
             </div>
         </div>
 
         <div style="margin-top: 1.5rem; padding: 1.5rem; background: #f8faff; border-radius: 16px; border: 1px solid #eef2ff;">
-             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1rem;">
-                <div style="background: white; width: 50px; height: 50px; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
-                   <img src="{{ settings.get('favicon_path') or settings.get('favicon_url', '/static/favicon.ico') }}" style="max-width: 24px; border-radius: 4px;">
+             <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 1.5rem;">
+                <div style="background: white; width: 60px; height: 60px; border-radius: 14px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.08); border: 1px solid #e2e8f0;">
+                   <img src="{{ site_settings.favicon_display_url }}" style="width: 32px; height: 32px; object-fit: contain;">
                 </div>
-                <h4 style="font-size: 1rem;">Favicon (Browser Icon)</h4>
+                <div>
+                    <h4 style="font-size: 1.1rem; color: #1e293b;">Favicon (Browser Icon)</h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted);">Muncul di tab browser.</p>
+                </div>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 20px;">
                 <div class="form-group">
-                    <label>URL / File Local</label>
-                    <input type="text" name="favicon_url" class="form-control" value="{{ settings.get('favicon_url', '/static/favicon.ico') }}">
+                    <label>Opsi 1: URL External</label>
+                    <input type="text" name="favicon_url" class="form-control" value="{{ site_settings.favicon_url or '/static/favicon.ico' }}">
                 </div>
                 <div class="form-group">
-                    <label>Upload Baru</label>
-                    <input type="file" name="favicon_file" class="form-control" style="background: white;">
+                    <label>Opsi 2: Upload Baru (High Def)</label>
+                    <input type="file" name="favicon_file" class="form-control" style="background: white;" accept="image/*">
                 </div>
             </div>
         </div>

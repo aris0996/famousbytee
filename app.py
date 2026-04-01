@@ -43,7 +43,12 @@ def inject_settings():
     # Defaults
     if 'web_title' not in settings: settings['web_title'] = 'Famousbytee.b Portal'
     if 'web_logo' not in settings: settings['web_logo'] = 'monitor'
-    if 'favicon_url' not in settings: settings['favicon_url'] = '/static/favicon.ico'
+    
+    # Logic for Branding Assets
+    # Priority: Uploaded File Path > Lucide Icon / Default URL
+    settings['logo_display_path'] = settings.get('web_logo_path')
+    settings['favicon_display_url'] = settings.get('favicon_path') or settings.get('favicon_url', '/static/favicon.ico')
+    
     return dict(site_settings=settings, datetime=datetime)
 
 @app.errorhandler(404)
@@ -824,27 +829,49 @@ def manage_settings():
     if request.method == 'POST':
         # 1. Handle Text Settings
         for key in ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_daily_rate']:
-
             if key in request.form:
+                val = request.form[key]
                 setting = SystemSetting.query.filter_by(key=key).first()
-                if setting: setting.value = request.form[key]
-                else: db.session.add(SystemSetting(key=key, value=request.form[key]))
+                if setting: setting.value = val
+                else: db.session.add(SystemSetting(key=key, value=val))
         
-        # 2. Handle File Uploads (Logo/Favicon)
+        # 2. Handle Branding File Uploads (Logo/Favicon) with Auto-Compression
+        branding_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'branding')
+        os.makedirs(branding_dir, exist_ok=True)
+
         for key in ['logo_file', 'favicon_file']:
             if key in request.files:
                 file = request.files[key]
-                if file.filename != '':
-                    filename = secure_filename(f"{key.split('_')[0]}_{file.filename}")
-                    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                    
-                    db_key = 'web_logo_path' if 'logo' in key else 'favicon_path'
-                    setting = SystemSetting.query.filter_by(key=db_key).first()
-                    if setting: setting.value = f"/static/uploads/{filename}"
-                    else: db.session.add(SystemSetting(key=db_key, value=f"/static/uploads/{filename}"))
+                if file and file.filename != '':
+                    try:
+                        # Process and Compress Branding Images
+                        img = Image.open(file.stream)
+                        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+                        
+                        asset_type = 'logo' if 'logo' in key else 'favicon'
+                        filename = f"{asset_type}_{uuid.uuid4().hex[:8]}.webp"
+                        filepath = os.path.join(branding_dir, filename)
+                        
+                        # Branding logic: Auto-resize and high quality compress
+                        if asset_type == 'logo':
+                             img.thumbnail((512, 512)) # Max logo size
+                        else:
+                             img.thumbnail((64, 64)) # Square favicon
+                             
+                        img.save(filepath, 'WEBP', quality=90)
+                        
+                        # Save path to DB
+                        db_key = 'web_logo_path' if asset_type == 'logo' else 'favicon_path'
+                        db_val = f"/static/uploads/branding/{filename}"
+                        
+                        setting = SystemSetting.query.filter_by(key=db_key).first()
+                        if setting: setting.value = db_val
+                        else: db.session.add(SystemSetting(key=db_key, value=db_val))
+                    except Exception as e:
+                        flash(f'Gagal memproses gambar branding: {e}')
                     
         db.session.commit()
-        flash('Pengaturan sistem diperbarui.')
+        flash('Pengaturan sistem dan branding diperbarui!')
         return redirect(url_for('manage_settings'))
     
     settings = {s.key: s.value for s in SystemSetting.query.all()}

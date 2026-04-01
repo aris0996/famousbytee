@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ site_settings.get('web_title', 'Portal Kelas Famousbytee.b') }}</title>
-    <link rel="icon" type="image/x-icon" href="{{ site_settings.get('favicon_url', '/static/favicon.ico') }}">
+    <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -402,10 +402,10 @@
 <body>
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-brand">
-            {% if site_settings.get('web_logo_path') %}
-                <img src="{{ site_settings.get('web_logo_path') }}" style="max-width: 32px; max-height: 32px; border-radius: 6px;">
+            {% if site_settings.logo_display_path %}
+                <img src="{{ site_settings.logo_display_path }}" style="width: 38px; height: 38px; object-fit: contain; border-radius: 8px;">
             {% else %}
-                <i data-lucide="{{ site_settings.get('web_logo', 'monitor') }}"></i>
+                <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
             {% endif %}
             <span>{{ site_settings.get('web_title', 'Famousbytee.b').split(' ')[0] }}</span>
             <div class="toggle-sidebar" onclick="toggleSidebar()">
