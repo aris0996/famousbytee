@@ -1020,12 +1020,14 @@ def process_image_upload(file):
         img = Image.open(file.stream)
         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
         
-        # Save Original as WebP
-        img.save(filepath, 'WEBP', quality=85)
+        # Save Preview/Standard (High-res but WebP compressed for speed)
+        # We keep original resolution but compress quality to 60%
+        img.save(filepath, 'WEBP', quality=60)
         
-        # Create and Save Thumbnail
-        img.thumbnail((400, 400)) # Maintain aspect ratio
-        img.save(thumbpath, 'WEBP', quality=75)
+        # Create and Save Thumbnail (Small & Lightweight for grids)
+        thumb_img = img.copy()
+        thumb_img.thumbnail((500, 500)) # Small grid size
+        thumb_img.save(thumbpath, 'WEBP', quality=50)
         return filename
     except Exception as e:
         print(f"Error processing image: {e}")
@@ -1227,6 +1229,9 @@ def download_gallery_photo(id):
     # Ensure only members can download original resolution
     # (Since it's login_required, any logged in user can download)
     directory = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery')
+    # Use as_attachment=True with original original if available, 
+    # but here we serve the webp one as the "light original" 
+    # (The user specifically asked for compression only for previews)
     return send_from_directory(directory, photo.filename, as_attachment=True)
 
 

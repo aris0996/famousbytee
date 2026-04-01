@@ -110,7 +110,7 @@
 <div id="modal-upload" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(4px); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="upload-cloud" style="color: var(--primary);"></i> Tambah Momen</h2>
-        <form action="{{ url_for('upload_gallery') }}" method="POST" enctype="multipart/form-data">
+        <form action="{{ url_for('upload_gallery') }}" method="POST" enctype="multipart/form-data" id="upload-form">
             
             <div class="upload-zone" id="drop-zone" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 2rem; text-align: center; background: #f8fafc; cursor: pointer; margin-bottom: 1.5rem; transition: background 0.2s;">
                 <i data-lucide="image" style="width: 40px; height: 40px; color: #94a3b8; margin-bottom: 10px;"></i>
@@ -146,9 +146,15 @@
             </div>
             {% endif %}
 
-            <div style="display: flex; gap: 10px; margin-top: 2rem;">
+            <div style="display: flex; gap: 10px; margin-top: 2rem;" id="upload-actions">
                 <button type="submit" class="btn" style="flex:1;">Mulai Upload & Optimasi</button>
                 <button type="button" class="btn" style="background: #e2e8f0; color: #475569; padding: 0 1.5rem;" onclick="document.getElementById('modal-upload').style.display='none'">Batal</button>
+            </div>
+            <!-- Loading Indicator -->
+            <div id="upload-loading" style="display: none; text-align: center; margin-top: 2rem;">
+                <div class="spinner"></div>
+                <p style="margin-top: 1rem; font-weight: 600; color: var(--primary);">Sedang Mengunggah & Mengkompres Foto...</p>
+                <p style="font-size: 0.75rem; color: var(--text-muted);">Mohon tunggu sebentar, kami sedang mengoptimasi gambar Anda agar ringan.</p>
             </div>
         </form>
     </div>
@@ -329,6 +335,12 @@
         }
     }
     @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+    /* Spinner logic */
+    .spinner {
+        width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary);
+        border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 </style>
 
 <script>
@@ -354,6 +366,12 @@
             dropZone.style.borderColor = 'var(--primary)';
         }
     }
+
+    // Upload Loading Logic
+    document.getElementById('upload-form').addEventListener('submit', function() {
+        document.getElementById('upload-actions').style.display = 'none';
+        document.getElementById('upload-loading').style.display = 'block';
+    });
 
     // Lightbox Subroutine
     const lightbox = document.getElementById('lightbox');
