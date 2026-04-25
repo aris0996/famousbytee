@@ -310,6 +310,77 @@ def moderate_gallery(photo_id):
     db.session.commit()
     return jsonify({"status": "success"})
 
+import uuid
+from PIL import Image
+
+def process_image_upload(file):
+    if not file: return None
+    try:
+        # Using current_app.config
+        gallery_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'gallery')
+        thumb_dir = os.path.join(gallery_dir, 'thumbnails')
+        os.makedirs(gallery_dir, exist_ok=True)
+        os.makedirs(thumb_dir, exist_ok=True)
+
+        filename_base = uuid.uuid4().hex
+        filename = f"{filename_base}.webp"
+        filepath = os.path.join(gallery_dir, filename)
+        thumbpath = os.path.join(thumb_dir, filename)
+
+        img = Image.open(file.stream)
+        if img.mode in ("RGBA", "P"): img = img.convert("RGB")
+        
+        # Save Preview/Standard
+        preview_img = img.copy()
+        preview_img.thumbnail((1200, 1200))
+        preview_img.save(filepath, 'WEBP', quality=50)
+        
+        # Create and Save Thumbnail
+        thumb_img = img.copy()
+        thumb_img.thumbnail((300, 300))
+        thumb_img.save(thumbpath, 'WEBP', quality=45)
+        return filename
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        return None
+
+@api_bp.route('/gallery/upload', methods=['POST'])
+@jwt_required()
+def upload_gallery_api():
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    
+    files = request.files.getlist('photos')
+    if not files:
+        return jsonify({"error": "Tidak ada foto terpilih"}), 400
+        
+    caption = request.form.get('caption', '')
+    tags = request.form.get('tags', '')
+    is_public = request.form.get('is_public') == 'true'
+    
+    # Non-admin uploads are pending
+    status = 'Published' if user.role.name in ['Admin', 'Pengurus'] else 'Pending'
+    
+    count = 0
+    for file in files:
+        if file and file.filename != '':
+            filename = process_image_upload(file)
+            if filename:
+                photo = GalleryPhoto(
+                    filename=filename,
+                    thumbnail=filename,
+                    caption=caption,
+                    tags=tags,
+                    uploaded_by=user_id,
+                    status=status,
+                    is_public=is_public
+                )
+                db.session.add(photo)
+                count += 1
+    
+    db.session.commit()
+    return jsonify({"status": "success", "count": count})
+
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
 def get_logs():
