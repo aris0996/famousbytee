@@ -234,6 +234,7 @@ def get_funds_audit():
     return jsonify(audit_data)
 
 @api_bp.route('/members', methods=['GET'])
+@api_bp.route('/students', methods=['GET'])
 @jwt_required()
 def get_members():
     user_id = get_jwt_identity()
