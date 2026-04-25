@@ -385,6 +385,11 @@ def upload_gallery_api():
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
 def get_logs():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if user.role.name not in ['Admin', 'Pengurus']:
+        return jsonify({"error": "Unauthorized"}), 403
+
     logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(50).all()
     return jsonify([{
         "id": l.id,
