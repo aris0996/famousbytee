@@ -220,3 +220,15 @@ def get_gallery():
         "uploaded_by": p.user.full_name if p.user else "System",
         "created_at": p.created_at.isoformat()
     } for p in photos])
+
+@api_bp.route('/logs', methods=['GET'])
+@jwt_required()
+def get_logs():
+    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(50).all()
+    return jsonify([{
+        "id": l.id,
+        "action": l.action,
+        "details": l.details,
+        "timestamp": l.timestamp.isoformat(),
+        "username": l.user.username if l.user else "System"
+    } for l in logs])
