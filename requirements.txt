@@ -4,3 +4,5 @@ flask-login
 pymysql
 cryptography
 python-dotenv
+flask-jwt-extended
+flask-cors

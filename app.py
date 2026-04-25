@@ -11,9 +11,22 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 
 from config import Config
+from flask_jwt_extended import JWTManager
+from flask_cors import CORS
+from routes.api import api_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Enable CORS for all routes (important for mobile/cross-origin requests)
+CORS(app)
+
+# Initialize JWT
+app.config['JWT_SECRET_KEY'] = app.config.get('SECRET_KEY', 'super-secret-dev-key')
+jwt = JWTManager(app)
+
+# Register API Blueprint
+app.register_blueprint(api_bp)
 
 UPLOAD_FOLDER = os.path.join(app.root_path, 'static', 'uploads')
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
@@ -27,6 +40,20 @@ login_manager.init_app(app)
 # Ensure database tables are created for new features
 with app.app_context():
     db.create_all()
+    
+    # Enable API access for default roles if not already set
+    try:
+        roles_to_enable = ['Admin', 'Pengurus', 'Member']
+        updated = False
+        for role_name in roles_to_enable:
+            role = Role.query.filter_by(name=role_name).first()
+            if role and not role.can_use_api:
+                role.can_use_api = True
+                updated = True
+        if updated:
+            db.session.commit()
+    except Exception as e:
+        print(f"Error updating roles: {e}")
 
 @login_manager.user_loader
 def load_user(user_id):
