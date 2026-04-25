@@ -348,7 +348,7 @@ def process_image_upload(file):
 @api_bp.route('/gallery/upload', methods=['POST'])
 @jwt_required()
 def upload_gallery_api():
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     
     files = request.files.getlist('photos')
