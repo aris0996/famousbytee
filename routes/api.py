@@ -1,7 +1,9 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog
 from datetime import datetime, timedelta
+import os
+from werkzeug.utils import secure_filename
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -252,15 +254,61 @@ def get_members():
 @api_bp.route('/gallery', methods=['GET'])
 @jwt_required()
 def get_gallery():
-    photos = GalleryPhoto.query.filter_by(status='Published').order_by(GalleryPhoto.created_at.desc()).all()
+    # User can see published photos, or their own pending photos
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    
+    if user.role.name in ['Admin', 'Pengurus']:
+        photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
+    else:
+        # Published OR owned by user
+        photos = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.user_id == user_id)).order_by(GalleryPhoto.created_at.desc()).all()
+
     return jsonify([{
         "id": p.id,
         "filename": p.filename,
         "thumbnail": p.thumbnail,
         "caption": p.caption,
+        "tags": p.tags,
+        "status": p.status,
+        "is_public": p.is_public,
         "uploaded_by": p.user.full_name if p.user else "System",
-        "created_at": p.created_at.isoformat()
+        "created_at": p.created_at.isoformat(),
+        "comments": [{
+            "id": c.id,
+            "user": c.user.student.full_name if c.user.student else c.user.full_name or c.user.username,
+            "body": c.body,
+            "time": c.created_at.strftime('%d %b %H:%M')
+        } for c in p.comments]
     } for p in photos])
+
+@api_bp.route('/gallery/comment/<int:photo_id>', methods=['POST'])
+@jwt_required()
+def add_gallery_comment(photo_id):
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    if not data or not data.get('body'):
+        return jsonify({"error": "Pesan komentar diperlukan"}), 400
+    
+    from models import PhotoComment
+    comment = PhotoComment(photo_id=photo_id, user_id=user_id, body=data['body'])
+    db.session.add(comment)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@api_bp.route('/gallery/moderate/<int:photo_id>', methods=['POST'])
+@jwt_required()
+def moderate_gallery(photo_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if user.role.name not in ['Admin', 'Pengurus']:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    photo = GalleryPhoto.query.get_or_404(photo_id)
+    photo.status = data.get('status', 'Published')
+    db.session.commit()
+    return jsonify({"status": "success"})
 
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
