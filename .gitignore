@@ -17,7 +17,9 @@ venv.bak/
 campus.db
 *.log
 instance/
+mobile/
 famousbytee_mobile
+
 
 # IDE specific
 .vscode/
