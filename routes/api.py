@@ -157,6 +157,29 @@ def get_schedules():
         "room": s.room
     } for s in schedules])
 
+def get_fund_target():
+    """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""
+    try:
+        from app import SystemSetting
+        start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
+        rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
+        
+        start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
+        daily_rate = int(rate_setting.value) if rate_setting else 1000
+    except:
+        start_date = datetime(2024, 3, 30).date()
+        daily_rate = 1000
+
+    today = datetime.now().date()
+    target = 0
+    if today >= start_date:
+        curr = start_date
+        while curr <= today:
+            if curr.weekday() < 5: # Monday (0) to Friday (4)
+                target += daily_rate
+            curr += timedelta(days=1)
+    return target
+
 @api_bp.route('/funds/summary', methods=['GET'])
 @jwt_required()
 def get_funds_summary():
@@ -173,13 +196,7 @@ def get_funds_summary():
 @api_bp.route('/funds/history', methods=['GET'])
 @jwt_required()
 def get_funds_history():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
-    
-    if not user or not user.student:
-        return jsonify([])
-        
-    history = BatchFund.query.filter_by(student_id=user.student.id).order_by(BatchFund.date.desc()).all()
+    history = BatchFund.query.order_by(BatchFund.date.desc()).all()
     return jsonify([{
         "id": f.id,
         "description": f.description,
@@ -187,8 +204,32 @@ def get_funds_history():
         "type": f.type,
         "category": f.category,
         "date": f.date.isoformat(),
-        "tags": f.tags
+        "tags": f.tags,
+        "student_name": f.student.full_name if f.student else None
     } for f in history])
+
+@api_bp.route('/funds/audit', methods=['GET'])
+@jwt_required()
+def get_funds_audit():
+    students = Student.query.order_by(Student.full_name).all()
+    target_payment = get_fund_target()
+    
+    audit_data = []
+    for s in students:
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == s.id, 
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        
+        audit_data.append({
+            "student_name": s.full_name,
+            "nim": s.nim,
+            "paid": total_paid,
+            "target": target_payment,
+            "arrears": max(0, target_payment - total_paid)
+        })
+        
+    return jsonify(audit_data)
 
 @api_bp.route('/members', methods=['GET'])
 @jwt_required()
