@@ -263,7 +263,7 @@ def get_gallery():
         photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
     else:
         # Published OR owned by user
-        photos = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.user_id == user_id)).order_by(GalleryPhoto.created_at.desc()).all()
+        photos = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == user_id)).order_by(GalleryPhoto.created_at.desc()).all()
 
     return jsonify([{
         "id": p.id,
