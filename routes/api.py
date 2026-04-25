@@ -139,7 +139,14 @@ def get_announcements():
 @api_bp.route('/schedules', methods=['GET'])
 @jwt_required()
 def get_schedules():
-    schedules = Schedule.query.all()
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if user.student and user.student.classroom_id:
+        schedules = Schedule.query.filter_by(classroom_id=user.student.classroom_id).all()
+    else:
+        schedules = Schedule.query.all()
+        
     return jsonify([{
         "id": s.id,
         "day": s.day,
@@ -186,7 +193,14 @@ def get_funds_history():
 @api_bp.route('/members', methods=['GET'])
 @jwt_required()
 def get_members():
-    students = Student.query.order_by(Student.full_name).all()
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if user.student and user.student.classroom_id:
+        students = Student.query.filter_by(classroom_id=user.student.classroom_id).order_by(Student.full_name).all()
+    else:
+        students = Student.query.order_by(Student.full_name).all()
+        
     return jsonify([{
         "id": s.id,
         "nim": s.nim,
