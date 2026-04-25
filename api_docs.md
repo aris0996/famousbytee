@@ -3,7 +3,7 @@
 This API is designed to be used by Android, iOS, and other client applications.
 
 ## Base URL
-`http://your-domain.com/api`
+`http://famousbytee.arisdev.web.id/api`
 
 ## Authentication
 The API uses JSON Web Tokens (JWT). Most endpoints require an `Authorization` header.

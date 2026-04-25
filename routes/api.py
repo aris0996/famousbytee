@@ -142,6 +142,26 @@ def get_funds_summary():
         "balance": balance
     })
 
+@api_bp.route('/funds/history', methods=['GET'])
+@jwt_required()
+def get_funds_history():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if not user or not user.student:
+        return jsonify([])
+        
+    history = BatchFund.query.filter_by(student_id=user.student.id).order_by(BatchFund.date.desc()).all()
+    return jsonify([{
+        "id": f.id,
+        "description": f.description,
+        "amount": f.amount,
+        "type": f.type,
+        "category": f.category,
+        "date": f.date.isoformat(),
+        "tags": f.tags
+    } for f in history])
+
 @api_bp.route('/gallery', methods=['GET'])
 @jwt_required()
 def get_gallery():
