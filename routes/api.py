@@ -64,6 +64,27 @@ def login():
     
     return jsonify({"msg": "Invalid credentials"}), 401
 
+@api_bp.route('/change-password', methods=['POST'])
+@jwt_required()
+def change_password():
+    data = request.get_json()
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    old_password = data.get('old_password')
+    new_password = data.get('new_password')
+    
+    if not old_password or not new_password:
+        return jsonify({"msg": "Old and new password required"}), 400
+        
+    if user.password != old_password:
+        return jsonify({"msg": "Old password incorrect"}), 401
+        
+    user.password = new_password
+    db.session.commit()
+    
+    return jsonify({"msg": "Password changed successfully"})
+
 @api_bp.route('/profile', methods=['GET'])
 @jwt_required()
 def get_profile():
@@ -161,6 +182,17 @@ def get_funds_history():
         "date": f.date.isoformat(),
         "tags": f.tags
     } for f in history])
+
+@api_bp.route('/members', methods=['GET'])
+@jwt_required()
+def get_members():
+    students = Student.query.order_by(Student.full_name).all()
+    return jsonify([{
+        "id": s.id,
+        "nim": s.nim,
+        "full_name": s.full_name,
+        "status": s.status
+    } for s in students])
 
 @api_bp.route('/gallery', methods=['GET'])
 @jwt_required()
