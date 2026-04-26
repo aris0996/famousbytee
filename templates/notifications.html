@@ -50,6 +50,12 @@
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem;">Riwayat Notifikasi</h2>
+            {% if history %}
+            <a href="{{ url_for('clear_notification_history') }}" class="btn" style="background: #fee2e2; color: #991b1b; padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="return confirm('Apakah Anda yakin ingin menghapus seluruh riwayat notifikasi? Tindakan ini tidak dapat dibatalkan.')">
+                <i data-lucide="trash-2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
+                Bersihkan Riwayat
+            </a>
+            {% endif %}
         </div>
         <div style="overflow-x: auto;">
             <table>

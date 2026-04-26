@@ -863,8 +863,9 @@ def manage_announcements():
         db.session.add(ann)
         db.session.commit()
         
-        if ann.category == 'Penting':
-            send_push("Pengumuman Penting!", ann.title)
+        # Always notify for all announcements
+        title_prefix = "Pengumuman Baru!" if ann.category != 'Penting' else "PENTING: Pengumuman!"
+        send_push(title_prefix, ann.title, sender_id=current_user.id)
 
         log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
@@ -1390,6 +1391,7 @@ def upload_gallery():
     if status == 'Pending':
         flash(f'{count} foto berhasil diunggah. Menunggu persetujuan Admin untuk dipublikasikan.')
     else:
+        send_push("Foto Galeri Baru!", f"{current_user.full_name} baru saja mengunggah {count} foto baru.", sender_id=current_user.id)
         flash(f'{count} foto berhasil diunggah dan dipublikasikan.')
     return redirect(url_for('manage_gallery'))
 
@@ -1712,6 +1714,23 @@ def manage_notifications():
     history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(50).all()
     users = User.query.filter(User.fcm_token.isnot(None)).all()
     return render_template('notifications.html', history=history, users=users)
+
+@app.route('/notifications/clear')
+@login_required
+def clear_notification_history():
+    if not current_user.role.can_manage_notifications:
+        return redirect(url_for('dashboard'))
+    
+    try:
+        NotificationHistory.query.delete()
+        db.session.commit()
+        log_activity("Hapus Riwayat Notifikasi", "Seluruh riwayat notifikasi dikosongkan")
+        flash('Seluruh riwayat notifikasi telah dibersihkan.')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal membersihkan riwayat: {e}')
+        
+    return redirect(url_for('manage_notifications'))
 
 @app.route('/sitemap.xml')
 def sitemap():
