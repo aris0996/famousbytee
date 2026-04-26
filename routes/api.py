@@ -454,7 +454,17 @@ def get_notification_history():
         "status": h.status
     } for h in history])
 
-@api_bp.route('/notifications', methods=['POST'])
+@api_bp.route('/notifications/recipients', methods=['GET'])
+@jwt_required()
+def get_notification_recipients():
+    users = User.query.filter(User.fcm_token.isnot(None)).all()
+    return jsonify([{
+        "id": u.id,
+        "full_name": u.student.full_name if u.student else u.username,
+        "username": u.username
+    } for u in users])
+
+@api_bp.route('/notifications/send', methods=['POST'])
 @jwt_required()
 def api_send_notifications():
     user_id = get_jwt_identity()
@@ -475,7 +485,7 @@ def api_send_notifications():
         
     return jsonify({"status": "success"})
 
-@api_bp.route('/fund', methods=['POST'])
+@api_bp.route('/fund/add', methods=['POST'])
 @jwt_required()
 def api_manage_fund():
     user_id = get_jwt_identity()
