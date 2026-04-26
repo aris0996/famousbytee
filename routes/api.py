@@ -406,7 +406,6 @@ def upload_gallery_api():
 
     return jsonify({"status": "success", "count": count})
 
-    } for l in logs])
 
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
