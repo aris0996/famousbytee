@@ -170,7 +170,7 @@ def update_fcm_token():
     user = User.query.get(int(user_id))
     data = request.get_json()
     
-    fcm_token = data.get('fcm_token')
+    fcm_token = data.get('fcm_token') or data.get('token')
     if fcm_token:
         user.fcm_token = fcm_token
         db.session.commit()
