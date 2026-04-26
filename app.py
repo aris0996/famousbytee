@@ -97,7 +97,7 @@ def send_push(title, body, user_id=None, sender_id=None):
                         token=u.fcm_token
                     ) for u in users
                 ]
-                messaging.send_all(messages)
+                messaging.send_each(messages)
     except Exception as e:
         print(f"Push Notification Error: {e}")
         status = f"Error: {str(e)[:20]}"
