@@ -406,6 +406,8 @@ def upload_gallery_api():
 
     return jsonify({"status": "success", "count": count})
 
+    } for l in logs])
+
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
 def get_logs():
@@ -422,3 +424,23 @@ def get_logs():
         "timestamp": l.timestamp.isoformat(),
         "username": l.user.username if l.user else "System"
     } for l in logs])
+
+@api_bp.route('/notifications/history', methods=['GET'])
+@jwt_required()
+def get_notification_history():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    # Show notifications that are for "All" or for this specific user
+    history = NotificationHistory.query.filter(
+        (NotificationHistory.target == 'All') | (NotificationHistory.target == str(user_id))
+    ).order_by(NotificationHistory.sent_at.desc()).limit(30).all()
+    
+    return jsonify([{
+        "id": h.id,
+        "title": h.title,
+        "body": h.body,
+        "target": h.target,
+        "sent_at": h.sent_at.isoformat(),
+        "status": h.status
+    } for h in history])
