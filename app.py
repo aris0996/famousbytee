@@ -68,16 +68,20 @@ def send_push(title, body, user_id=None, sender_id=None):
     
     # Log to History
     try:
+        # Ensure status doesn't exceed 100 chars
+        safe_status = str(status)[:95]
+        
         history = NotificationHistory(
             title=title,
             body=body,
             target=str(user_id) if user_id else "All",
             sent_by=sender_id,
-            status=status
+            status=safe_status
         )
         db.session.add(history)
         db.session.commit()
     except Exception as e:
+        db.session.rollback()
         print(f"History Log Error: {e}")
 
 def run_automated_reminders():

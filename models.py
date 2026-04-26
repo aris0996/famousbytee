@@ -168,4 +168,4 @@ class NotificationHistory(db.Model):
     sent_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     user = db.relationship('User', backref='notifications_sent', lazy=True)
     sent_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    status = db.Column(db.String(20)) # Success, Failed
+    status = db.Column(db.String(100)) # Success, Failed, Error Details
