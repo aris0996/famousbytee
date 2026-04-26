@@ -456,77 +456,87 @@
             </div>
 
             {% if current_user.is_authenticated %}
+            <!-- Dashboard -->
             <div class="nav-item">
                 <a href="{{ url_for('dashboard') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
-                    <i data-lucide="layout-dashboard"></i> <span>{{ 'Home Info' if current_user.role.name == 'Member'
-                        else 'Dashboard' }}</span>
+                    <i data-lucide="layout-dashboard"></i> <span>Dashboard</span>
                 </a>
             </div>
 
+            <!-- Pengumuman (Manage for Staff, View for Members) -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_announcements') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
-                    <i data-lucide="megaphone"></i> <span>Pengumuman</span>
+                    <i data-lucide="megaphone"></i> <span>{{ 'Manajemen Pengumuman' if current_user.role.can_manage_announcements else 'Pengumuman' }}</span>
                 </a>
             </div>
 
+            <!-- Uang Kas -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_fund') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
-                    <i data-lucide="wallet"></i> <span>{{ 'Transparansi Kas' if current_user.role.name == 'Member' else
-                        'Uang Kas' }}</span>
+                    <i data-lucide="wallet"></i> <span>{{ 'Manajemen Kas' if current_user.role.can_manage_fund else 'Transparansi Kas' }}</span>
                 </a>
             </div>
 
-            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+            <!-- Notifikasi (Staff Only) -->
+            {% if current_user.role.can_manage_notifications %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_notifications') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_notifications' else '' }}">
-                    <i data-lucide="bell"></i> <span>Notifikasi</span>
-                </a>
-            </div>
-            <div class="nav-item">
-                <a href="{{ url_for('manage_members') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
-                    <i data-lucide="users"></i> <span>Members</span>
+                    <i data-lucide="bell"></i> <span>Notifikasi Push</span>
                 </a>
             </div>
             {% endif %}
 
+            <!-- Member Management (Staff Only) -->
+            {% if current_user.role.can_manage_students %}
+            <div class="nav-item">
+                <a href="{{ url_for('manage_members') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
+                    <i data-lucide="users"></i> <span>Manajemen Member</span>
+                </a>
+            </div>
+            {% endif %}
+
+            <!-- Jadwal -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_schedule') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
-                    <i data-lucide="calendar"></i> <span>{{ 'Lihat Jadwal' if current_user.role.name == 'Member' else
-                        'Jadwal Kuliah' }}</span>
+                    <i data-lucide="calendar"></i> <span>{{ 'Manajemen Jadwal' if current_user.role.can_manage_schedule else 'Jadwal Kuliah' }}</span>
                 </a>
             </div>
 
+            <!-- Galeri -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_gallery') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_gallery' else '' }}">
-                    <i data-lucide="image"></i> <span>{{ 'Dokumentasi Kelas' if current_user.role.name == 'Member' else
-                        'Galeri Kelas' }}</span>
+                    <i data-lucide="image"></i> <span>{{ 'Manajemen Galeri' if current_user.role.can_manage_gallery else 'Galeri Kelas' }}</span>
                 </a>
             </div>
 
-            {% if current_user.role.can_manage_roles %}
+            <!-- Admin Only: Settings, Roles, Logs -->
+            {% if current_user.role.can_edit_settings %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_settings') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_settings' else '' }}">
                     <i data-lucide="settings"></i> <span>Pengaturan Web</span>
                 </a>
             </div>
+            {% endif %}
+
+            {% if current_user.role.can_manage_roles %}
             <div class="nav-item">
                 <a href="{{ url_for('manage_roles') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
-                    <i data-lucide="shield-check"></i> <span>Admin & Role</span>
+                    <i data-lucide="shield"></i> <span>Manajemen Role</span>
                 </a>
             </div>
             <div class="nav-item">
                 <a href="{{ url_for('view_logs') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'view_logs' else '' }}">
-                    <i data-lucide="file-text"></i> <span>Log Aktivitas</span>
+                    <i data-lucide="activity"></i> <span>Log Aktivitas</span>
                 </a>
             </div>
             {% endif %}
