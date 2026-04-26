@@ -35,3 +35,4 @@ config.py
 static/uploads/
 static/uploads/gallery/
 !static/uploads/.gitkeep
+serviceAccountKey.json
