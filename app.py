@@ -913,6 +913,7 @@ def delete_announcement(id):
     return redirect(url_for('manage_announcements'))
 
 @app.route('/fund', methods=['GET', 'POST'])
+@app.route('/api/fund', methods=['GET', 'POST'])
 @login_required
 def manage_fund():
     class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
@@ -1723,6 +1724,7 @@ def api_announcements():
     return jsonify([{'id': a.id, 'title': a.title, 'category': a.category, 'date': a.date_posted} for a in anns])
 
 @app.route('/notifications', methods=['GET', 'POST'])
+@app.route('/api/notifications', methods=['GET', 'POST'])
 @login_required
 def manage_notifications():
     if not current_user.role.can_manage_notifications:
