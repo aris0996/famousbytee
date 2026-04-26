@@ -297,7 +297,17 @@ def login():
                 flash('Harap masukkan password untuk akun terdaftar.')
                 return redirect(url_for('login'))
             
-            if user.password == password:
+            from werkzeug.security import check_password_hash
+            
+            is_valid = False
+            # Check if password is hashed (Werkzeug format)
+            if user.password.startswith('scrypt:') or user.password.startswith('pbkdf2:'):
+                is_valid = check_password_hash(user.password, password)
+            else:
+                # Fallback for legacy plain-text passwords
+                is_valid = (user.password == password)
+
+            if is_valid:
                 if user.status != 'Active':
                     flash('Akun Anda dinonaktifkan. Hubungi admin.')
                     return redirect(url_for('login'))
@@ -1195,10 +1205,15 @@ def manage_roles():
                 student_id=int(s_id) if s_id and s_id != 'none' else None,
                 status='Active'
             )
-            db.session.add(new_user)
-            db.session.commit()
-            log_activity("Tambah User", f"Username: {new_user.username}")
-            flash(f'User {new_user.username} berhasil didaftarkan.')
+            try:
+                db.session.add(new_user)
+                db.session.commit()
+                log_activity("Tambah User", f"Username: {new_user.username}")
+                flash(f'User {new_user.username} berhasil didaftarkan.')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Gagal menambah user: Email atau Username mungkin sudah terdaftar.')
+                print(f"User Add Error: {e}")
             
         return redirect(url_for('manage_roles'))
 
@@ -1222,9 +1237,15 @@ def edit_user(id):
     
     if request.form.get('password'):
         user.password = request.form['password']
-    db.session.commit()
-    log_activity("Edit User", f"Username: {user.username}")
-    flash(f'Data user {user.username} telah diperbarui.')
+    
+    try:
+        db.session.commit()
+        log_activity("Edit User", f"Username: {user.username}")
+        flash(f'Data user {user.username} telah diperbarui.')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Gagal memperbarui user: Email mungkin sudah digunakan oleh akun lain.')
+        print(f"User Edit Error: {e}")
     return redirect(url_for('manage_roles'))
 
 @app.route('/roles/delete/user/<int:id>')

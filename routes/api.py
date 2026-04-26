@@ -428,6 +428,7 @@ def get_logs():
 @jwt_required()
 def get_notification_history():
     user_id = get_jwt_identity()
+    db.session.rollback()
     user = User.query.get(int(user_id))
     
     # Show notifications that are for "All" or for this specific user
