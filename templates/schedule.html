@@ -6,198 +6,213 @@
         <p style="color: var(--text-muted);">Atur waktu perkuliahan kelas Famousbytee.b secara visual dan efisien.</p>
     </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn" style="background: white; border: 1px solid var(--primary); color: var(--primary);" onclick="showTab('schedule')">
+            <i data-lucide="calendar"></i> Jadwal Kuliah
+        </button>
+        <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main);" onclick="showTab('assignments')">
+            <i data-lucide="list-checks"></i> Daftar Tugas
+        </button>
         <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" target="_blank" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none;">
             <i data-lucide="external-link"></i> Live Page
         </a>
-        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-        <button class="btn" style="background: white; color: var(--text-main); border: 1px solid #e2e8f0;" onclick="document.getElementById('modal-bulk-paste-sched').style.display='flex'">
-            <i data-lucide="copy"></i> Bulk Add (Paste)
-        </button>
-        <button class="btn" style="background: #1e293b; color: white;" onclick="document.getElementById('modal-batch-sched').style.display='flex'">
-            <i data-lucide="upload-cloud"></i> Import CSV
-        </button>
-        {% endif %}
     </div>
 </header>
 
-<!-- Suggestions: High-Fidelity Schedule Overlays -->
-<div class="stats-grid" style="margin-bottom: 2.5rem;">
-    <div class="stat-card" style="border-left: 4px solid {{ 'var(--primary)' if active_subject else '#e2e8f0' }}; background: {{ '#f0f7ff' if active_subject else 'white' }};">
-        <div class="stat-icon" style="background: {{ 'rgba(67, 97, 238, 0.1)' if active_subject else '#f8fafc' }}; color: {{ 'var(--primary)' if active_subject else '#94a3b8' }};">
-            <i data-lucide="play-circle"></i>
+<div id="tab-assignments" style="display: none; margin-top: 2rem;">
+    <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
+        <div class="card" style="flex: 1; min-width: 300px; max-width: 380px;">
+            <h3 style="margin-bottom: 1.5rem; font-weight: 800;">Tambah Tugas Baru</h3>
+            <form action="{{ url_for('manage_assignments') }}" method="POST">
+                <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" class="form-control" placeholder="Nama Matkul" required></div>
+                <div class="form-group"><label>Judul Tugas</label><input type="text" name="title" class="form-control" placeholder="E.g. Membuat Laporan" required></div>
+                <div class="form-group"><label>Deadline</label><input type="datetime-local" name="deadline" class="form-control" required></div>
+                <div class="form-group"><label>Keterangan</label><textarea name="description" class="form-control" rows="3"></textarea></div>
+                <button type="submit" class="btn" style="width: 100%; font-weight: 700;">Publikasikan Tugas</button>
+            </form>
         </div>
-        <div class="stat-info">
-            <h3 style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em;">Sedang Berlangsung</h3>
-            {% if active_subject %}
-                <p style="font-weight: 800; font-size: 1.1rem; color: var(--text-main);">{{ active_subject.subject }}</p>
-                <span style="font-size: 0.75rem; color: var(--primary); font-weight: 700;">{{ active_subject.time_start }} - {{ active_subject.time_end }} | Ruang {{ active_subject.room }}</span>
-            {% else %}
-                <p style="font-weight: 600; color: #94a3b8;">Tidak ada kelas aktif</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;"><i data-lucide="fast-forward"></i></div>
-        <div class="stat-info">
-            <h3 style="font-size: 0.8rem; text-transform: uppercase;">Mata Kuliah Berikutnya</h3>
-            {% if next_subject %}
-                <p style="font-weight: 800; font-size: 1.1rem;">{{ next_subject.subject }}</p>
-                <span style="font-size: 0.75rem; color: #10b981; font-weight: 700;">Mulai Jam {{ next_subject.time_start }}</span>
-            {% else %}
-                <p style="font-weight: 600; color: #94a3b8;">Sudah selesai untuk hari ini</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="stat-card">
-        <div class="stat-icon" style="background: rgba(255, 159, 64, 0.1); color: #ff9f40;"><i data-lucide="calendar"></i></div>
-        <div class="stat-info">
-            <h3>Hari Ini</h3>
-            <p>{{ today_indo }}, {{ datetime.now().strftime('%d %b') }}</p>
+        <div style="flex: 2; min-width: 320px;">
+            <div class="card">
+                <h3 style="margin-bottom: 1.5rem;">Daftar Tugas Aktif</h3>
+                <div id="assignment-list">
+                    {% if assignments %}
+                        {% for a in assignments %}
+                        <div style="padding: 1rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start;">
+                            <div>
+                                <div style="font-weight: 800; color: var(--primary);">{{ a.subject }}</div>
+                                <div style="font-weight: 700; margin: 4px 0;">{{ a.title }}</div>
+                                <div style="font-size: 0.8rem; color: #ef4444; font-weight: 600;">
+                                    <i data-lucide="clock" style="width: 12px; vertical-align: middle;"></i>
+                                    Deadline: {{ a.deadline.strftime('%d %b %Y, %H:%M') }}
+                                </div>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px;">{{ a.description }}</p>
+                            </div>
+                            <a href="{{ url_for('delete_assignment', id=a.id) }}" onclick="return confirm('Hapus tugas?')" style="color: #ef4444; padding: 8px; border-radius: 8px; background: #fff5f5;">
+                                <i data-lucide="trash-2" style="width: 18px;"></i>
+                            </a>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                        <p style="text-align: center; color: var(--text-muted); padding: 2rem;">Belum ada tugas yang ditambahkan.</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
-<div style="display: flex; flex-wrap: wrap; gap: 2rem;">
-    <!-- Manual Input Form -->
-    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-    <div class="card" style="flex: 1; min-width: 300px; max-width: 380px;">
-        <h3 style="margin-bottom: 1.5rem; font-weight: 800;">Entry Jadwal Baru</h3>
-        <form method="POST">
-            <div class="form-group">
-                <label>Pilih Hari</label>
-                <select name="day" class="form-control" required>
-                    {% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
-                    <option value="{{ d }}" {{ 'selected' if d == today_indo else '' }}>{{ d }}</option>
-                    {% endfor %}
-                </select>
+<div id="tab-schedule">
+    <div class="stats-grid" style="margin-bottom: 2.5rem;">
+        <div class="stat-card" style="border-left: 4px solid {{ 'var(--primary)' if active_subject else '#e2e8f0' }};">
+            <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
+                <i data-lucide="play-circle"></i>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                <div class="form-group"><label>Mulai</label><input type="time" name="time_start" class="form-control" required></div>
-                <div class="form-group"><label>Selesai</label><input type="time" name="time_end" class="form-control" required></div>
-            </div>
-            <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" class="form-control" placeholder="Nama Matkul" required></div>
-            <div class="form-group"><label>Dosen Pengampu</label><input type="text" name="lecturer" class="form-control" placeholder="Nama Dosen"></div>
-            <div class="form-group"><label>Ruangan</label><input type="text" name="room" class="form-control" placeholder="Gedung / Lab"></div>
-            <button type="submit" class="btn" style="width: 100%; height: 48px; font-weight: 700; margin-top: 1rem;">Simpan ke Jadwal</button>
-        </form>
-    </div>
-    {% endif %}
-
-    <!-- Timetable Display -->
-    <div style="flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 1.5rem;">
-        {% for day in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
-        <div class="card" style="padding: 0; border: none; overflow: hidden; background: {{ '#f8faff' if day == today_indo else 'white' }}; {{ 'border: 2px solid var(--primary);' if day == today_indo else 'border: 1px solid #f1f5f9;' }}">
-            <div style="padding: 1rem 1.5rem; background: {{ 'var(--primary)' if day == today_indo else '#f1f5f9' }}; color: {{ 'white' if day == today_indo else 'var(--text-main)' }}; font-weight: 800; display: flex; justify-content: space-between; align-items: center;">
-                <span>HARI {{ day | upper }}</span>
-                {% if day == today_indo %}<span style="font-size: 0.7rem; background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 4px;">HARI INI</span>{% endif %}
-            </div>
-            <div style="padding: 1rem;">
-                {% set day_found = false %}
-                {% for s in schedules %}
-                    {% if s.day == day %}
-                        {% set day_found = true %}
-                        <div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem; border-bottom: 1px solid #f8fafc; position: relative;">
-                            {% if active_subject and active_subject.id == s.id %}
-                                <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--primary);"></div>
-                            {% endif %}
-                            
-                            <div style="min-width: 90px; text-align: center;">
-                                <div style="font-weight: 800; font-size: 1rem; color: var(--primary);">{{ s.time_start }}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);">{{ s.time_end }}</div>
-                            </div>
-                            
-                            <div style="flex: 1;">
-                                <div style="font-weight: 700; font-size: 1.1rem; color: var(--text-main); line-height: 1.2;">{{ s.subject }}</div>
-                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">{{ s.lecturer or '-' }}</div>
-                            </div>
-                            
-                            <div style="display: flex; align-items: center; gap: 15px;">
-                                <span class="status-badge" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); font-family: monospace;">{{ s.room }}</span>
-                                {% if current_user.role.name in ['Admin', 'Pengurus'] %}
-                                    <div style="display: flex; gap: 10px;">
-                                        <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject|replace('`','\\`') }}`, `{{ s.lecturer|replace('`','\\`') }}`, `{{ s.room|replace('`','\\`') }}`)" class="icon-btn"><i data-lucide="edit-3" style="width: 16px;"></i></button>
-                                        <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus?')" style="color:#ef4444;" class="icon-btn"><i data-lucide="trash-2" style="width: 16px;"></i></a>
-                                    </div>
-                                {% endif %}
-                            </div>
-                        </div>
-                    {% endif %}
-                {% endfor %}
-                {% if not day_found %}
-                    <p style="padding: 2rem; text-align: center; color: var(--text-muted); opacity: 0.6; font-style: italic;">Tidak ada jadwal di hari ini.</p>
+            <div class="stat-info">
+                <h3 style="font-size: 0.8rem; text-transform: uppercase;">Sedang Berlangsung</h3>
+                {% if active_subject %}
+                    <p style="font-weight: 800; font-size: 1.1rem; color: var(--text-main);">{{ active_subject.subject }}</p>
+                    <span style="font-size: 0.75rem; color: var(--primary); font-weight: 700;">{{ active_subject.time_start }} - {{ active_subject.time_end }}</span>
+                {% else %}
+                    <p style="font-weight: 600; color: #94a3b8;">Tidak ada kelas aktif</p>
                 {% endif %}
             </div>
         </div>
-        {% endfor %}
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;"><i data-lucide="fast-forward"></i></div>
+            <div class="stat-info">
+                <h3 style="font-size: 0.8rem; text-transform: uppercase;">Berikutnya</h3>
+                {% if next_subject %}
+                    <p style="font-weight: 800; font-size: 1.1rem;">{{ next_subject.subject }}</p>
+                    <span style="font-size: 0.75rem; color: #10b981;">Mulai Jam {{ next_subject.time_start }}</span>
+                {% else %}
+                    <p style="font-weight: 600; color: #94a3b8;">Selesai hari ini</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(255, 159, 64, 0.1); color: #ff9f40;"><i data-lucide="calendar"></i></div>
+            <div class="stat-info">
+                <h3>Hari Ini</h3>
+                <p>{{ today_indo }}, {{ datetime.now().strftime('%d %b') }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
+        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        <div class="card" style="flex: 1; min-width: 300px; max-width: 380px;">
+            <h3 style="margin-bottom: 1.5rem; font-weight: 800;">Entry Jadwal Baru</h3>
+            <div style="display: flex; gap: 8px; margin-bottom: 1.5rem;">
+                <button class="btn" style="flex: 1; font-size: 0.75rem; padding: 8px;" onclick="document.getElementById('modal-bulk-paste-sched').style.display='flex'">
+                    <i data-lucide="copy" style="width: 14px;"></i> Bulk
+                </button>
+                <button class="btn" style="flex: 1; font-size: 0.75rem; padding: 8px; background: #1e293b;" onclick="document.getElementById('modal-batch-sched').style.display='flex'">
+                    <i data-lucide="upload-cloud" style="width: 14px;"></i> CSV
+                </button>
+            </div>
+            <form method="POST">
+                <div class="form-group">
+                    <label>Pilih Hari</label>
+                    <select name="day" class="form-control" required>
+                        {% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
+                        <option value="{{ d }}" {{ 'selected' if d == today_indo else '' }}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div class="form-group"><label>Mulai</label><input type="time" name="time_start" class="form-control" required></div>
+                    <div class="form-group"><label>Selesai</label><input type="time" name="time_end" class="form-control" required></div>
+                </div>
+                <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" class="form-control" required></div>
+                <div class="form-group"><label>Dosen</label><input type="text" name="lecturer" class="form-control"></div>
+                <div class="form-group"><label>Ruangan</label><input type="text" name="room" class="form-control"></div>
+                <button type="submit" class="btn" style="width: 100%; font-weight: 700;">Simpan Jadwal</button>
+            </form>
+        </div>
+        {% endif %}
+
+        <div style="flex: 2; min-width: 320px; display: flex; flex-direction: column; gap: 1.5rem;">
+            {% for day in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
+            <div class="card" style="padding: 0; border: none; overflow: hidden; {{ 'border: 2px solid var(--primary);' if day == today_indo else 'border: 1px solid #f1f5f9;' }}">
+                <div style="padding: 1rem 1.5rem; background: {{ 'var(--primary)' if day == today_indo else '#f8fafc' }}; color: {{ 'white' if day == today_indo else 'var(--text-main)' }}; font-weight: 800;">
+                    <span>HARI {{ day | upper }}</span>
+                </div>
+                <div style="padding: 1rem;">
+                    {% set day_found = false %}
+                    {% for s in schedules %}
+                        {% if s.day == day %}
+                            {% set day_found = true %}
+                            <div style="display: flex; align-items: center; gap: 1.5rem; padding: 1rem; border-bottom: 1px solid #f8fafc;">
+                                <div style="min-width: 80px; text-align: center;">
+                                    <div style="font-weight: 800; color: var(--primary);">{{ s.time_start }}</div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ s.time_end }}</div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <div style="font-weight: 700; color: var(--text-main);">{{ s.subject }}</div>
+                                    <div style="font-size: 0.85rem; color: var(--text-muted);">{{ s.lecturer or '-' }}</div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    <span class="status-badge" style="font-family: monospace; font-size: 0.75rem;">{{ s.room }}</span>
+                                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                                        <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject }}`, `{{ s.lecturer }}`, `{{ s.room }}`)" class="icon-btn"><i data-lucide="edit-3" style="width: 14px;"></i></button>
+                                        <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus?')" style="color:#ef4444;" class="icon-btn"><i data-lucide="trash-2" style="width: 14px;"></i></a>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endif %}
+                    {% endfor %}
+                    {% if not day_found %}
+                        <p style="padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.9rem;">Tidak ada jadwal.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
     </div>
 </div>
 
-<!-- Modal Batch Schedule -->
-<div id="modal-batch-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005; padding: 1rem;">
-    <div class="card" style="width: 500px; padding: 2.5rem; text-align: center;">
-        <div style="font-size: 3rem; color: var(--primary); margin-bottom: 1.5rem;"><i data-lucide="upload-cloud"></i></div>
-        <h2 style="margin-bottom: 1rem;">Batch Upload Jadwal (CSV)</h2>
-        <p style="color: var(--text-muted); margin-bottom: 2rem; font-size: 0.9rem;">
-            Pastikan file CSV memiliki kolom: <br><strong>day, time_start, time_end, subject, lecturer, room</strong>
-            <br><br>
-            <a href="{{ url_for('download_schedule_template') }}" style="color: var(--primary); font-weight: 700; text-decoration: none; border-bottom: 2px solid var(--primary);">
-                <i data-lucide="download" style="width: 14px; vertical-align: middle;"></i> Unduh Template Excel/CSV
-            </a>
-        </p>
+<!-- Modal Batch & Bulk (Existing code kept) -->
+<div id="modal-batch-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005;">
+    <div class="card" style="width: 400px; padding: 2rem; text-align: center;">
+        <h2 style="margin-bottom: 1rem;">Import CSV</h2>
         <form action="{{ url_for('schedule_batch') }}" method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" class="form-control" accept=".csv" required style="margin-bottom: 1.5rem; padding: 10px;">
-            <div style="display: flex; gap: 12px;">
-                <button type="submit" class="btn" style="flex: 1;">Mulai Impor Data</button>
+            <input type="file" name="file" class="form-control" accept=".csv" required style="margin-bottom: 1.5rem;">
+            <div style="display: flex; gap: 10px;">
+                <button type="submit" class="btn" style="flex: 1;">Upload</button>
                 <button type="button" class="btn" style="background: #e2e8f0; color: #475569;" onclick="document.getElementById('modal-batch-sched').style.display='none'">Batal</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Bulk Paste Modal -->
-<div id="modal-bulk-paste-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005; padding: 1rem;">
-    <div class="card" style="width: 700px; max-width: 100%; padding: 2.5rem;">
-        <h2 style="margin-bottom: 1rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="copy" style="color: var(--primary);"></i> Bulk Import Jadwal</h2>
-        <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem;">
-            Paste data langsung dari Excel/Spreadsheet.<br>
-            Format: <strong>Hari ; Jam Mulai ; Jam Selesai ; Matkul ; Dosen ; Ruang</strong>
-        </p>
+<div id="modal-bulk-paste-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005;">
+    <div class="card" style="width: 600px; padding: 2rem;">
+        <h2 style="margin-bottom: 1rem;">Bulk Add</h2>
         <form action="{{ url_for('bulk_add_schedule') }}" method="POST">
-            <div class="form-group">
-                <textarea name="bulk_data" class="form-control" rows="10" placeholder="Senin ; 08:00 ; 10:00 ; UI/UX ; arisdev ; Lab 01&#10;Selasa ; 13:00 ; 15:00 ; Basis Data ; John Doe ; Lab 02" required></textarea>
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
-                <button type="submit" class="btn" style="flex:1;">Proses Jadwal</button>
-                <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-bulk-paste-sched').style.display='none'">Batal</button>
+            <textarea name="bulk_data" class="form-control" rows="8" placeholder="Hari ; Mulai ; Selesai ; Matkul ; Dosen ; Ruang"></textarea>
+            <div style="display: flex; gap: 10px; margin-top: 1rem;">
+                <button type="submit" class="btn" style="flex: 1;">Proses</button>
+                <button type="button" class="btn" style="background: #e2e8f0; color: #475569;" onclick="document.getElementById('modal-bulk-paste-sched').style.display='none'">Batal</button>
             </div>
         </form>
     </div>
 </div>
 
-<!-- Modal Edit Jadwal -->
-<div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 2000; padding: 1rem;">
-    <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem;">
-        <h2 style="margin-bottom: 1.5rem;">Perbarui Data Matkul</h2>
+<div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005;">
+    <div class="card" style="width: 450px; padding: 2rem;">
+        <h2 style="margin-bottom: 1.5rem;">Edit Jadwal</h2>
         <form id="form-edit-sched" method="POST">
-            <div class="form-group">
-                <label>Hari Kuliah</label>
-                <select name="day" id="edit-day" class="form-control">
-                    {% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
-                    <option value="{{ d }}">{{ d }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="form-group"><label>Hari</label><select name="day" id="edit-day" class="form-control">{% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div class="form-group"><label>Mulai</label><input type="time" name="time_start" id="edit-start" class="form-control"></div>
                 <div class="form-group"><label>Selesai</label><input type="time" name="time_end" id="edit-end" class="form-control"></div>
             </div>
-            <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" id="edit-subject" class="form-control"></div>
+            <div class="form-group"><label>Matkul</label><input type="text" name="subject" id="edit-subject" class="form-control"></div>
             <div class="form-group"><label>Dosen</label><input type="text" name="lecturer" id="edit-lecturer" class="form-control"></div>
-            <div class="form-group"><label>Ruangan</label><input type="text" name="room" id="edit-room" class="form-control"></div>
-            <div style="display: flex; gap: 12px; margin-top: 2rem;">
-                <button type="submit" class="btn" style="flex: 1;">Update Perubahan</button>
+            <div class="form-group"><label>Ruang</label><input type="text" name="room" id="edit-room" class="form-control"></div>
+            <div style="display: flex; gap: 10px; margin-top: 1.5rem;">
+                <button type="submit" class="btn" style="flex: 1;">Update</button>
                 <button type="button" class="btn" style="background: #e2e8f0; color: #475569;" onclick="document.getElementById('modal-edit-sched').style.display='none'">Batal</button>
             </div>
         </form>
@@ -205,11 +220,20 @@
 </div>
 
 <style>
-    .icon-btn { background: none; border: none; cursor: pointer; color: var(--primary); padding: 8px; border-radius: 8px; transition: background 0.2s; display: flex; align-items: center; justify-content: center; }
+    .icon-btn { background: none; border: none; cursor: pointer; color: var(--primary); padding: 6px; border-radius: 6px; }
     .icon-btn:hover { background: rgba(67, 97, 238, 0.1); }
+    .stat-card-active { border-left: 4px solid var(--primary); }
+    .stat-card-idle { border-left: 4px solid #e2e8f0; }
+    .day-card { padding: 0; border: none; overflow: hidden; margin-bottom: 1.5rem; }
+    .day-card-today { border: 2px solid var(--primary); }
+    .day-card-normal { border: 1px solid #f1f5f9; }
 </style>
 
 <script>
+function showTab(tabName) {
+    document.getElementById('tab-schedule').style.display = tabName === 'schedule' ? 'block' : 'none';
+    document.getElementById('tab-assignments').style.display = tabName === 'assignments' ? 'block' : 'none';
+}
 function openEditSchedule(id, day, start, end, subject, lecturer, room) {
     document.getElementById('form-edit-sched').action = '/schedule/edit/' + id;
     document.getElementById('edit-day').value = day;
@@ -219,10 +243,6 @@ function openEditSchedule(id, day, start, end, subject, lecturer, room) {
     document.getElementById('edit-lecturer').value = lecturer;
     document.getElementById('edit-room').value = room;
     document.getElementById('modal-edit-sched').style.display = 'flex';
-}
-window.onclick = function(event) {
-    if (event.target == document.getElementById('modal-batch-sched')) document.getElementById('modal-batch-sched').style.display = "none";
-    if (event.target == document.getElementById('modal-edit-sched')) document.getElementById('modal-edit-sched').style.display = "none";
 }
 </script>
 {% endblock %}

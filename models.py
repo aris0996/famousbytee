@@ -143,6 +143,15 @@ class SystemSetting(db.Model):
     value = db.Column(db.Text)
     description = db.Column(db.String(255))
 
+class Assignment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    description = db.Column(db.Text)
+    subject = db.Column(db.String(100))
+    deadline = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    is_public = db.Column(db.Boolean, default=True)
+
 class AnnouncementRead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     announcement_id = db.Column(db.Integer, db.ForeignKey('announcement.id'), nullable=False)

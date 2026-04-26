@@ -395,6 +395,14 @@ def upload_gallery_api():
                 count += 1
     
     db.session.commit()
+    
+    if count > 0 and status == 'Published':
+        try:
+            from app import send_push
+            send_push("Foto Baru di Galeri!", f"{user.full_name} baru saja mengunggah foto baru. Cek sekarang!")
+        except:
+            pass
+
     return jsonify({"status": "success", "count": count})
 
 @api_bp.route('/logs', methods=['GET'])

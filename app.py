@@ -7,8 +7,12 @@ from PIL import Image
 import csv
 from io import StringIO
 from flask import send_from_directory, make_response
+from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
+
+import firebase_admin
+from firebase_admin import credentials, messaging
 
 from config import Config
 from flask_jwt_extended import JWTManager
@@ -17,6 +21,73 @@ from routes.api import api_bp
 
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Initialize Firebase Admin
+try:
+    cred_path = os.path.join(app.root_path, 'serviceAccountKey.json')
+    if os.path.exists(cred_path):
+        cred = credentials.Certificate(cred_path)
+        firebase_admin.initialize_app(cred)
+        print("Firebase Admin initialized.")
+    else:
+        print("serviceAccountKey.json not found. Push notifications disabled.")
+except Exception as e:
+    print(f"Firebase Init Error: {e}")
+
+def send_push(title, body, user_id=None):
+    """Sends push notification to a specific user or everyone."""
+    try:
+        if user_id:
+            user = User.query.get(user_id)
+            if user and user.fcm_token:
+                message = messaging.Message(
+                    notification=messaging.Notification(title=title, body=body),
+                    token=user.fcm_token
+                )
+                messaging.send(message)
+        else:
+            # Broadcast to all users with tokens
+            users = User.query.filter(User.fcm_token.isnot(None)).all()
+            if not users: return
+            
+            messages = [
+                messaging.Message(
+                    notification=messaging.Notification(title=title, body=body),
+                    token=u.fcm_token
+                ) for u in users
+            ]
+            messaging.send_all(messages)
+    except Exception as e:
+        print(f"Push Notification Error: {e}")
+
+def run_automated_reminders():
+    """Background task to check and send reminders."""
+    with app.app_context():
+        now = datetime.now()
+        current_day_indo = {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'}.get(now.strftime('%A'))
+        current_time_plus_15 = (now + timedelta(minutes=15)).strftime('%H:%M')
+        
+        # 1. Class Reminder (H-15 Menit)
+        upcoming_class = Schedule.query.filter_by(day=current_day_indo, time_start=current_time_plus_15).all()
+        for c in upcoming_class:
+            send_push("Pengingat Kuliah", f"Kelas {c.subject} akan dimulai dalam 15 menit di {c.room}.")
+
+        # 2. Assignment Deadline (H-1) - check once an hour at minute 0
+        if now.minute == 0:
+            tomorrow = (now + timedelta(days=1)).date()
+            assignments = Assignment.query.all()
+            for a in assignments:
+                if a.deadline.date() == tomorrow:
+                    send_push("Deadline Tugas Besok!", f"Jangan lupa tugas {a.subject}: {a.title} dikumpulkan besok.")
+
+        # 3. Weekly Fund Reminder (Every Monday at 08:00)
+        if now.strftime('%A') == 'Monday' and now.hour == 8 and now.minute == 0:
+            send_push("Tagihan Kas Mingguan", "Selamat pagi! Jangan lupa bayar kas minggu ini ya teman-teman.")
+
+# Initialize Scheduler
+scheduler = BackgroundScheduler()
+scheduler.add_job(func=run_automated_reminders, trigger="interval", minutes=1)
+scheduler.start()
 
 # Enable CORS for all routes (important for mobile/cross-origin requests)
 CORS(app)
@@ -472,7 +543,39 @@ def manage_schedule():
                          schedules=schedules, 
                          active_subject=active_subject, 
                          next_subject=next_subject,
-                         today_indo=today_indo)
+                         today_indo=today_indo,
+                         assignments=Assignment.query.order_by(Assignment.deadline.asc()).all())
+
+@app.route('/assignments', methods=['POST'])
+@login_required
+def manage_assignments():
+    if not current_user.role.can_manage_schedule:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    
+    a = Assignment(
+        title=request.form['title'],
+        subject=request.form['subject'],
+        deadline=datetime.strptime(request.form['deadline'], '%Y-%m-%dT%H:%M'),
+        description=request.form.get('description', '')
+    )
+    db.session.add(a)
+    db.session.commit()
+    
+    send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+    log_activity("Tambah Tugas", f"Judul: {a.title}")
+    flash('Tugas berhasil ditambahkan!')
+    return redirect(url_for('manage_schedule'))
+
+@app.route('/assignments/delete/<int:id>')
+@login_required
+def delete_assignment(id):
+    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    a = Assignment.query.get_or_404(id)
+    log_activity("Hapus Tugas", f"Judul: {a.title}")
+    db.session.delete(a)
+    db.session.commit()
+    return redirect(url_for('manage_schedule'))
 
 @app.route('/schedule/batch', methods=['POST'])
 @login_required
@@ -567,6 +670,7 @@ def edit_schedule(id):
     s.lecturer = request.form['lecturer']
     s.room = request.form['room']
     db.session.commit()
+    send_push("Jadwal Diubah!", f"Jadwal {s.subject} telah diperbarui oleh pengurus.")
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
     return redirect(url_for('manage_schedule'))
 
@@ -575,9 +679,11 @@ def edit_schedule(id):
 def delete_schedule(id):
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     s = Schedule.query.get_or_404(id)
+    subject_name = s.subject
     log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
     db.session.delete(s)
     db.session.commit()
+    send_push("Jadwal Dihapus", f"Jadwal {subject_name} telah dihapus dari sistem.")
     return redirect(url_for('manage_schedule'))
 
 # Suggestion #15: Download Template CSV with Current Data
@@ -625,6 +731,10 @@ def manage_announcements():
         )
         db.session.add(ann)
         db.session.commit()
+        
+        if ann.category == 'Penting':
+            send_push("Pengumuman Penting!", ann.title)
+
         log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
     
@@ -684,6 +794,12 @@ def manage_fund():
         )
         db.session.add(fund)
         
+        # Notify student if it's a payment
+        if fund.type == 'Masuk' and fund.student_id:
+            student_user = User.query.filter_by(student_id=fund.student_id).first()
+            if student_user:
+                send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id)
+
         # Suggestion #1: Auto-Announcement on Keluar
         if fund.type == 'Keluar':
             ann = Announcement(
