@@ -24,22 +24,33 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 # Initialize Firebase Admin
-try:
-    cred_path = os.path.join(app.root_path, 'serviceAccountKey.json')
-    if os.path.exists(cred_path):
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred)
-        print("Firebase Admin initialized.")
-    else:
-        print("serviceAccountKey.json not found. Push notifications disabled.")
-except Exception as e:
-    print(f"Firebase Init Error: {e}")
+def _initialize_firebase():
+    """Helper to initialize Firebase Admin on-demand."""
+    if firebase_admin._apps:
+        return True
+        
+    try:
+        cred_path = os.path.join(app.root_path, 'serviceAccountKey.json')
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            print("Firebase Admin initialized.")
+            return True
+        else:
+            print("serviceAccountKey.json not found. Push notifications disabled.")
+            return False
+    except Exception as e:
+        print(f"Firebase Init Error: {e}")
+        return False
+
+# Try initial load
+_initialize_firebase()
 
 def _log_notification_history(title, body, user_id, sender_id, status):
     """Helper to log notification history."""
     try:
-        # Ensure status doesn't exceed 100 chars
-        safe_status = str(status)[:95]
+        # Safer truncation (20 chars) to support old database schema if not migrated
+        safe_status = str(status)[:19]
         
         history = NotificationHistory(
             title=title,
@@ -56,8 +67,8 @@ def _log_notification_history(title, body, user_id, sender_id, status):
 
 def send_push(title, body, user_id=None, sender_id=None):
     """Sends push notification to a specific user or everyone."""
-    # Check if Firebase is initialized
-    if not firebase_admin._apps:
+    # Try dynamic initialization if not already done
+    if not _initialize_firebase():
         status = "Failed (FCM Not Configured)"
         _log_notification_history(title, body, user_id, sender_id, status)
         return
