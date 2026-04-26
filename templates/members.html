@@ -9,7 +9,7 @@
 
 <div style="display: flex; flex-wrap: wrap; gap: 2rem; align-items: start;">
     <!-- Form Side -->
-    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+    {% if current_user.role.can_manage_students %}
     <div class="card" style="flex: 1; min-width: 300px; max-width: 400px; position: sticky; top: 1rem;">
         <h3 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;">
             <i data-lucide="user-plus" style="color: var(--primary);"></i> Tambah Anggota
@@ -64,7 +64,7 @@
                         <th style="padding: 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Member</th>
                         <th style="padding: 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #64748b;">NIM</th>
                         <th style="padding: 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Status</th>
-                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}<th style="padding: 1rem; text-align: right; font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Aksi</th>{% endif %}
+                        {% if current_user.role.can_manage_students %}<th style="padding: 1rem; text-align: right; font-size: 0.8rem; text-transform: uppercase; color: #64748b;">Aksi</th>{% endif %}
                     </tr>
                 </thead>
                 <tbody id="member-body">
@@ -81,7 +81,7 @@
                                 {{ m.status }}
                             </span>
                         </td>
-                        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                        {% if current_user.role.can_manage_students %}
                         <td style="padding: 1rem; text-align: right;">
                             <div style="display: flex; gap: 12px; justify-content: flex-end;">
                                 <button onclick="openEditMember('{{ m.id }}', '{{ m.nim }}', '{{ m.full_name }}', '{{ m.status }}')" style="background:none; border:none; cursor:pointer; color:var(--primary); padding: 5px;">

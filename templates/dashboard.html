@@ -7,7 +7,7 @@
         <p style="color: var(--text-muted);">Selamat datang, {{ current_user.full_name or current_user.username }}. Pantau koordinasi kelas Anda secara real-time.</p>
     </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        {% if current_user.role.can_manage_announcements or current_user.role.can_manage_fund %}
         <a href="{{ url_for('manage_announcements') }}" class="btn" style="text-decoration: none;">+ Buat Pengumuman</a>
         <a href="{{ url_for('manage_fund') }}" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none;">+ Entri Kas</a>
         {% endif %}

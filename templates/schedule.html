@@ -100,7 +100,7 @@
     </div>
 
     <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
-        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        {% if current_user.role.can_manage_schedule %}
         <div class="card" style="flex: 1; min-width: 300px; max-width: 380px;">
             <h3 style="margin-bottom: 1.5rem; font-weight: 800;">Entry Jadwal Baru</h3>
             <div style="display: flex; gap: 8px; margin-bottom: 1.5rem;">
@@ -154,7 +154,7 @@
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span class="status-badge" style="font-family: monospace; font-size: 0.75rem;">{{ s.room }}</span>
-                                    {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                                    {% if current_user.role.can_manage_schedule %}
                                         <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject }}`, `{{ s.lecturer }}`, `{{ s.room }}`)" class="icon-btn"><i data-lucide="edit-3" style="width: 14px;"></i></button>
                                         <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus?')" style="color:#ef4444;" class="icon-btn"><i data-lucide="trash-2" style="width: 14px;"></i></a>
                                     {% endif %}

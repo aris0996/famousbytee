@@ -7,7 +7,7 @@
             <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
             <input type="text" id="search-ann" placeholder="Cari pengumuman..." onkeyup="filterAnn()" style="padding: 7px 12px 7px 34px; border-radius: 10px; border: 1px solid #e2e8f0; font-size: 0.85rem; width: 220px;">
         </div>
-        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        {% if current_user.role.can_manage_announcements %}
         <button class="btn" onclick="document.getElementById('modal-ann').style.display='flex'">
             <i data-lucide="plus"></i> Tambah
         </button>
@@ -46,7 +46,7 @@
                     <td style="text-align: right; padding: 1rem;">
                         <div style="display: flex; gap: 10px; justify-content: flex-end;">
                             <button class="btn btn-sm" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="padding: 5px 15px; font-size: 0.75rem;">Baca</button>
-                            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+                            {% if current_user.role.can_manage_announcements %}
                                 <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ 'true' if a.is_public else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
                                 <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 18px;"></i></a>
                             {% endif %}

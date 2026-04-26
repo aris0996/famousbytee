@@ -67,29 +67,33 @@ def _log_notification_history(title, body, user_id, sender_id, status):
 
 def send_push(title, body, user_id=None, sender_id=None):
     """Sends push notification to a specific user or everyone."""
-    # Try dynamic initialization if not already done
     if not _initialize_firebase():
-        status = "Failed (FCM Not Configured)"
-        _log_notification_history(title, body, user_id, sender_id, status)
+        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)")
         return
 
-    status = "Success"
     try:
         if user_id:
             user = User.query.get(user_id)
             if user and user.fcm_token:
-                message = messaging.Message(
-                    notification=messaging.Notification(title=title, body=body),
-                    token=user.fcm_token
-                )
-                messaging.send(message)
+                try:
+                    message = messaging.Message(
+                        notification=messaging.Notification(title=title, body=body),
+                        token=user.fcm_token
+                    )
+                    messaging.send(message)
+                    status = "Success"
+                except Exception as e:
+                    status = f"Error: {str(e)[:15]}"
+                    if "registration-token-not-registered" in str(e).lower():
+                        user.fcm_token = None
+                        db.session.commit()
             else:
-                status = "Failed (No Token)"
+                status = "No Token"
         else:
-            # Broadcast to all users with tokens
+            # Broadcast
             users = User.query.filter(User.fcm_token.isnot(None)).all()
-            if not users: 
-                status = "Failed (No Recipients)"
+            if not users:
+                status = "No Recipients"
             else:
                 messages = [
                     messaging.Message(
@@ -97,10 +101,20 @@ def send_push(title, body, user_id=None, sender_id=None):
                         token=u.fcm_token
                     ) for u in users
                 ]
-                messaging.send_each(messages)
+                # send_each is better for multiple tokens
+                response = messaging.send_each(messages)
+                status = f"Success ({response.success_count}/{len(users)})"
+                
+                # Cleanup invalid tokens if any failed
+                if response.failure_count > 0:
+                    for idx, resp in enumerate(response.responses):
+                        if not resp.success:
+                            if "registration-token-not-registered" in str(resp.exception).lower():
+                                users[idx].fcm_token = None
+                    db.session.commit()
     except Exception as e:
-        print(f"Push Notification Error: {e}")
-        status = f"Error: {str(e)[:20]}"
+        print(f"Push Notification General Error: {e}")
+        status = f"System Error"
     
     _log_notification_history(title, body, user_id, sender_id, status)
 

@@ -3,11 +3,11 @@
 <div class="fund-container">
     <header class="fund-header">
         <div class="header-content">
-            <h1 class="premium-title">{{ 'Keuangan Kelas' if current_user.role.name == 'Member' else 'Manajemen Kas' }}
+            <h1 class="premium-title">{{ 'Manajemen Kas' if current_user.role.can_manage_fund else 'Keuangan Kelas' }}
             </h1>
             <p class="subtitle">Kelola transparansi dan iuran kelas dengan kontrol penuh.</p>
         </div>
-        {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+        {% if current_user.role.can_manage_fund %}
         <div class="header-actions">
             <button class="btn btn-secondary" onclick="document.getElementById('modal-batch').style.display='flex'">
                 <i data-lucide="layers-2"></i> <span>Input Masal</span>

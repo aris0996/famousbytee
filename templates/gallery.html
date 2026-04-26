@@ -46,7 +46,7 @@
             {% if photo.status == 'Pending' %}
             <div style="margin-top: 10px; padding: 6px; background: rgba(251, 191, 36, 0.2); border: 1px solid rgba(251, 191, 36, 0.3); border-radius: 8px; text-align: center;">
                 <span style="font-size: 0.7rem; font-weight: 800; color: #f59e0b;"><i data-lucide="clock" style="width: 12px; height: 12px; vertical-align: middle;"></i> Menunggu Moderasi</span>
-                {% if current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus'] %}
+                {% if current_user.role.can_manage_gallery %}
                 <div style="display: flex; gap: 5px; margin-top: 8px;">
                     <a href="{{ url_for('approve_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #10b981; color: white;"><i data-lucide="check" style="width: 10px;"></i> Approve</a>
                     <a href="{{ url_for('reject_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #ef4444; color: white;"><i data-lucide="x" style="width: 10px;"></i> Reject</a>
@@ -55,7 +55,7 @@
             </div>
             {% endif %}
             
-            {% if current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus'] %}
+            {% if current_user.role.can_manage_gallery %}
             <div class="photo-controls" style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <a href="{{ url_for('toggle_gallery_visibility', id=photo.id) }}" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 600;">{{ 'Set Private' if photo.is_public else 'Set Publik' }}</a>
                 <a href="{{ url_for('delete_gallery', id=photo.id) }}" onclick="return confirm('Hapus permanen foto ini?')" style="background: rgba(239, 68, 68, 0.8); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none;"><i data-lucide="trash-2" style="width:14px; height:14px;"></i></a>
@@ -78,7 +78,7 @@
                         </strong>
                         <span style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
                             {{ c.created_at.strftime('%d %b %H:%M') }}
-                            {% if current_user.id == c.user_id or (current_user.role.can_manage_gallery or current_user.role.name in ['Admin', 'Pengurus']) %}
+                            {% if current_user.id == c.user_id or current_user.role.can_manage_gallery %}
                             <a href="{{ url_for('delete_photo_comment', id=c.id) }}" onclick="return confirm('Hapus komentar?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></a>
                             {% endif %}
                         </span>
@@ -129,7 +129,7 @@
                 <input type="text" name="tags" class="form-control" placeholder="Contoh: #Event #Bukber">
             </div>
             
-            {% if current_user.role.name in ['Admin', 'Pengurus'] %}
+            {% if current_user.role.can_manage_gallery %}
             <div class="form-group" style="padding: 1rem; background: #f0fdf4; border-radius: 8px; border: 1px solid #bbf7d0;">
                 <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0; color: #166534;">
                     <input type="checkbox" name="is_public" value="1" checked style="width: 18px; height: 18px;">
