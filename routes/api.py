@@ -52,6 +52,25 @@ def login():
         if not user.role.can_use_api:
             return jsonify({"msg": "Your role does not have API access permissions"}), 403
 
+        student_data = None
+        if user.student:
+            target = get_fund_target()
+            total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+                BatchFund.student_id == user.student.id, 
+                BatchFund.type == 'Masuk'
+            ).scalar() or 0
+            
+            student_data = {
+                "nim": user.student.nim,
+                "full_name": user.student.full_name,
+                "status": user.student.status,
+                "financial": {
+                    "paid": total_paid,
+                    "target": target,
+                    "arrears": max(0, target - total_paid)
+                }
+            }
+
         access_token = create_access_token(identity=str(user.id), expires_delta=timedelta(days=7))
         
         return jsonify({
@@ -60,7 +79,18 @@ def login():
                 "id": user.id,
                 "username": user.username,
                 "full_name": user.full_name,
-                "role": user.role.name
+                "email": user.email,
+                "role": user.role.name,
+                "permissions": {
+                    "can_manage_students": user.role.can_manage_students,
+                    "can_manage_schedule": user.role.can_manage_schedule,
+                    "can_manage_fund": user.role.can_manage_fund,
+                    "can_manage_announcements": user.role.can_manage_announcements,
+                    "can_manage_notifications": user.role.can_manage_notifications,
+                    "can_manage_gallery": user.role.can_manage_gallery,
+                    "can_view_logs": user.role.can_view_logs,
+                },
+                "student": student_data
             }
         }), 200
     
