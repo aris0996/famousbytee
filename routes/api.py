@@ -135,6 +135,7 @@ def update_fcm_token():
     if fcm_token:
         user.fcm_token = fcm_token
         db.session.commit()
+        print(f"DEBUG: Updated FCM Token for user {user.username}")
         return jsonify({"msg": "Token updated"}), 200
         
     return jsonify({"msg": "Token missing"}), 400

@@ -40,6 +40,9 @@
             <div class="stat-info">
                 <h3>Target Aktif</h3>
                 <p>{{ users|length }} Siswa</p>
+                {% if users|length == 0 %}
+                <p style="font-size: 0.7rem; color: #ef4444; margin-top: 4px;">Belum ada perangkat terdaftar. Pastikan siswa sudah login di aplikasi mobile.</p>
+                {% endif %}
             </div>
         </div>
     </div>
