@@ -166,6 +166,20 @@ with app.app_context():
     else:
         print("Warning: 'migrations' folder not found. Auto-upgrade skipped.")
     
+    # Auto-Patch for MySQL Production (Missing columns check)
+    try:
+        from sqlalchemy import text
+        db.session.execute(text("SELECT can_manage_notifications FROM role LIMIT 1"))
+    except Exception:
+        db.session.rollback()
+        try:
+            print("Database Patch: Adding can_manage_notifications to role table...")
+            db.session.execute(text("ALTER TABLE role ADD COLUMN can_manage_notifications BOOLEAN DEFAULT FALSE"))
+            db.session.commit()
+            print("Database Patch: Success.")
+        except Exception as e:
+            print(f"Database Patch Error: {e}")
+    
     # Sync and Harden RBAC
     def sync_roles():
         """Ensures all roles exist and have correct granular permissions."""
