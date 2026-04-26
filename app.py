@@ -166,19 +166,63 @@ with app.app_context():
     else:
         print("Warning: 'migrations' folder not found. Auto-upgrade skipped.")
     
-    # Enable API access for default roles if not already set
-    try:
-        roles_to_enable = ['Admin', 'Pengurus', 'Member']
-        updated = False
-        for role_name in roles_to_enable:
-            role = Role.query.filter_by(name=role_name).first()
-            if role and not role.can_use_api:
-                role.can_use_api = True
-                updated = True
-        if updated:
+    # Sync and Harden RBAC
+    def sync_roles():
+        """Ensures all roles exist and have correct granular permissions."""
+        role_data = {
+            'Admin': {
+                'description': 'Administrator dengan akses penuh.',
+                'perms': {
+                    'can_manage_students': True, 'can_manage_schedule': True,
+                    'can_manage_fund': True, 'can_manage_announcements': True,
+                    'can_manage_roles': True, 'can_view_logs': True,
+                    'can_export_data': True, 'can_edit_settings': True,
+                    'can_manage_gallery': True, 'can_manage_notifications': True,
+                    'can_use_api': True
+                }
+            },
+            'Pengurus': {
+                'description': 'Pengurus dengan akses manajemen operasional.',
+                'perms': {
+                    'can_manage_students': True, 'can_manage_schedule': True,
+                    'can_manage_fund': True, 'can_manage_announcements': True,
+                    'can_manage_roles': False, 'can_view_logs': False,
+                    'can_export_data': True, 'can_edit_settings': False,
+                    'can_manage_gallery': True, 'can_manage_notifications': True,
+                    'can_use_api': True
+                }
+            },
+            'Member': {
+                'description': 'Anggota biasa dengan akses portal dasar.',
+                'perms': {
+                    'can_manage_students': False, 'can_manage_schedule': False,
+                    'can_manage_fund': False, 'can_manage_announcements': False,
+                    'can_manage_roles': False, 'can_view_logs': False,
+                    'can_export_data': False, 'can_edit_settings': False,
+                    'can_manage_gallery': False, 'can_manage_notifications': False,
+                    'can_use_api': True
+                }
+            }
+        }
+
+        try:
+            for name, data in role_data.items():
+                role = Role.query.filter_by(name=name).first()
+                if not role:
+                    role = Role(name=name)
+                    db.session.add(role)
+                
+                role.description = data['description']
+                for perm, value in data['perms'].items():
+                    setattr(role, perm, value)
+            
             db.session.commit()
-    except Exception as e:
-        print(f"Error updating roles: {e}")
+            print("RBAC Synchronization: Success.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"RBAC Synchronization Error: {e}")
+
+    sync_roles()
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -337,6 +381,15 @@ def get_fund_target():
     return target
 
 
+@app.route('/announcements/manage')
+@login_required
+def view_announcements():
+    if not current_user.role.can_manage_announcements:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
+    return render_template('logs.html', logs=logs)
+
 @app.route('/logs')
 @login_required
 def view_logs():
@@ -412,7 +465,7 @@ def dashboard():
     # 6. Data Statistik Admin/Pengurus (jika punya izin)
     admin_stats = None
     recent_students = []
-    if current_user.role.name in ['Admin', 'Pengurus']:
+    if current_user.role.can_manage_students or current_user.role.can_manage_fund or current_user.role.can_manage_announcements:
         total_mhs = Student.query.count()
         total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
         total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
@@ -1602,7 +1655,7 @@ def api_announcements():
 @app.route('/notifications', methods=['GET', 'POST'])
 @login_required
 def manage_notifications():
-    if not current_user.role.name in ['Admin', 'Pengurus']:
+    if not current_user.role.can_manage_notifications:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     

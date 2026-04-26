@@ -41,6 +41,7 @@ class Role(db.Model):
     can_export_data = db.Column(db.Boolean, default=False)
     can_edit_settings = db.Column(db.Boolean, default=False)
     can_manage_gallery = db.Column(db.Boolean, default=False)
+    can_manage_notifications = db.Column(db.Boolean, default=False)
     can_use_api = db.Column(db.Boolean, default=False) # New: API Access Control
 
 class GalleryAlbum(db.Model):
