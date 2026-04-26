@@ -453,3 +453,68 @@ def get_notification_history():
         "sent_at": h.sent_at.isoformat(),
         "status": h.status
     } for h in history])
+
+@api_bp.route('/notifications', methods=['POST'])
+@jwt_required()
+def api_send_notifications():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_notifications:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    from app import send_push
+    data = request.get_json()
+    title = data.get('title')
+    body = data.get('body')
+    target = data.get('target') # "all" or user_id
+    
+    if target == 'all':
+        send_push(title, body, sender_id=user.id)
+    else:
+        send_push(title, body, user_id=int(target), sender_id=user.id)
+        
+    return jsonify({"status": "success"})
+
+@api_bp.route('/fund', methods=['POST'])
+@jwt_required()
+def api_manage_fund():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    data = request.get_json()
+    description = data.get('desc')
+    amount = float(data.get('amount', 0))
+    type_val = data.get('type')
+    category = data.get('category')
+    date_val = datetime.strptime(data.get('date'), '%Y-%m-%d') if data.get('date') else datetime.now()
+    student_id_val = data.get('student_id')
+    tags = data.get('tags', '')
+    evidence_note = data.get('note', '')
+
+    if tags and not tags.startswith('#'): tags = '#' + tags
+    
+    fund = BatchFund(
+        description=description, 
+        amount=amount, 
+        type=type_val, 
+        category=category,
+        evidence_note=evidence_note,
+        recorded_by=user.username,
+        date=date_val,
+        student_id=int(student_id_val) if student_id_val and str(student_id_val).lower() != 'none' else None,
+        tags=tags
+    )
+    db.session.add(fund)
+    db.session.commit()
+
+    from app import send_push, log_activity
+    # Notify student if it's a payment
+    if fund.type == 'Masuk' and fund.student_id:
+        student_user = User.query.filter_by(student_id=fund.student_id).first()
+        if student_user:
+            send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id)
+
+    log_activity("Input Kas (Mobile)", f"{fund.description}: Rp {fund.amount:,.0f}")
+    return jsonify({"status": "success", "id": fund.id})
