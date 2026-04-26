@@ -923,19 +923,38 @@ def manage_fund():
             flash('Akses ditolak.')
             return redirect(url_for('dashboard'))
             
-        # Handle Tags
-        tags = request.form.get('tags', '').strip()
+        # Support JSON for API
+        if request.is_json:
+            data = request.get_json()
+            description = data.get('desc')
+            amount = float(data.get('amount', 0))
+            type_val = data.get('type')
+            category = data.get('category')
+            date_val = datetime.strptime(data.get('date'), '%Y-%m-%d') if data.get('date') else datetime.now()
+            student_id_val = data.get('student_id')
+            tags = data.get('tags', '')
+            evidence_note = data.get('note', '')
+        else:
+            description = request.form['desc']
+            amount = float(request.form['amount'])
+            type_val = request.form['type']
+            category = request.form['category']
+            date_val = datetime.strptime(request.form['date'], '%Y-%m-%d')
+            student_id_val = request.form.get('student_id')
+            tags = request.form.get('tags', '').strip()
+            evidence_note = request.form.get('note', '')
+
         if tags and not tags.startswith('#'): tags = '#' + tags
         
         fund = BatchFund(
-            description=request.form['desc'], 
-            amount=float(request.form['amount']), 
-            type=request.form['type'], 
-            category=request.form['category'],
-            evidence_note=request.form.get('note', ''), # FIXED: prevent BadRequestKeyError
+            description=description, 
+            amount=amount, 
+            type=type_val, 
+            category=category,
+            evidence_note=evidence_note,
             recorded_by=current_user.username,
-            date=datetime.strptime(request.form['date'], '%Y-%m-%d'),
-            student_id=int(student_id) if student_id and student_id != 'none' else None,
+            date=date_val,
+            student_id=int(student_id_val) if student_id_val and str(student_id_val).lower() != 'none' else None,
             tags=tags
         )
         db.session.add(fund)
@@ -1711,9 +1730,15 @@ def manage_notifications():
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        title = request.form.get('title')
-        body = request.form.get('body')
-        target = request.form.get('target') # "all" or user_id
+        if request.is_json:
+            data = request.get_json()
+            title = data.get('title')
+            body = data.get('body')
+            target = data.get('target')
+        else:
+            title = request.form.get('title')
+            body = request.form.get('body')
+            target = request.form.get('target') # "all" or user_id
         
         if target == 'all':
             send_push(title, body, sender_id=current_user.id)

@@ -121,6 +121,15 @@ def get_profile():
         "full_name": user.full_name,
         "email": user.email,
         "role": user.role.name,
+        "permissions": {
+            "can_manage_students": user.role.can_manage_students,
+            "can_manage_schedule": user.role.can_manage_schedule,
+            "can_manage_fund": user.role.can_manage_fund,
+            "can_manage_announcements": user.role.can_manage_announcements,
+            "can_manage_notifications": user.role.can_manage_notifications,
+            "can_manage_gallery": user.role.can_manage_gallery,
+            "can_view_logs": user.role.can_view_logs,
+        },
         "student": student_data
     })
 
