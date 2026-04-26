@@ -163,12 +163,38 @@ def get_announcements():
         "date_posted": a.date_posted.isoformat()
     } for a in announcements])
 
-@api_bp.route('/schedules', methods=['GET'])
+@api_bp.route('/schedules', methods=['GET', 'POST'])
 @jwt_required()
-def get_schedules():
+def manage_schedules():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
+    if request.method == 'POST':
+        if not user.role.can_manage_schedule:
+            return jsonify({"error": "Unauthorized"}), 403
+            
+        data = request.get_json()
+        from models import ClassRoom
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+        
+        s = Schedule(
+            classroom_id=class_fb.id if class_fb else 1,
+            day=data.get('day'),
+            time_start=data.get('time_start'),
+            time_end=data.get('time_end'),
+            subject=data.get('subject'),
+            lecturer=data.get('lecturer', '-'),
+            room=data.get('room', '-')
+        )
+        db.session.add(s)
+        db.session.commit()
+        
+        from app import send_push
+        send_push("Jadwal Baru Ditambahkan", f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.")
+        
+        return jsonify({"status": "success", "id": s.id})
+
+    # GET logic
     if user.student and user.student.classroom_id:
         schedules = Schedule.query.filter_by(classroom_id=user.student.classroom_id).all()
     else:
@@ -183,6 +209,37 @@ def get_schedules():
         "lecturer": s.lecturer,
         "room": s.room
     } for s in schedules])
+
+@api_bp.route('/schedules/<int:id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def modify_schedule(id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    s = Schedule.query.get_or_404(id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(s)
+        db.session.commit()
+        return jsonify({"status": "success"})
+        
+    if request.method == 'PUT':
+        data = request.get_json()
+        s.day = data.get('day', s.day)
+        s.time_start = data.get('time_start', s.time_start)
+        s.time_end = data.get('time_end', s.time_end)
+        s.subject = data.get('subject', s.subject)
+        s.lecturer = data.get('lecturer', s.lecturer)
+        s.room = data.get('room', s.room)
+        
+        db.session.commit()
+        
+        from app import send_push
+        send_push("Jadwal Diperbarui", f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.")
+        
+        return jsonify({"status": "success"})
 
 def get_fund_target():
     """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""

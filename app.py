@@ -78,6 +78,13 @@ def send_push(title, body, user_id=None, sender_id=None):
                 try:
                     message = messaging.Message(
                         notification=messaging.Notification(title=title, body=body),
+                        android=messaging.AndroidConfig(
+                            priority='high',
+                            notification=messaging.AndroidNotification(
+                                channel_id='high_importance_channel',
+                                sound='default'
+                            )
+                        ),
                         token=user.fcm_token
                     )
                     messaging.send(message)
@@ -98,6 +105,13 @@ def send_push(title, body, user_id=None, sender_id=None):
                 messages = [
                     messaging.Message(
                         notification=messaging.Notification(title=title, body=body),
+                        android=messaging.AndroidConfig(
+                            priority='high',
+                            notification=messaging.AndroidNotification(
+                                channel_id='high_importance_channel',
+                                sound='default'
+                            )
+                        ),
                         token=u.fcm_token
                     ) for u in users
                 ]
