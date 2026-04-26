@@ -19,6 +19,7 @@ class User(UserMixin, db.Model):
     whatsapp = db.Column(db.String(20))
     status = db.Column(db.String(20), default='Active') # Active, Inactive
     last_login = db.Column(db.DateTime)
+    fcm_token = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
 class Role(db.Model):

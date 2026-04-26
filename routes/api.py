@@ -118,11 +118,26 @@ def get_profile():
     return jsonify({
         "id": user.id,
         "username": user.username,
-        "email": user.email,
         "full_name": user.full_name,
+        "email": user.email,
         "role": user.role.name,
         "student": student_data
     })
+
+@api_bp.route('/update-fcm-token', methods=['POST'])
+@jwt_required()
+def update_fcm_token():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    data = request.get_json()
+    
+    fcm_token = data.get('fcm_token')
+    if fcm_token:
+        user.fcm_token = fcm_token
+        db.session.commit()
+        return jsonify({"msg": "Token updated"}), 200
+        
+    return jsonify({"msg": "Token missing"}), 400
 
 @api_bp.route('/announcements', methods=['GET'])
 @jwt_required()
