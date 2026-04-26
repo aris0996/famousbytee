@@ -159,3 +159,13 @@ class AnnouncementRead(db.Model):
     read_at = db.Column(db.DateTime, default=db.func.current_timestamp())
 
     __table_args__ = (db.UniqueConstraint('announcement_id', 'user_id', name='_ann_user_read_uc'),)
+
+class NotificationHistory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    target = db.Column(db.String(50)) # "All" or a specific user_id
+    sent_by = db.Column(db.Integer, db.ForeignKey('user.id'))
+    user = db.relationship('User', backref='notifications_sent', lazy=True)
+    sent_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    status = db.Column(db.String(20)) # Success, Failed

@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <header>
+        <div>
+            <h1>Manajemen Notifikasi</h1>
+            <p style="color: var(--text-muted)">Kirim pesan push langsung ke aplikasi mobile siswa.</p>
+        </div>
+        <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
+            <i data-lucide="plus" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+            Buat Notifikasi
+        </button>
+    </header>
+
+    {% with messages = get_flashed_messages() %}
+    {% if messages %}
+        {% for message in messages %}
+        <div class="card" style="padding: 1rem; background: #dcfce7; color: #166534; margin-bottom: 1rem; border-left: 4px solid #166534;">
+            {{ message }}
+        </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
+                <i data-lucide="send"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Total Terkirim</h3>
+                <p>{{ history|length }}</p>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                <i data-lucide="smartphone"></i>
+            </div>
+            <div class="stat-info">
+                <h3>Target Aktif</h3>
+                <p>{{ users|length }} Siswa</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.25rem;">Riwayat Notifikasi</h2>
+        </div>
+        <div style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Waktu</th>
+                        <th>Judul & Pesan</th>
+                        <th>Target</th>
+                        <th>Pengirim</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in history %}
+                    <tr>
+                        <td style="font-size: 0.85rem; white-space: nowrap;">{{ h.sent_at.strftime('%d %b %Y, %H:%M') }}</td>
+                        <td>
+                            <div style="font-weight: 600;">{{ h.title }}</div>
+                            <div style="font-size: 0.85rem; color: var(--text-muted);">{{ h.body }}</div>
+                        </td>
+                        <td>
+                            {% if h.target == 'All' %}
+                            <span class="status-badge" style="background: #e0e7ff; color: #4338ca;">Semua Siswa</span>
+                            {% else %}
+                            <span class="status-badge" style="background: #f1f5f9; color: #475569;">User ID: {{ h.target }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ h.user.username if h.user else 'System' }}</td>
+                        <td>
+                            {% if 'Success' in h.status %}
+                            <span class="status-badge status-aktif">Sukses</span>
+                            {% else %}
+                            <span class="status-badge" style="background: #fee2e2; color: #991b1b;">{{ h.status }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not history %}
+                    <tr>
+                        <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Belum ada riwayat notifikasi.</td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Kirim Notifikasi -->
+<div id="notif-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div class="card" style="width: 100%; max-width: 500px; margin: 1rem; position: relative;">
+        <button onclick="document.getElementById('notif-modal').style.display='none'" style="position: absolute; right: 1.5rem; top: 1.5rem; border: none; background: none; cursor: pointer; color: var(--text-muted);">
+            <i data-lucide="x"></i>
+        </button>
+        <h2 style="margin-bottom: 1.5rem;">Kirim Notifikasi Baru</h2>
+        <form method="POST" action="{{ url_for('manage_notifications') }}">
+            <div class="form-group">
+                <label>Judul Notifikasi</label>
+                <input type="text" name="title" class="form-control" placeholder="Contoh: Info Kuliah Pengganti" required>
+            </div>
+            <div class="form-group">
+                <label>Pesan</label>
+                <textarea name="body" class="form-control" rows="3" placeholder="Tulis isi pesan di sini..." required></textarea>
+            </div>
+            <div class="form-group">
+                <label>Target Penerima</label>
+                <select name="target" class="form-control">
+                    <option value="all">Kirim ke Semua Siswa (Broadcast)</option>
+                    <optgroup label="Siswa Spesifik (Dengan Token)">
+                        {% for u in users %}
+                        <option value="{{ u.id }}">{{ u.username }} - {{ u.full_name }}</option>
+                        {% endfor %}
+                    </optgroup>
+                </select>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">*Hanya siswa yang telah menginstal dan login di aplikasi yang akan menerima notifikasi.</p>
+            </div>
+            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                <button type="button" class="btn" onclick="document.getElementById('notif-modal').style.display='none'" style="background: #f1f5f9; color: #475569; flex: 1;">Batal</button>
+                <button type="submit" class="btn" style="flex: 2;">Kirim Sekarang</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Lucide icons initialization is handled in base.html
+</script>
+{% endblock %}

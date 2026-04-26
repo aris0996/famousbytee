@@ -481,6 +481,12 @@
 
             {% if current_user.role.name in ['Admin', 'Pengurus'] %}
             <div class="nav-item">
+                <a href="{{ url_for('manage_notifications') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_notifications' else '' }}">
+                    <i data-lucide="bell"></i> <span>Notifikasi</span>
+                </a>
+            </div>
+            <div class="nav-item">
                 <a href="{{ url_for('manage_members') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
                     <i data-lucide="users"></i> <span>Members</span>

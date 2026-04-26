@@ -2,7 +2,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment
+from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
 from PIL import Image
 import csv
@@ -35,8 +35,9 @@ try:
 except Exception as e:
     print(f"Firebase Init Error: {e}")
 
-def send_push(title, body, user_id=None):
+def send_push(title, body, user_id=None, sender_id=None):
     """Sends push notification to a specific user or everyone."""
+    status = "Success"
     try:
         if user_id:
             user = User.query.get(user_id)
@@ -46,20 +47,38 @@ def send_push(title, body, user_id=None):
                     token=user.fcm_token
                 )
                 messaging.send(message)
+            else:
+                status = "Failed (No Token)"
         else:
             # Broadcast to all users with tokens
             users = User.query.filter(User.fcm_token.isnot(None)).all()
-            if not users: return
-            
-            messages = [
-                messaging.Message(
-                    notification=messaging.Notification(title=title, body=body),
-                    token=u.fcm_token
-                ) for u in users
-            ]
-            messaging.send_all(messages)
+            if not users: 
+                status = "Failed (No Recipients)"
+            else:
+                messages = [
+                    messaging.Message(
+                        notification=messaging.Notification(title=title, body=body),
+                        token=u.fcm_token
+                    ) for u in users
+                ]
+                messaging.send_all(messages)
     except Exception as e:
         print(f"Push Notification Error: {e}")
+        status = f"Error: {str(e)[:20]}"
+    
+    # Log to History
+    try:
+        history = NotificationHistory(
+            title=title,
+            body=body,
+            target=str(user_id) if user_id else "All",
+            sent_by=sender_id,
+            status=status
+        )
+        db.session.add(history)
+        db.session.commit()
+    except Exception as e:
+        print(f"History Log Error: {e}")
 
 def run_automated_reminders():
     """Background task to check and send reminders."""
@@ -1555,6 +1574,32 @@ def api_announcements():
     if not current_user.role.can_use_api: return jsonify({'error': 'Unauthorized'}), 403
     anns = Announcement.query.all()
     return jsonify([{'id': a.id, 'title': a.title, 'category': a.category, 'date': a.date_posted} for a in anns])
+
+@app.route('/notifications', methods=['GET', 'POST'])
+@login_required
+def manage_notifications():
+    if not current_user.role.name in ['Admin', 'Pengurus']:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    
+    if request.method == 'POST':
+        title = request.form.get('title')
+        body = request.form.get('body')
+        target = request.form.get('target') # "all" or user_id
+        
+        if target == 'all':
+            send_push(title, body, sender_id=current_user.id)
+            flash('Notifikasi siaran berhasil dikirim!')
+        else:
+            send_push(title, body, user_id=int(target), sender_id=current_user.id)
+            flash('Notifikasi terkirim ke pengguna.')
+            
+        log_activity("Kirim Notifikasi", f"Judul: {title}, Target: {target}")
+        return redirect(url_for('manage_notifications'))
+        
+    history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(50).all()
+    users = User.query.filter(User.fcm_token.isnot(None)).all()
+    return render_template('notifications.html', history=history, users=users)
 
 @app.route('/sitemap.xml')
 def sitemap():
