@@ -113,12 +113,15 @@ login_manager.init_app(app)
 # Ensure database tables are created for new features
 with app.app_context():
     # Auto-run migrations on startup to ensure schema is always up to date
-    try:
-        from flask_migrate import upgrade
-        upgrade()
-        print("Database schema is up to date.")
-    except Exception as e:
-        print(f"Migration auto-run skipped or failed: {e}")
+    if os.path.exists('migrations'):
+        try:
+            from flask_migrate import upgrade
+            upgrade()
+            print("Database schema is up to date.")
+        except Exception as e:
+            print(f"Migration auto-run skipped or failed: {e}")
+    else:
+        print("Warning: 'migrations' folder not found. Auto-upgrade skipped.")
     
     # Enable API access for default roles if not already set
     try:
