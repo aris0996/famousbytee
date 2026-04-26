@@ -35,8 +35,33 @@ try:
 except Exception as e:
     print(f"Firebase Init Error: {e}")
 
+def _log_notification_history(title, body, user_id, sender_id, status):
+    """Helper to log notification history."""
+    try:
+        # Ensure status doesn't exceed 100 chars
+        safe_status = str(status)[:95]
+        
+        history = NotificationHistory(
+            title=title,
+            body=body,
+            target=str(user_id) if user_id else "All",
+            sent_by=sender_id,
+            status=safe_status
+        )
+        db.session.add(history)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"History Log Error: {e}")
+
 def send_push(title, body, user_id=None, sender_id=None):
     """Sends push notification to a specific user or everyone."""
+    # Check if Firebase is initialized
+    if not firebase_admin._apps:
+        status = "Failed (FCM Not Configured)"
+        _log_notification_history(title, body, user_id, sender_id, status)
+        return
+
     status = "Success"
     try:
         if user_id:
@@ -66,23 +91,7 @@ def send_push(title, body, user_id=None, sender_id=None):
         print(f"Push Notification Error: {e}")
         status = f"Error: {str(e)[:20]}"
     
-    # Log to History
-    try:
-        # Ensure status doesn't exceed 100 chars
-        safe_status = str(status)[:95]
-        
-        history = NotificationHistory(
-            title=title,
-            body=body,
-            target=str(user_id) if user_id else "All",
-            sent_by=sender_id,
-            status=safe_status
-        )
-        db.session.add(history)
-        db.session.commit()
-    except Exception as e:
-        db.session.rollback()
-        print(f"History Log Error: {e}")
+    _log_notification_history(title, body, user_id, sender_id, status)
 
 def run_automated_reminders():
     """Background task to check and send reminders."""
