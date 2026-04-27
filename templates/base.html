@@ -464,6 +464,15 @@
                 </a>
             </div>
 
+            <!-- Leaderboard -->
+            <div class="nav-item">
+                <a href="{{ url_for('leaderboard') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'leaderboard' else '' }}">
+                    <i data-lucide="trophy"></i> <span>Leaderboard</span>
+                </a>
+            </div>
+
+
             <!-- Pengumuman (Manage for Staff, View for Members) -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_announcements') }}"
