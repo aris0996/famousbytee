@@ -428,9 +428,42 @@ def moderate_gallery(photo_id):
 
         
     photo = GalleryPhoto.query.get_or_404(photo_id)
+    
+    if status == 'Rejected':
+        try:
+            # Permanent Delete files
+            gallery_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'gallery')
+            thumb_dir = os.path.join(gallery_dir, 'thumbnails')
+            
+            filepath = os.path.join(gallery_dir, photo.filename)
+            thumbpath = os.path.join(thumb_dir, photo.filename)
+            
+            if os.path.exists(filepath): os.remove(filepath)
+            if os.path.exists(thumbpath): os.remove(thumbpath)
+            
+            db.session.delete(photo)
+            db.session.commit()
+            return jsonify({"status": "deleted", "message": "Foto ditolak dan dihapus permanen"})
+        except Exception as e:
+            db.session.rollback()
+            return jsonify({"error": str(e)}), 500
+    
     photo.status = status
+    
+    # Award points if Published for the first time
+    if status == 'Published' and photo.uploaded_by:
+        uploader = User.query.get(photo.uploaded_by)
+        if uploader:
+            uploader.points = (uploader.points or 0) + 10
+            # Note: log_activity might need import or context
+            try:
+                from app import log_activity
+                log_activity("Point Awarded", f"+10 Poin untuk {uploader.full_name} (Upload Galeri)", user_id=user_id)
+            except: pass
+            
     db.session.commit()
     return jsonify({"status": "success", "new_status": photo.status})
+
 
 @api_bp.route('/gallery/<int:photo_id>', methods=['DELETE'])
 @jwt_required()

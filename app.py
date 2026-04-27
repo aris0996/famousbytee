@@ -996,12 +996,15 @@ def manage_fund():
         )
         db.session.add(fund)
         
-        # Notify student if it's a payment
+        # Notify student and award points if it's a payment
         if fund.type == 'Masuk' and fund.student_id:
-            student_user = User.query.filter_by(student_id=fund.student_id).first()
-            if student_user:
-                send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id)
-
+            s = Student.query.get(fund.student_id)
+            if s and s.user:
+                s.user.points = (s.user.points or 0) + 50
+                log_activity("Point Awarded", f"+50 Poin untuk {s.full_name} (Bayar Kas)")
+                
+            send_push("Pembayaran Diterima!", f"Dana {fund.category} sebesar Rp {fund.amount:,.0f} telah dicatat.", user_id=s.user.id if s and s.user else None)
+        
         # Suggestion #1: Auto-Announcement on Keluar
         if fund.type == 'Keluar':
             ann = Announcement(
@@ -1012,7 +1015,7 @@ def manage_fund():
             db.session.add(ann)
             
         db.session.commit()
-        log_activity("Tambah Kas", f"Nominal: {fund.amount}, Ket: {fund.description}")
+        flash('Data kas berhasil ditambahkan!')
         return redirect(url_for('manage_fund'))
     
     # Suggestion #17: Advanced Filtering
@@ -1634,6 +1637,8 @@ def init_db():
                     conn.execute(text("ALTER TABLE user ADD COLUMN bio VARCHAR(255) NULL"))
                 if 'whatsapp' not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN whatsapp VARCHAR(20) NULL"))
+                if 'points' not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
                 
                 # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
@@ -1808,7 +1813,14 @@ def clear_notification_history():
         
     return redirect(url_for('manage_notifications'))
 
+@app.route('/leaderboard')
+@login_required
+def leaderboard():
+    top_users = User.query.filter(User.points > 0).order_by(User.points.desc()).limit(20).all()
+    return render_template('leaderboard.html', users=top_users)
+
 @app.route('/sitemap.xml')
+
 def sitemap():
     """Generates sitemap.xml dynamically."""
     pages = []
@@ -1821,6 +1833,18 @@ def sitemap():
     response = make_response(sitemap_xml)
     response.headers["Content-Type"] = "application/xml"
     return response
+
+@app.route('/api/leaderboard', methods=['GET'])
+def get_leaderboard():
+    # Top 20 users by points
+    top_users = User.query.filter(User.points > 0).order_by(User.points.desc()).limit(20).all()
+    return jsonify([{
+        "id": u.id,
+        "full_name": u.full_name or u.username,
+        "points": u.points or 0,
+        "role": u.role.name,
+        "nim": u.student.nim if u.student else "-"
+    } for u in top_users])
 
 # Inisialisasi database saat aplikasi dinyalakan
 init_db()
