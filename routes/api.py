@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog
+from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog, Assignment
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
@@ -615,3 +615,71 @@ def api_manage_fund():
 
     log_activity("Input Kas (Mobile)", f"{fund.description}: Rp {fund.amount:,.0f}")
     return jsonify({"status": "success", "id": fund.id})
+
+@api_bp.route('/assignments', methods=['GET'])
+@jwt_required()
+def get_assignments():
+    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
+    return jsonify([{
+        "id": a.id,
+        "title": a.title,
+        "description": a.description,
+        "subject": a.subject,
+        "deadline": a.deadline.isoformat(),
+        "is_public": a.is_public
+    } for a in assignments])
+
+@api_bp.route('/assignments', methods=['POST'])
+@jwt_required()
+def create_assignment():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    data = request.get_json()
+    a = Assignment(
+        title=data.get('title'),
+        subject=data.get('subject'),
+        deadline=datetime.fromisoformat(data.get('deadline').replace('Z', '')),
+        description=data.get('description', '')
+    )
+    db.session.add(a)
+    db.session.commit()
+    
+    from app import send_push
+    send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+    
+    return jsonify({"status": "success", "id": a.id})
+
+@api_bp.route('/assignments/<int:id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def modify_assignment(id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    a = Assignment.query.get_or_404(id)
+    
+    if request.method == 'DELETE':
+        db.session.delete(a)
+        db.session.commit()
+        return jsonify({"status": "success"})
+        
+    if request.method == 'PUT':
+        data = request.get_json()
+        a.title = data.get('title', a.title)
+        a.subject = data.get('subject', a.subject)
+        if data.get('deadline'):
+            a.deadline = datetime.fromisoformat(data.get('deadline').replace('Z', ''))
+        a.description = data.get('description', a.description)
+        
+        db.session.commit()
+        
+        from app import send_push
+        send_push("Tugas Diperbarui", f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+        
+        return jsonify({"status": "success"})
+
+
