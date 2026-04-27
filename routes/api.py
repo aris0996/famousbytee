@@ -371,11 +371,12 @@ def get_gallery():
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     
-    if user.role.name in ['Admin', 'Pengurus']:
+    if user.role.can_manage_gallery:
         photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
     else:
         # Published OR owned by user
         photos = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == user_id)).order_by(GalleryPhoto.created_at.desc()).all()
+
 
     return jsonify([{
         "id": p.id,
@@ -417,10 +418,14 @@ def moderate_gallery(photo_id):
     if not user.role.can_manage_gallery:
         return jsonify({"error": "Unauthorized"}), 403
     
-    data = request.get_json()
+    data = request.get_json() or {}
     status = data.get('status')
+    
+    print(f"DEBUG: Moderating photo {photo_id} by user {user_id}. Status: {status}")
+    
     if status not in ['Published', 'Rejected', 'Pending']:
-        return jsonify({"error": "Status tidak valid"}), 400
+        return jsonify({"error": f"Status '{status}' tidak valid"}), 400
+
         
     photo = GalleryPhoto.query.get_or_404(photo_id)
     photo.status = status

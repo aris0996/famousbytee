@@ -20,7 +20,9 @@ class User(UserMixin, db.Model):
     status = db.Column(db.String(20), default='Active') # Active, Inactive
     last_login = db.Column(db.DateTime)
     fcm_token = db.Column(db.Text)
+    points = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)

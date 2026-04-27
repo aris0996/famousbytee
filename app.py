@@ -197,6 +197,19 @@ with app.app_context():
     # Auto-Patch for MySQL Production (Missing columns check)
     try:
         from sqlalchemy import text
+        db.session.execute(text("SELECT points FROM user LIMIT 1"))
+    except Exception:
+        db.session.rollback()
+        try:
+            print("Database Patch: Adding missing columns to user table...")
+            db.session.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
+            db.session.commit()
+            print("Database Patch: Success.")
+        except Exception as e:
+            print(f"Database Patch Error: {e}")
+
+    try:
+        from sqlalchemy import text
         db.session.execute(text("SELECT can_manage_assignments FROM role LIMIT 1"))
     except Exception:
         db.session.rollback()
@@ -207,6 +220,7 @@ with app.app_context():
             print("Database Patch: Success.")
         except Exception as e:
             print(f"Database Patch Error: {e}")
+
 
     
     # Sync and Harden RBAC
