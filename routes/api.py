@@ -412,16 +412,49 @@ def add_gallery_comment(photo_id):
 @api_bp.route('/gallery/moderate/<int:photo_id>', methods=['POST'])
 @jwt_required()
 def moderate_gallery(photo_id):
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
-    if user.role.name not in ['Admin', 'Pengurus']:
+    if not user.role.can_manage_gallery:
         return jsonify({"error": "Unauthorized"}), 403
     
     data = request.get_json()
+    status = data.get('status')
+    if status not in ['Published', 'Rejected', 'Pending']:
+        return jsonify({"error": "Status tidak valid"}), 400
+        
     photo = GalleryPhoto.query.get_or_404(photo_id)
-    photo.status = data.get('status', 'Published')
+    photo.status = status
     db.session.commit()
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "new_status": photo.status})
+
+@api_bp.route('/gallery/<int:photo_id>', methods=['DELETE'])
+@jwt_required()
+def delete_gallery_photo(photo_id):
+    user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    photo = GalleryPhoto.query.get_or_404(photo_id)
+    
+    # Allow if admin OR the one who uploaded it
+    if not user.role.can_manage_gallery and photo.uploaded_by != user_id:
+        return jsonify({"error": "Unauthorized"}), 403
+        
+    try:
+        # Delete files
+        gallery_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'gallery')
+        thumb_dir = os.path.join(gallery_dir, 'thumbnails')
+        
+        filepath = os.path.join(gallery_dir, photo.filename)
+        thumbpath = os.path.join(thumb_dir, photo.filename)
+        
+        if os.path.exists(filepath): os.remove(filepath)
+        if os.path.exists(thumbpath): os.remove(thumbpath)
+        
+        db.session.delete(photo)
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 
 import uuid
 from PIL import Image
@@ -463,44 +496,48 @@ def upload_gallery_api():
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     
-    files = request.files.getlist('photos')
-    if not files:
-        return jsonify({"error": "Tidak ada foto terpilih"}), 400
+    # User must at least have use_api (already checked by jwt) 
+    # and we check if they have specific gallery upload status
+    
+    file = request.files.get('photo') # Changed from getlist('photos')
+    if not file:
+        # Fallback for old mobile apps still sending 'photos'
+        files = request.files.getlist('photos')
+        if files: file = files[0]
+        else: return jsonify({"error": "Tidak ada foto terpilih"}), 400
         
     caption = request.form.get('caption', '')
     tags = request.form.get('tags', '')
     is_public = request.form.get('is_public') == 'true'
     
-    # Non-admin uploads are pending
-    status = 'Published' if user.role.name in ['Admin', 'Pengurus'] else 'Pending'
+    # Status logic: if can_manage_gallery -> Published, else Pending
+    status = 'Published' if user.role.can_manage_gallery else 'Pending'
     
-    count = 0
-    for file in files:
-        if file and file.filename != '':
-            filename = process_image_upload(file)
-            if filename:
-                photo = GalleryPhoto(
-                    filename=filename,
-                    thumbnail=filename,
-                    caption=caption,
-                    tags=tags,
-                    uploaded_by=user_id,
-                    status=status,
-                    is_public=is_public
-                )
-                db.session.add(photo)
-                count += 1
-    
+    filename = process_image_upload(file)
+    if not filename:
+        return jsonify({"error": "Gagal memproses gambar"}), 500
+        
+    photo = GalleryPhoto(
+        filename=filename,
+        thumbnail=filename,
+        caption=caption,
+        tags=tags,
+        uploaded_by=user_id,
+        status=status,
+        is_public=is_public
+    )
+    db.session.add(photo)
     db.session.commit()
     
-    if count > 0 and status == 'Published':
+    if status == 'Published':
         try:
             from app import send_push
             send_push("Foto Baru di Galeri!", f"{user.full_name} baru saja mengunggah foto baru. Cek sekarang!")
         except:
             pass
 
-    return jsonify({"status": "success", "count": count})
+    return jsonify({"status": "success", "id": photo.id, "status": photo.status})
+
 
 
 @api_bp.route('/logs', methods=['GET'])

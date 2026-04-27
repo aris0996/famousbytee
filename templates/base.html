@@ -508,6 +508,15 @@
                 </a>
             </div>
 
+            <!-- Tugas -->
+            <div class="nav-item">
+                <a href="{{ url_for('manage_assignments') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_assignments' else '' }}">
+                    <i data-lucide="check-square"></i> <span>{{ 'Manajemen Tugas' if current_user.role.can_manage_assignments else 'Daftar Tugas' }}</span>
+                </a>
+            </div>
+
+
             <!-- Galeri -->
             <div class="nav-item">
                 <a href="{{ url_for('manage_gallery') }}"

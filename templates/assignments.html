@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+{% block content %}
+<header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem;">
+    <div>
+        <h1 style="font-weight: 900; letter-spacing: -1.5px; font-size: 2.5rem;">Manajemen Tugas</h1>
+        <p style="color: var(--text-muted);">Kelola daftar tugas dan tenggat waktu untuk seluruh mahasiswa.</p>
+    </div>
+</header>
+
+{% with messages = get_flashed_messages() %}
+    {% if messages %}
+        {% for message in messages %}
+            <div style="background: #ecfdf5; color: #065f46; padding: 1rem; border-radius: 12px; margin: 1.5rem 0; border: 1px solid #d1fae5; font-weight: 600;">
+                {{ message }}
+            </div>
+        {% endfor %}
+    {% endif %}
+{% endwith %}
+
+<div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 2rem;">
+    <!-- Form Tambah -->
+    <div class="card" style="flex: 1; min-width: 300px; max-width: 400px; height: fit-content;">
+        <h3 style="margin-bottom: 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="plus-circle" style="color: var(--primary);"></i> Tambah Tugas
+        </h3>
+        <form action="{{ url_for('manage_assignments') }}" method="POST">
+            <div class="form-group">
+                <label>Mata Kuliah</label>
+                <input type="text" name="subject" class="form-control" placeholder="E.g. Pemrograman Mobile" required>
+            </div>
+            <div class="form-group">
+                <label>Judul Tugas / Materi</label>
+                <input type="text" name="title" class="form-control" placeholder="E.g. Membuat UI Login" required>
+            </div>
+            <div class="form-group">
+                <label>Tenggat Waktu (Deadline)</label>
+                <input type="datetime-local" name="deadline" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Instruksi Tambahan (Opsional)</label>
+                <textarea name="description" class="form-control" rows="4" placeholder="Detail tugas atau link referensi..."></textarea>
+            </div>
+            <button type="submit" class="btn" style="width: 100%; font-weight: 800; padding: 1rem; margin-top: 1rem;">
+                Publikasikan & Kirim Notif
+            </button>
+        </form>
+    </div>
+
+    <!-- Daftar Tugas -->
+    <div style="flex: 2; min-width: 320px;">
+        <div class="card" style="padding: 0; overflow: hidden;">
+            <div style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; background: #f8fafc;">
+                <h3 style="font-weight: 800;">Daftar Tugas Aktif</h3>
+            </div>
+            <div style="padding: 1rem;">
+                {% if assignments %}
+                    {% for a in assignments %}
+                    <div style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; justify-content: space-between; align-items: flex-start; transition: 0.2s;" onmouseover="this.style.background='#fcfdfe'" onmouseout="this.style.background='transparent'">
+                        <div style="flex: 1;">
+                            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                                <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary); font-weight: 800; font-size: 0.75rem; padding: 4px 10px;">
+                                    {{ a.subject }}
+                                </span>
+                                {% if a.deadline < datetime.now() %}
+                                    <span class="status-badge" style="background: #fef2f2; color: #ef4444; font-size: 0.7rem;">Sudah Lewat</span>
+                                {% endif %}
+                            </div>
+                            <h4 style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); margin-bottom: 6px;">{{ a.title }}</h4>
+                            <div style="display: flex; gap: 20px; font-size: 0.85rem; color: #64748b; font-weight: 600;">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="calendar" style="width: 14px;"></i>
+                                    {{ a.deadline.strftime('%A, %d %B %Y') }}
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 6px; color: #ef4444;">
+                                    <i data-lucide="clock" style="width: 14px;"></i>
+                                    {{ a.deadline.strftime('%H:%M WIB') }}
+                                </div>
+                            </div>
+                            {% if a.description %}
+                            <p style="margin-top: 12px; font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; border-left: 3px solid #e2e8f0; padding-left: 12px;">
+                                {{ a.description }}
+                            </p>
+                            {% endif %}
+                        </div>
+                        <div style="margin-left: 20px;">
+                            <a href="{{ url_for('delete_assignment', id=a.id) }}" onclick="return confirm('Hapus tugas ini?')" class="btn" style="background: #fff5f5; color: #ef4444; border: 1px solid #fee2e2; padding: 8px;">
+                                <i data-lucide="trash-2" style="width: 18px;"></i>
+                            </a>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="padding: 4rem 2rem; text-align: center;">
+                        <i data-lucide="clipboard-list" style="width: 48px; height: 48px; color: #e2e8f0; margin-bottom: 1rem;"></i>
+                        <p style="color: var(--text-muted); font-weight: 600;">Belum ada tugas yang tercatat.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

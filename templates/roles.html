@@ -131,7 +131,9 @@
                     {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Sistem Logs</span>{% endif %}
                     {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Eksport Data CSV</span>{% endif %}
                     {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">App Settings</span>{% endif %}
+                    {% if role.can_manage_assignments %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Manajemen Tugas</span>{% endif %}
                     {% if role.can_use_api %}<span class="status-badge" style="background:#fef3c7; color:#92400e; font-size: 0.75rem;">Akses API</span>{% endif %}
+
                 </div>
             </div>
             
@@ -152,7 +154,9 @@
                         eD: {{ 'true' if role.can_export_data else 'false' }},
                         eS: {{ 'true' if role.can_edit_settings else 'false' }},
                         mG: {{ 'true' if role.can_manage_gallery else 'false' }},
+                        mAs: {{ 'true' if role.can_manage_assignments else 'false' }},
                         api: {{ 'true' if role.can_use_api else 'false' }}
+
                     })" 
                     style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                     <i data-lucide="settings" style="width: 14px;"></i> Edit Izin
@@ -239,7 +243,9 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles"> Akses Admin/Roles</label>
+
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data"> Export Data CSV</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings"> Edit Pengaturan</label>
@@ -265,7 +271,9 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund" id="edit-can-m-fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements" id="edit-can-m-ann"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery" id="edit-can-m-gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments" id="edit-can-m-assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles" id="edit-can-m-roles"> Akses Admin/Roles</label>
+
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs" id="edit-can-v-logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data" id="edit-can-e-data"> Export Data CSV</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_edit_settings" id="edit-can-e-settings"> Edit Pengaturan</label>
@@ -345,7 +353,9 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-e-data').checked = p.eD;
     document.getElementById('edit-can-e-settings').checked = p.eS;
     document.getElementById('edit-can-m-gallery').checked = p.mG;
+    document.getElementById('edit-can-m-assignments').checked = p.mAs;
     document.getElementById('edit-can-use-api').checked = p.api;
+
     document.getElementById('modal-edit-role').style.display = 'flex';
 }
 function openEditModal(id, fullName, email, roleId, status, studentId) {

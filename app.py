@@ -197,16 +197,17 @@ with app.app_context():
     # Auto-Patch for MySQL Production (Missing columns check)
     try:
         from sqlalchemy import text
-        db.session.execute(text("SELECT can_manage_notifications FROM role LIMIT 1"))
+        db.session.execute(text("SELECT can_manage_assignments FROM role LIMIT 1"))
     except Exception:
         db.session.rollback()
         try:
-            print("Database Patch: Adding can_manage_notifications to role table...")
-            db.session.execute(text("ALTER TABLE role ADD COLUMN can_manage_notifications BOOLEAN DEFAULT FALSE"))
+            print("Database Patch: Adding missing columns to role table...")
+            db.session.execute(text("ALTER TABLE role ADD COLUMN can_manage_assignments BOOLEAN DEFAULT FALSE"))
             db.session.commit()
             print("Database Patch: Success.")
         except Exception as e:
             print(f"Database Patch Error: {e}")
+
     
     # Sync and Harden RBAC
     def sync_roles():
@@ -220,7 +221,7 @@ with app.app_context():
                     'can_manage_roles': True, 'can_view_logs': True,
                     'can_export_data': True, 'can_edit_settings': True,
                     'can_manage_gallery': True, 'can_manage_notifications': True,
-                    'can_use_api': True
+                    'can_manage_assignments': True, 'can_use_api': True
                 }
             },
             'Pengurus': {
@@ -231,7 +232,7 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': True, 'can_edit_settings': False,
                     'can_manage_gallery': True, 'can_manage_notifications': True,
-                    'can_use_api': True
+                    'can_manage_assignments': True, 'can_use_api': True
                 }
             },
             'Member': {
@@ -242,9 +243,10 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': False, 'can_edit_settings': False,
                     'can_manage_gallery': False, 'can_manage_notifications': False,
-                    'can_use_api': True
+                    'can_manage_assignments': False, 'can_use_api': True
                 }
             }
+
         }
 
         try:
@@ -706,36 +708,42 @@ def manage_schedule():
                          today_indo=today_indo,
                          assignments=Assignment.query.order_by(Assignment.deadline.asc()).all())
 
-@app.route('/assignments', methods=['POST'])
+@app.route('/assignments', methods=['GET', 'POST'])
 @login_required
 def manage_assignments():
-    if not current_user.role.can_manage_schedule:
+    if not current_user.role.can_manage_assignments:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
-    a = Assignment(
-        title=request.form['title'],
-        subject=request.form['subject'],
-        deadline=datetime.strptime(request.form['deadline'], '%Y-%m-%dT%H:%M'),
-        description=request.form.get('description', '')
-    )
-    db.session.add(a)
-    db.session.commit()
+    if request.method == 'POST':
+        a = Assignment(
+            title=request.form['title'],
+            subject=request.form['subject'],
+            deadline=datetime.strptime(request.form['deadline'], '%Y-%m-%dT%H:%M'),
+            description=request.form.get('description', '')
+        )
+        db.session.add(a)
+        db.session.commit()
+        
+        send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+        log_activity("Tambah Tugas", f"Judul: {a.title}")
+        flash('Tugas berhasil ditambahkan!')
+        return redirect(url_for('manage_assignments'))
     
-    send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
-    log_activity("Tambah Tugas", f"Judul: {a.title}")
-    flash('Tugas berhasil ditambahkan!')
-    return redirect(url_for('manage_schedule'))
+    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
+    return render_template('assignments.html', assignments=assignments)
 
 @app.route('/assignments/delete/<int:id>')
 @login_required
 def delete_assignment(id):
-    if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
+    if not current_user.role.can_manage_assignments: return redirect(url_for('dashboard'))
     a = Assignment.query.get_or_404(id)
     log_activity("Hapus Tugas", f"Judul: {a.title}")
     db.session.delete(a)
     db.session.commit()
-    return redirect(url_for('manage_schedule'))
+    flash('Tugas berhasil dihapus.')
+    return redirect(url_for('manage_assignments'))
+
 
 @app.route('/schedule/batch', methods=['POST'])
 @login_required
