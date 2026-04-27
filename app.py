@@ -282,6 +282,38 @@ with app.app_context():
 
     sync_roles()
 
+    def auto_recalculate_points():
+        try:
+            print("Auto-recalculating points for all users...")
+            users = User.query.all()
+            for u in users:
+                u.points = 0
+            
+            # +50 for Kas
+            funds = BatchFund.query.filter_by(type='Masuk').all()
+            for f in funds:
+                if f.student_id:
+                    student = Student.query.get(f.student_id)
+                    if student and student.user:
+                        student.user.points += 50
+                        
+            # +10 for Gallery
+            photos = GalleryPhoto.query.filter_by(status='Published').all()
+            for p in photos:
+                if p.uploaded_by:
+                    uploader = User.query.get(p.uploaded_by)
+                    if uploader:
+                        uploader.points += 10
+            
+            db.session.commit()
+            print("Point Recalculation: Success.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Point Recalculation Error: {e}")
+            
+    auto_recalculate_points()
+
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
