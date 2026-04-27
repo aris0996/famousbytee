@@ -502,13 +502,14 @@ def dashboard():
         # Calculate time diff in minutes
         # We simplify: only look at today's remaining classes or tomorrow's first class if today is done
         if sched_day_num == curr_day_num:
-            if s.start_time > curr_time_str:
-                h_s, m_s = map(int, s.start_time.split(':'))
+            if s.time_start > curr_time_str:
+                h_s, m_s = map(int, s.time_start.split(':'))
                 h_c, m_c = now.hour, now.minute
                 diff = (h_s * 60 + m_s) - (h_c * 60 + m_c)
                 if diff < min_diff:
                     min_diff = diff
                     next_class = s
+
         # For simplicity, we only show "Today's" next class for now as per user requested "Starting in X hours"
     
     # 5. UNREAD ANNOUNCEMENTS
