@@ -81,6 +81,7 @@ def login():
                 "full_name": user.full_name,
                 "email": user.email,
                 "role": user.role.name,
+                "points": user.points or 0,
                 "permissions": {
                     "can_manage_students": user.role.can_manage_students,
                     "can_manage_schedule": user.role.can_manage_schedule,
@@ -151,6 +152,7 @@ def get_profile():
         "full_name": user.full_name,
         "email": user.email,
         "role": user.role.name,
+        "points": user.points or 0,
         "permissions": {
             "can_manage_students": user.role.can_manage_students,
             "can_manage_schedule": user.role.can_manage_schedule,
