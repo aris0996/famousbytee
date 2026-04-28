@@ -1859,6 +1859,8 @@ def sitemap():
     # Static pages
     for rule in app.url_map.iter_rules():
         if "GET" in rule.methods and len(rule.arguments) == 0:
+
+
             pages.append([url_for(rule.endpoint, _external=True), datetime.now().date()])
     
     sitemap_xml = render_template('sitemap.xml', pages=pages)
@@ -1872,7 +1874,7 @@ def get_leaderboard():
     top_users = User.query.filter(User.points > 0).order_by(User.points.desc()).limit(20).all()
     return jsonify([{
         "id": u.id,
-        "full_name": u.full_name or u.username,
+        "full_name": (u.student.full_name if u.student and u.student.full_name else u.full_name) or u.username,
         "points": u.points or 0,
         "role": u.role.name,
         "nim": u.student.nim if u.student else "-"
