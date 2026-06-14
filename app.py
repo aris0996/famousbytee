@@ -299,10 +299,19 @@ def _find_user_by_whatsapp(raw_value):
 
 def _extract_waha_event(payload):
     payload = payload if isinstance(payload, dict) else {}
-    candidates = [payload]
+    candidates = []
+    root_payload = payload.get('payload')
+    message_payload = payload.get('message')
+    data_payload = payload.get('data')
+    event_payload = payload.get('eventPayload')
+
+    for candidate in (root_payload, message_payload, data_payload, event_payload, payload):
+        if isinstance(candidate, dict):
+            candidates.append(candidate)
+
     for key in ('payload', 'message', 'data', 'eventPayload'):
         candidate = payload.get(key)
-        if isinstance(candidate, dict):
+        if isinstance(candidate, dict) and candidate not in candidates:
             candidates.append(candidate)
 
     body = ''
@@ -316,20 +325,42 @@ def _extract_waha_event(payload):
             if isinstance(value, str):
                 body = value.strip()
         if not chat_id:
-            chat_id = (
-                _normalize_waha_scalar(candidate.get('chatId')).strip()
-                or _normalize_waha_chat_id(candidate)
-                or _normalize_waha_scalar(candidate.get('from')).strip()
-            )
+            possible_chat_ids = [
+                candidate.get('chatId'),
+                candidate.get('from'),
+                candidate.get('to'),
+                candidate.get('chat_id'),
+                candidate.get('conversation'),
+                candidate.get('remoteJid'),
+                candidate.get('remote')
+            ]
+            for possible_chat_id in possible_chat_ids:
+                normalized_chat_id = _normalize_waha_scalar(possible_chat_id).strip()
+                if normalized_chat_id and ('@c.us' in normalized_chat_id or '@g.us' in normalized_chat_id or '@newsletter' in normalized_chat_id):
+                    chat_id = normalized_chat_id
+                    break
+            if not chat_id:
+                normalized_nested_chat_id = _normalize_waha_chat_id(candidate).strip()
+                if normalized_nested_chat_id and ('@c.us' in normalized_nested_chat_id or '@g.us' in normalized_nested_chat_id or '@newsletter' in normalized_nested_chat_id):
+                    chat_id = normalized_nested_chat_id
         if not sender_ref:
             sender_ref = (
-                _normalize_waha_scalar(candidate.get('author')).strip()
+                _normalize_waha_scalar(candidate.get('participant')).strip()
+                or _normalize_waha_scalar(candidate.get('author')).strip()
                 or _normalize_waha_scalar(candidate.get('participant')).strip()
                 or _normalize_waha_scalar(candidate.get('sender')).strip()
                 or _normalize_waha_scalar(candidate.get('from')).strip()
+                or _normalize_waha_scalar(candidate.get('to')).strip()
             )
         if candidate.get('fromMe') is True:
             from_me = True
+
+    if not chat_id and from_me:
+        for candidate in candidates:
+            fallback_to = _normalize_waha_scalar(candidate.get('to')).strip()
+            if fallback_to and ('@c.us' in fallback_to or '@g.us' in fallback_to or '@newsletter' in fallback_to):
+                chat_id = fallback_to
+                break
 
     return {
         'body': body,
