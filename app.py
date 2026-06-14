@@ -316,6 +316,7 @@ def _extract_waha_event(payload):
 
     body = ''
     chat_id = ''
+    outgoing_chat_id = ''
     sender_ref = ''
     from_me = False
 
@@ -343,6 +344,10 @@ def _extract_waha_event(payload):
                 normalized_nested_chat_id = _normalize_waha_chat_id(candidate).strip()
                 if normalized_nested_chat_id and ('@c.us' in normalized_nested_chat_id or '@g.us' in normalized_nested_chat_id or '@newsletter' in normalized_nested_chat_id):
                     chat_id = normalized_nested_chat_id
+        if not outgoing_chat_id:
+            possible_outgoing = _normalize_waha_scalar(candidate.get('to')).strip()
+            if possible_outgoing and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing):
+                outgoing_chat_id = possible_outgoing
         if not sender_ref:
             sender_ref = (
                 _normalize_waha_scalar(candidate.get('participant')).strip()
@@ -355,7 +360,9 @@ def _extract_waha_event(payload):
         if candidate.get('fromMe') is True:
             from_me = True
 
-    if not chat_id and from_me:
+    if from_me and outgoing_chat_id:
+        chat_id = outgoing_chat_id
+    elif not chat_id and from_me:
         for candidate in candidates:
             fallback_to = _normalize_waha_scalar(candidate.get('to')).strip()
             if fallback_to and ('@c.us' in fallback_to or '@g.us' in fallback_to or '@newsletter' in fallback_to):
