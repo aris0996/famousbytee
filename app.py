@@ -119,10 +119,6 @@ def _normalize_waha_chat_identifier(value):
         return ''
     if value.endswith('@s.whatsapp.net'):
         return value.replace('@s.whatsapp.net', '@c.us')
-    if value.endswith('@lid'):
-        local = value.split('@', 1)[0]
-        if local.isdigit():
-            return f"{local}@c.us"
     return value
 
 def get_fund_periods():
@@ -353,12 +349,12 @@ def _extract_waha_event(payload):
             ]
             for possible_chat_id in possible_chat_ids:
                 normalized_chat_id = _normalize_waha_chat_identifier(_normalize_waha_scalar(possible_chat_id).strip())
-                if normalized_chat_id and ('@c.us' in normalized_chat_id or '@g.us' in normalized_chat_id or '@newsletter' in normalized_chat_id):
+                if normalized_chat_id and ('@c.us' in normalized_chat_id or '@g.us' in normalized_chat_id or '@newsletter' in normalized_chat_id or '@lid' in normalized_chat_id):
                     chat_id = normalized_chat_id
                     break
             if not chat_id:
                 normalized_nested_chat_id = _normalize_waha_chat_id(candidate).strip()
-                if normalized_nested_chat_id and ('@c.us' in normalized_nested_chat_id or '@g.us' in normalized_nested_chat_id or '@newsletter' in normalized_nested_chat_id):
+                if normalized_nested_chat_id and ('@c.us' in normalized_nested_chat_id or '@g.us' in normalized_nested_chat_id or '@newsletter' in normalized_nested_chat_id or '@lid' in normalized_nested_chat_id):
                     chat_id = normalized_nested_chat_id
         if not outgoing_chat_id:
             outgoing_candidates = [
@@ -367,18 +363,18 @@ def _extract_waha_event(payload):
             ]
             for outgoing_candidate in outgoing_candidates:
                 possible_outgoing = _normalize_waha_chat_identifier(_normalize_waha_scalar(outgoing_candidate).strip())
-                if possible_outgoing and possible_outgoing != me_id and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing):
+                if possible_outgoing and possible_outgoing != me_id and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing or '@lid' in possible_outgoing):
                     outgoing_chat_id = possible_outgoing
                     break
         if not outgoing_chat_id and message_id_hint.startswith('true_'):
             parts = message_id_hint.split('_')
             if len(parts) >= 2:
                 hinted_chat_id = _normalize_waha_chat_identifier(parts[1])
-                if hinted_chat_id and hinted_chat_id != me_id and ('@c.us' in hinted_chat_id or '@g.us' in hinted_chat_id or '@newsletter' in hinted_chat_id):
+                if hinted_chat_id and hinted_chat_id != me_id and ('@c.us' in hinted_chat_id or '@g.us' in hinted_chat_id or '@newsletter' in hinted_chat_id or '@lid' in hinted_chat_id):
                     outgoing_chat_id = hinted_chat_id
         if not outgoing_chat_id:
             possible_outgoing = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('to')).strip())
-            if possible_outgoing and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing):
+            if possible_outgoing and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing or '@lid' in possible_outgoing):
                 outgoing_chat_id = possible_outgoing
         if not sender_ref:
             sender_ref = (
@@ -399,7 +395,7 @@ def _extract_waha_event(payload):
     elif not chat_id and from_me:
         for candidate in candidates:
             fallback_to = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('to')).strip())
-            if fallback_to and ('@c.us' in fallback_to or '@g.us' in fallback_to or '@newsletter' in fallback_to):
+            if fallback_to and ('@c.us' in fallback_to or '@g.us' in fallback_to or '@newsletter' in fallback_to or '@lid' in fallback_to):
                 chat_id = fallback_to
                 break
 
