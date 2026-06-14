@@ -131,6 +131,8 @@
                     {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Sistem Logs</span>{% endif %}
                     {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Eksport Data CSV</span>{% endif %}
                     {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">App Settings</span>{% endif %}
+                    {% if role.can_manage_notifications %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Push Notifications</span>{% endif %}
+                    {% if role.can_manage_whatsapp %}<span class="status-badge" style="background:#dcfce7; color:#166534; font-size: 0.75rem;">Integrasi WhatsApp</span>{% endif %}
                     {% if role.can_manage_assignments %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Manajemen Tugas</span>{% endif %}
                     {% if role.can_use_api %}<span class="status-badge" style="background:#fef3c7; color:#92400e; font-size: 0.75rem;">Akses API</span>{% endif %}
 
@@ -153,6 +155,8 @@
                         vL: {{ 'true' if role.can_view_logs else 'false' }},
                         eD: {{ 'true' if role.can_export_data else 'false' }},
                         eS: {{ 'true' if role.can_edit_settings else 'false' }},
+                        mN: {{ 'true' if role.can_manage_notifications else 'false' }},
+                        mW: {{ 'true' if role.can_manage_whatsapp else 'false' }},
                         mG: {{ 'true' if role.can_manage_gallery else 'false' }},
                         mAs: {{ 'true' if role.can_manage_assignments else 'false' }},
                         api: {{ 'true' if role.can_use_api else 'false' }}
@@ -243,6 +247,8 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications"> Push Notifications</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles"> Akses Admin/Roles</label>
 
@@ -271,6 +277,8 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund" id="edit-can-m-fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements" id="edit-can-m-ann"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery" id="edit-can-m-gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications" id="edit-can-m-notifications"> Push Notifications</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp" id="edit-can-m-whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments" id="edit-can-m-assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles" id="edit-can-m-roles"> Akses Admin/Roles</label>
 
@@ -352,6 +360,8 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-v-logs').checked = p.vL;
     document.getElementById('edit-can-e-data').checked = p.eD;
     document.getElementById('edit-can-e-settings').checked = p.eS;
+    document.getElementById('edit-can-m-notifications').checked = p.mN;
+    document.getElementById('edit-can-m-whatsapp').checked = p.mW;
     document.getElementById('edit-can-m-gallery').checked = p.mG;
     document.getElementById('edit-can-m-assignments').checked = p.mAs;
     document.getElementById('edit-can-use-api').checked = p.api;

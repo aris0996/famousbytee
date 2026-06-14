@@ -5,12 +5,28 @@
     <header>
         <div>
             <h1>Manajemen Notifikasi</h1>
-            <p style="color: var(--text-muted)">Kirim pesan push langsung ke aplikasi mobile siswa.</p>
+            <p style="color: var(--text-muted)">Kelola push notification dan integrasi WhatsApp dari satu panel backend.</p>
         </div>
-        <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
-            <i data-lucide="plus" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
-            Buat Notifikasi
-        </button>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            {% if current_user.role.can_manage_notifications %}
+            <button class="btn" onclick="runNotificationAction('{{ url_for('test_push_notification') }}', 'Test push dikirim ke akun Anda.')">
+                <i data-lucide="smartphone" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+                Test Push Saya
+            </button>
+            {% endif %}
+            {% if current_user.role.can_manage_whatsapp %}
+            <button class="btn" style="background:#16a34a;" onclick="runNotificationAction('{{ url_for('test_whatsapp_notification') }}', 'Test WhatsApp sedang diproses.')">
+                <i data-lucide="message-circle" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+                Test WhatsApp
+            </button>
+            {% endif %}
+            {% if current_user.role.can_manage_notifications %}
+            <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
+                <i data-lucide="plus" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+                Buat Notifikasi
+            </button>
+            {% endif %}
+        </div>
     </header>
 
     {% with messages = get_flashed_messages() %}
@@ -47,6 +63,45 @@
         </div>
     </div>
 
+    {% if current_user.role.can_manage_whatsapp %}
+    <div class="card" style="margin-bottom: 1.5rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+            <div>
+                <h2 style="font-size: 1.25rem; margin:0;">Integrasi WhatsApp (WAHA)</h2>
+                <p style="color: var(--text-muted); margin:4px 0 0 0;">Session discovery, grup target, dan mode channel dikelola dari sini.</p>
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" class="btn" style="background:#0f172a;" onclick="fetchWahaData('{{ url_for('get_waha_sessions') }}', 'sessions-output')">Cek Session</button>
+                <button type="button" class="btn" style="background:#14532d;" onclick="fetchWahaData('{{ url_for('get_waha_groups') }}', 'groups-output')">Ambil Grup</button>
+            </div>
+        </div>
+        <form method="POST" action="{{ url_for('save_waha_config') }}">
+            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
+                <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="http://103.210.121.29:3000"></div>
+                <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" value="" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
+                <div class="form-group"><label>Session WAHA</label><input type="text" name="waha_session" class="form-control" value="{{ settings.waha_session }}"></div>
+                <div class="form-group"><label>Group Chat ID</label><input type="text" name="waha_group_chat_id" class="form-control" value="{{ settings.waha_group_chat_id }}"></div>
+                <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
+                <div class="form-group"><label>Channel Default</label>
+                    <select name="notification_channel_default" class="form-control">
+                        <option value="push" {{ 'selected' if settings.notification_channel_default == 'push' else '' }}>Push Saja</option>
+                        <option value="whatsapp" {{ 'selected' if settings.notification_channel_default == 'whatsapp' else '' }}>WhatsApp Saja</option>
+                        <option value="both" {{ 'selected' if settings.notification_channel_default == 'both' else '' }}>Push + WhatsApp</option>
+                    </select>
+                </div>
+            </div>
+            <label style="display:flex; gap:8px; align-items:center; margin-top:8px; font-weight:600;"><input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}> Aktifkan WhatsApp WAHA</label>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+                <pre id="sessions-output" style="margin:0; min-height:120px; padding:12px; background:#0f172a; color:#e2e8f0; border-radius:12px; overflow:auto;">Belum ada data session.</pre>
+                <pre id="groups-output" style="margin:0; min-height:120px; padding:12px; background:#052e16; color:#dcfce7; border-radius:12px; overflow:auto;">Belum ada data grup.</pre>
+            </div>
+            <div style="display:flex; justify-content:flex-end; margin-top:16px;">
+                <button type="submit" class="btn">Simpan Konfigurasi WAHA</button>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+
     <div class="card">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
             <h2 style="font-size: 1.25rem;">Riwayat Notifikasi</h2>
@@ -63,6 +118,7 @@
                     <tr>
                         <th>Waktu</th>
                         <th>Judul & Pesan</th>
+                        <th>Channel</th>
                         <th>Target</th>
                         <th>Pengirim</th>
                         <th>Status</th>
@@ -76,6 +132,7 @@
                             <div style="font-weight: 600;">{{ h.title }}</div>
                             <div style="font-size: 0.85rem; color: var(--text-muted);">{{ h.body }}</div>
                         </td>
+                        <td><span class="status-badge" style="background:#f1f5f9; color:#334155;">{{ h.channel or 'push' }}</span></td>
                         <td>
                             {% if h.target == 'All' %}
                             <span class="status-badge" style="background: #e0e7ff; color: #4338ca;">Semua Siswa</span>
@@ -95,7 +152,7 @@
                     {% endfor %}
                     {% if not history %}
                     <tr>
-                        <td colspan="5" style="text-align: center; padding: 2rem; color: var(--text-muted);">Belum ada riwayat notifikasi.</td>
+                        <td colspan="6" style="text-align: center; padding: 2rem; color: var(--text-muted);">Belum ada riwayat notifikasi.</td>
                     </tr>
                     {% endif %}
                 </tbody>
@@ -104,6 +161,7 @@
     </div>
 </div>
 
+{% if current_user.role.can_manage_notifications %}
 <!-- Modal Kirim Notifikasi -->
 <div id="notif-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
     <div class="card" style="width: 100%; max-width: 500px; margin: 1rem; position: relative;">
@@ -139,8 +197,29 @@
         </form>
     </div>
 </div>
+{% endif %}
 
 <script>
-    // Lucide icons initialization is handled in base.html
+async function runNotificationAction(url, successMessage) {
+    try {
+        const response = await fetch(url, { method: 'POST' });
+        const data = await response.json();
+        alert(data.message || data.error || successMessage);
+    } catch (error) {
+        alert('Aksi gagal dijalankan.');
+    }
+}
+
+async function fetchWahaData(url, outputId) {
+    const target = document.getElementById(outputId);
+    target.textContent = 'Memuat...';
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        target.textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+        target.textContent = 'Gagal mengambil data.';
+    }
+}
 </script>
 {% endblock %}

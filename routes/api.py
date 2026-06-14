@@ -66,6 +66,7 @@ def login():
                     "can_manage_fund": user.role.can_manage_fund,
                     "can_manage_announcements": user.role.can_manage_announcements,
                     "can_manage_notifications": user.role.can_manage_notifications,
+                    "can_manage_whatsapp": user.role.can_manage_whatsapp,
                     "can_manage_gallery": user.role.can_manage_gallery,
                     "can_manage_assignments": user.role.can_manage_assignments,
                     "can_view_logs": user.role.can_view_logs,
@@ -138,6 +139,7 @@ def get_profile():
             "can_manage_fund": user.role.can_manage_fund,
             "can_manage_announcements": user.role.can_manage_announcements,
             "can_manage_notifications": user.role.can_manage_notifications,
+            "can_manage_whatsapp": user.role.can_manage_whatsapp,
             "can_manage_gallery": user.role.can_manage_gallery,
             "can_manage_assignments": user.role.can_manage_assignments,
             "can_view_logs": user.role.can_view_logs,
@@ -201,8 +203,14 @@ def manage_schedules():
         db.session.add(s)
         db.session.commit()
         
-        from app import send_push
-        send_push("Jadwal Baru Ditambahkan", f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.")
+        from app import send_multichannel_notification
+        send_multichannel_notification(
+            "Jadwal Baru Ditambahkan",
+            f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
+            sender_id=user.id,
+            allow_whatsapp=True,
+            whatsapp_text=f"Jadwal baru\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
+        )
         
         return jsonify({"status": "success", "id": s.id})
 
@@ -248,8 +256,14 @@ def modify_schedule(id):
         
         db.session.commit()
         
-        from app import send_push
-        send_push("Jadwal Diperbarui", f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.")
+        from app import send_multichannel_notification
+        send_multichannel_notification(
+            "Jadwal Diperbarui",
+            f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
+            sender_id=user.id,
+            allow_whatsapp=True,
+            whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
+        )
         
         return jsonify({"status": "success"})
 
@@ -608,6 +622,7 @@ def get_notification_history():
         "id": h.id,
         "title": h.title,
         "body": h.body,
+        "channel": h.channel or 'push',
         "target": h.target,
         "sent_at": h.sent_at.isoformat(),
         "status": h.status
@@ -616,6 +631,10 @@ def get_notification_history():
 @api_bp.route('/notifications/recipients', methods=['GET'])
 @jwt_required()
 def get_notification_recipients():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_notifications:
+        return jsonify({"error": "Unauthorized"}), 403
     users = User.query.filter(User.fcm_token.isnot(None)).all()
     return jsonify([{
         "id": u.id,
@@ -631,7 +650,7 @@ def api_send_notifications():
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
     
-    from app import send_push
+    from app import send_push, send_multichannel_notification
     if request.is_json:
         data = request.get_json()
     else:
@@ -648,7 +667,7 @@ def api_send_notifications():
         body = title
     
     if target == 'all':
-        send_push(title, body, sender_id=user.id)
+        send_multichannel_notification(title, body, sender_id=user.id, allow_whatsapp=True)
     else:
         send_push(title, body, user_id=int(target), sender_id=user.id)
         
@@ -743,8 +762,14 @@ def create_assignment():
     db.session.add(a)
     db.session.commit()
     
-    from app import send_push
-    send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+    from app import send_multichannel_notification
+    send_multichannel_notification(
+        "Tugas Baru!",
+        f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
+        sender_id=user.id,
+        allow_whatsapp=True,
+        whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+    )
     
     return jsonify({"status": "success", "id": a.id})
 
@@ -773,7 +798,13 @@ def modify_assignment(id):
         
         db.session.commit()
         
-        from app import send_push
-        send_push("Tugas Diperbarui", f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+        from app import send_multichannel_notification
+        send_multichannel_notification(
+            "Tugas Diperbarui",
+            f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
+            sender_id=user.id,
+            allow_whatsapp=True,
+            whatsapp_text=f"Update tugas\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+        )
         
         return jsonify({"status": "success"})

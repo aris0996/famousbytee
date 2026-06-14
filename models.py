@@ -44,6 +44,7 @@ class Role(db.Model):
     can_edit_settings = db.Column(db.Boolean, default=False)
     can_manage_gallery = db.Column(db.Boolean, default=False)
     can_manage_notifications = db.Column(db.Boolean, default=False)
+    can_manage_whatsapp = db.Column(db.Boolean, default=False)
     can_manage_assignments = db.Column(db.Boolean, default=False)
     can_use_api = db.Column(db.Boolean, default=False) # New: API Access Control
 
@@ -169,6 +170,7 @@ class NotificationHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)
     body = db.Column(db.Text, nullable=False)
+    channel = db.Column(db.String(20), default='push') # push, whatsapp, multi
     target = db.Column(db.String(50)) # "All" or a specific user_id
     sent_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     user = db.relationship('User', backref='notifications_sent', lazy=True)

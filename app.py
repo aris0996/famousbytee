@@ -4,6 +4,7 @@ from flask_login import LoginManager, login_user, login_required, logout_user, c
 from flask_migrate import Migrate
 from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
+import json
 from PIL import Image
 import csv
 from io import StringIO
@@ -11,6 +12,7 @@ from flask import send_from_directory, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
+from urllib import request as urllib_request, error as urllib_error
 
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -46,7 +48,81 @@ def _initialize_firebase():
 # Try initial load
 _initialize_firebase()
 
-def _log_notification_history(title, body, user_id, sender_id, status):
+def get_setting_value(key, default=''):
+    setting = SystemSetting.query.filter_by(key=key).first()
+    if not setting:
+        return default
+    return setting.value if setting.value is not None else default
+
+def set_setting_value(key, value, description=None):
+    setting = SystemSetting.query.filter_by(key=key).first()
+    if setting:
+        setting.value = value
+        if description:
+            setting.description = description
+    else:
+        db.session.add(SystemSetting(key=key, value=value, description=description))
+
+def _waha_headers():
+    api_key = get_setting_value('waha_api_key', '').strip()
+    headers = {'Content-Type': 'application/json'}
+    if api_key:
+        headers['X-Api-Key'] = api_key
+    return headers
+
+def _waha_request(method, path, payload=None):
+    base_url = get_setting_value('waha_base_url', '').strip().rstrip('/')
+    if not base_url:
+        return {'ok': False, 'error': 'WAHA base URL belum diatur'}
+
+    url = f"{base_url}{path}"
+    data = json.dumps(payload).encode('utf-8') if payload is not None else None
+    req = urllib_request.Request(url, data=data, headers=_waha_headers(), method=method)
+
+    try:
+        with urllib_request.urlopen(req, timeout=15) as resp:
+            raw = resp.read().decode('utf-8') if resp.length != 0 else ''
+            return {'ok': True, 'status': resp.status, 'data': json.loads(raw) if raw else None}
+    except urllib_error.HTTPError as e:
+        detail = e.read().decode('utf-8', errors='ignore')
+        return {'ok': False, 'error': f'HTTP {e.code}: {detail[:180]}'}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)}
+
+def get_notification_channel_mode():
+    mode = get_setting_value('notification_channel_default', 'push').strip().lower()
+    if mode not in {'push', 'whatsapp', 'both'}:
+        return 'push'
+    return mode
+
+def _build_tomorrow_summary_message():
+    tomorrow = datetime.now().date() + timedelta(days=1)
+    day_name = {
+        'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
+        'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
+    }.get(tomorrow.strftime('%A'), tomorrow.strftime('%A'))
+
+    schedules = Schedule.query.filter_by(day=day_name).order_by(Schedule.time_start.asc()).all()
+    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
+    due_items = [a for a in assignments if a.deadline.date() == tomorrow]
+
+    if not schedules and not due_items:
+        return ''
+
+    lines = [f"Ringkasan untuk {day_name}, {tomorrow.strftime('%d-%m-%Y')}"]
+    if schedules:
+        lines.append("")
+        lines.append("Jadwal kuliah besok:")
+        for s in schedules:
+            lines.append(f"- {s.time_start}-{s.time_end} | {s.subject} | {s.room}")
+    if due_items:
+        lines.append("")
+        lines.append("Deadline tugas:")
+        for a in due_items:
+            lines.append(f"- {a.subject}: {a.title} ({a.deadline.strftime('%H:%M')})")
+    return "\n".join(lines)
+
+def _log_notification_history(title, body, user_id, sender_id, status, channel='push'):
     """Helper to log notification history."""
     try:
         title = (title or '').strip()
@@ -54,12 +130,12 @@ def _log_notification_history(title, body, user_id, sender_id, status):
         if not title and not body:
             return
 
-        # Safer truncation (20 chars) to support old database schema if not migrated
-        safe_status = str(status)[:19]
+        safe_status = str(status)[:99]
         
         history = NotificationHistory(
             title=title,
             body=body,
+            channel=channel,
             target=str(user_id) if user_id else "All",
             sent_by=sender_id,
             status=safe_status
@@ -70,12 +146,12 @@ def _log_notification_history(title, body, user_id, sender_id, status):
         db.session.rollback()
         print(f"History Log Error: {e}")
 
-def send_push(title, body, user_id=None, sender_id=None):
+def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
     """Sends push notification to a specific user or everyone."""
     title = (title or '').strip()
     body = (body or '').strip()
     if not title and not body:
-        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)")
+        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)", channel='push')
         return
     if not title:
         title = "Notifikasi"
@@ -83,8 +159,12 @@ def send_push(title, body, user_id=None, sender_id=None):
         body = title
 
     if not _initialize_firebase():
-        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)")
+        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)", channel='push')
         return
+
+    payload_data = {'title': title, 'body': body}
+    if extra_data:
+        payload_data.update({str(k): str(v) for k, v in extra_data.items()})
 
     try:
         if user_id:
@@ -100,12 +180,13 @@ def send_push(title, body, user_id=None, sender_id=None):
                                 sound='default'
                             )
                         ),
+                        data=payload_data,
                         token=user.fcm_token
                     )
                     messaging.send(message)
                     status = "Success"
                 except Exception as e:
-                    status = f"Error: {str(e)[:15]}"
+                    status = f"Error: {str(e)[:90]}"
                     if "registration-token-not-registered" in str(e).lower():
                         user.fcm_token = None
                         db.session.commit()
@@ -127,6 +208,7 @@ def send_push(title, body, user_id=None, sender_id=None):
                                 sound='default'
                             )
                         ),
+                        data=payload_data,
                         token=u.fcm_token
                     ) for u in users
                 ]
@@ -143,9 +225,45 @@ def send_push(title, body, user_id=None, sender_id=None):
                     db.session.commit()
     except Exception as e:
         print(f"Push Notification General Error: {e}")
-        status = f"System Error"
+        status = f"System Error: {str(e)[:80]}"
     
-    _log_notification_history(title, body, user_id, sender_id, status)
+    _log_notification_history(title, body, user_id, sender_id, status, channel='push')
+
+def send_whatsapp(text, sender_id=None, title=None, chat_id=None):
+    text = (text or '').strip()
+    if not text:
+        _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp')
+        return {'ok': False, 'error': 'Pesan WhatsApp kosong'}
+
+    if get_setting_value('waha_enabled', 'false').lower() != 'true':
+        _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp')
+        return {'ok': False, 'error': 'WhatsApp nonaktif'}
+
+    session_name = get_setting_value('waha_session', '').strip()
+    target_chat = (chat_id or get_setting_value('waha_group_chat_id', '')).strip()
+    if not session_name or not target_chat:
+        _log_notification_history(title or "WhatsApp gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp')
+        return {'ok': False, 'error': 'Session atau group chat WAHA belum diatur'}
+
+    payload = {'session': session_name, 'chatId': target_chat, 'text': text}
+    result = _waha_request('POST', '/api/sendText', payload)
+    status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
+    _log_notification_history(title or "WhatsApp", text, None, sender_id, status, channel='whatsapp')
+    return result
+
+def send_multichannel_notification(title, body, user_id=None, sender_id=None, allow_whatsapp=False, whatsapp_text=None, extra_data=None):
+    mode = get_notification_channel_mode()
+    results = {}
+
+    if mode in {'push', 'both'}:
+        send_push(title, body, user_id=user_id, sender_id=sender_id, extra_data=extra_data)
+        results['push'] = True
+
+    if allow_whatsapp and mode in {'whatsapp', 'both'}:
+        wa_text = whatsapp_text or f"{title}\n{body}".strip()
+        results['whatsapp'] = send_whatsapp(wa_text, sender_id=sender_id, title=title)
+
+    return results
 
 def run_automated_reminders():
     """Background task to check and send reminders."""
@@ -170,6 +288,17 @@ def run_automated_reminders():
         # 3. Weekly Fund Reminder (Every Monday at 08:00)
         if now.strftime('%A') == 'Monday' and now.hour == 8 and now.minute == 0:
             send_push("Tagihan Kas Mingguan", "Selamat pagi! Jangan lupa bayar kas minggu ini ya teman-teman.")
+
+        # 4. Daily WhatsApp Summary
+        summary_time = get_setting_value('waha_daily_time', '18:00')
+        last_sent_date = get_setting_value('waha_last_daily_summary_date', '')
+        if now.strftime('%H:%M') == summary_time and last_sent_date != now.strftime('%Y-%m-%d'):
+            summary_text = _build_tomorrow_summary_message()
+            if summary_text:
+                result = send_whatsapp(summary_text, title="Ringkasan Besok")
+                if result.get('ok'):
+                    set_setting_value('waha_last_daily_summary_date', now.strftime('%Y-%m-%d'))
+                    db.session.commit()
 
 # Initialize Scheduler
 scheduler = BackgroundScheduler()
@@ -236,6 +365,32 @@ with app.app_context():
         except Exception as e:
             print(f"Database Patch Error: {e}")
 
+    try:
+        from sqlalchemy import text
+        db.session.execute(text("SELECT can_manage_whatsapp FROM role LIMIT 1"))
+    except Exception:
+        db.session.rollback()
+        try:
+            print("Database Patch: Adding missing WhatsApp permission to role table...")
+            db.session.execute(text("ALTER TABLE role ADD COLUMN can_manage_whatsapp BOOLEAN DEFAULT FALSE"))
+            db.session.commit()
+            print("Database Patch: Success.")
+        except Exception as e:
+            print(f"Database Patch Error: {e}")
+
+    try:
+        from sqlalchemy import text
+        db.session.execute(text("SELECT channel FROM notification_history LIMIT 1"))
+    except Exception:
+        db.session.rollback()
+        try:
+            print("Database Patch: Adding channel column to notification_history table...")
+            db.session.execute(text("ALTER TABLE notification_history ADD COLUMN channel VARCHAR(20) DEFAULT 'push'"))
+            db.session.commit()
+            print("Database Patch: Success.")
+        except Exception as e:
+            print(f"Database Patch Error: {e}")
+
 
     
     # Sync and Harden RBAC
@@ -249,7 +404,7 @@ with app.app_context():
                     'can_manage_fund': True, 'can_manage_announcements': True,
                     'can_manage_roles': True, 'can_view_logs': True,
                     'can_export_data': True, 'can_edit_settings': True,
-                    'can_manage_gallery': True, 'can_manage_notifications': True,
+                    'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
                     'can_manage_assignments': True, 'can_use_api': True
                 }
             },
@@ -260,7 +415,7 @@ with app.app_context():
                     'can_manage_fund': True, 'can_manage_announcements': True,
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': True, 'can_edit_settings': False,
-                    'can_manage_gallery': True, 'can_manage_notifications': True,
+                    'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
                     'can_manage_assignments': True, 'can_use_api': True
                 }
             },
@@ -271,7 +426,7 @@ with app.app_context():
                     'can_manage_fund': False, 'can_manage_announcements': False,
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': False, 'can_edit_settings': False,
-                    'can_manage_gallery': False, 'can_manage_notifications': False,
+                    'can_manage_gallery': False, 'can_manage_notifications': False, 'can_manage_whatsapp': False,
                     'can_manage_assignments': False, 'can_use_api': True
                 }
             }
@@ -804,7 +959,13 @@ def manage_assignments():
         db.session.add(a)
         db.session.commit()
         
-        send_push("Tugas Baru!", f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
+        send_multichannel_notification(
+            "Tugas Baru!",
+            f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
+            sender_id=current_user.id,
+            allow_whatsapp=True,
+            whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+        )
         log_activity("Tambah Tugas", f"Judul: {a.title}")
         flash('Tugas berhasil ditambahkan!')
         return redirect(url_for('manage_assignments'))
@@ -917,7 +1078,13 @@ def edit_schedule(id):
     s.lecturer = request.form['lecturer']
     s.room = request.form['room']
     db.session.commit()
-    send_push("Jadwal Diubah!", f"Jadwal {s.subject} telah diperbarui oleh pengurus.")
+    send_multichannel_notification(
+        "Jadwal Diubah!",
+        f"Jadwal {s.subject} telah diperbarui oleh pengurus.",
+        sender_id=current_user.id,
+        allow_whatsapp=True,
+        whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
+    )
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
     return redirect(url_for('manage_schedule'))
 
@@ -930,7 +1097,13 @@ def delete_schedule(id):
     log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
     db.session.delete(s)
     db.session.commit()
-    send_push("Jadwal Dihapus", f"Jadwal {subject_name} telah dihapus dari sistem.")
+    send_multichannel_notification(
+        "Jadwal Dihapus",
+        f"Jadwal {subject_name} telah dihapus dari sistem.",
+        sender_id=current_user.id,
+        allow_whatsapp=True,
+        whatsapp_text=f"Jadwal dihapus\nMata kuliah: {subject_name}"
+    )
     return redirect(url_for('manage_schedule'))
 
 # Suggestion #15: Download Template CSV with Current Data
@@ -1329,6 +1502,7 @@ def manage_roles():
                 can_edit_settings='can_edit_settings' in request.form,
                 can_manage_gallery='can_manage_gallery' in request.form,
                 can_manage_notifications='can_manage_notifications' in request.form,
+                can_manage_whatsapp='can_manage_whatsapp' in request.form,
                 can_manage_assignments='can_manage_assignments' in request.form,
                 can_use_api='can_use_api' in request.form
             )
@@ -1421,6 +1595,9 @@ def edit_role(id):
     role.can_export_data = 'can_export_data' in request.form
     role.can_edit_settings = 'can_edit_settings' in request.form
     role.can_manage_gallery = 'can_manage_gallery' in request.form
+    role.can_manage_notifications = 'can_manage_notifications' in request.form
+    role.can_manage_whatsapp = 'can_manage_whatsapp' in request.form
+    role.can_manage_assignments = 'can_manage_assignments' in request.form
     role.can_use_api = 'can_use_api' in request.form
     db.session.commit()
     log_activity("Edit Role", f"Nama: {role.name}")
@@ -1717,7 +1894,7 @@ def init_db():
                 # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
                 for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery',
-                            'can_manage_notifications', 'can_manage_assignments', 'can_use_api']:
+                            'can_manage_notifications', 'can_manage_whatsapp', 'can_manage_assignments', 'can_use_api']:
                     if col not in role_cols:
                         conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
                 
@@ -1763,7 +1940,7 @@ def init_db():
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=True,
                     can_view_logs=True, can_export_data=True, can_edit_settings=True, can_manage_gallery=True,
-                    can_manage_notifications=True, can_manage_assignments=True,
+                    can_manage_notifications=True, can_manage_whatsapp=True, can_manage_assignments=True,
                     can_use_api=True
                 )
                 staff_r = Role(
@@ -1771,7 +1948,7 @@ def init_db():
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=False,
                     can_view_logs=True, can_export_data=True, can_edit_settings=False, can_manage_gallery=True,
-                    can_manage_notifications=True, can_manage_assignments=True,
+                    can_manage_notifications=True, can_manage_whatsapp=True, can_manage_assignments=True,
                     can_use_api=False
                 )
                 member_r = Role(
@@ -1779,7 +1956,7 @@ def init_db():
                     can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, 
                     can_manage_announcements=False, can_manage_roles=False,
                     can_view_logs=False, can_export_data=False, can_edit_settings=False, can_manage_gallery=False,
-                    can_manage_notifications=False, can_manage_assignments=False,
+                    can_manage_notifications=False, can_manage_whatsapp=False, can_manage_assignments=False,
                     can_use_api=False
                 )
                 db.session.add_all([admin_r, staff_r, member_r])
@@ -1819,7 +1996,15 @@ def init_db():
                     SystemSetting(key='web_desc', value='Portal Resmi Manajemen Kelas Famousbytee.b', description='Deskripsi Web (SEO)'),
                     SystemSetting(key='social_ig', value='#', description='Link Instagram Kelas'),
                     SystemSetting(key='social_wa', value='#', description='Link WhatsApp Group'),
-                    SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)')
+                    SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)'),
+                    SystemSetting(key='waha_enabled', value='false', description='Aktifkan integrasi WAHA'),
+                    SystemSetting(key='waha_base_url', value='', description='Base URL server WAHA'),
+                    SystemSetting(key='waha_api_key', value='', description='API key WAHA'),
+                    SystemSetting(key='waha_session', value='', description='Nama session WAHA'),
+                    SystemSetting(key='waha_group_chat_id', value='', description='Chat ID grup WAHA'),
+                    SystemSetting(key='waha_daily_time', value='18:00', description='Jam ringkasan harian WAHA'),
+                    SystemSetting(key='waha_last_daily_summary_date', value='', description='Tanggal ringkasan harian terakhir'),
+                    SystemSetting(key='notification_channel_default', value='push', description='Channel default notifikasi: push, whatsapp, both')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
@@ -1846,7 +2031,7 @@ def api_announcements():
 @app.route('/notifications', methods=['GET', 'POST'])
 @login_required
 def manage_notifications():
-    if not current_user.role.can_manage_notifications:
+    if not (current_user.role.can_manage_notifications or current_user.role.can_manage_whatsapp):
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
@@ -1869,8 +2054,12 @@ def manage_notifications():
         if not body:
             body = title
         
+        if not current_user.role.can_manage_notifications:
+            flash('Anda tidak punya izin kirim push notification.')
+            return redirect(url_for('manage_notifications'))
+
         if target == 'all':
-            send_push(title, body, sender_id=current_user.id)
+            send_multichannel_notification(title, body, sender_id=current_user.id, allow_whatsapp=True)
             flash('Notifikasi siaran berhasil dikirim!')
         else:
             send_push(title, body, user_id=int(target), sender_id=current_user.id)
@@ -1878,10 +2067,74 @@ def manage_notifications():
             
         log_activity("Kirim Notifikasi", f"Judul: {title}, Target: {target}")
         return redirect(url_for('manage_notifications'))
-        
-    history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(50).all()
+
+    history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(80).all()
     users = User.query.filter(User.fcm_token.isnot(None)).all()
-    return render_template('notifications.html', history=history, users=users)
+    settings = {
+        'waha_enabled': get_setting_value('waha_enabled', 'false'),
+        'waha_base_url': get_setting_value('waha_base_url', ''),
+        'waha_api_key_masked': ('*' * max(0, len(get_setting_value('waha_api_key', '')) - 4)) + get_setting_value('waha_api_key', '')[-4:],
+        'waha_session': get_setting_value('waha_session', ''),
+        'waha_group_chat_id': get_setting_value('waha_group_chat_id', ''),
+        'waha_daily_time': get_setting_value('waha_daily_time', '18:00'),
+        'notification_channel_default': get_setting_value('notification_channel_default', 'push')
+    }
+    return render_template('notifications.html', history=history, users=users, settings=settings)
+
+@app.route('/notifications/waha/save-config', methods=['POST'])
+@login_required
+def save_waha_config():
+    if not current_user.role.can_manage_whatsapp:
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_notifications'))
+
+    set_setting_value('waha_enabled', 'true' if request.form.get('waha_enabled') == 'on' else 'false')
+    set_setting_value('waha_base_url', (request.form.get('waha_base_url') or '').strip(), 'Base URL server WAHA')
+    new_api_key = (request.form.get('waha_api_key') or '').strip()
+    if new_api_key:
+        set_setting_value('waha_api_key', new_api_key, 'API key WAHA')
+    set_setting_value('waha_session', (request.form.get('waha_session') or '').strip(), 'Nama session WAHA')
+    set_setting_value('waha_group_chat_id', (request.form.get('waha_group_chat_id') or '').strip(), 'Chat ID grup WAHA')
+    set_setting_value('waha_daily_time', (request.form.get('waha_daily_time') or '18:00').strip(), 'Jam ringkasan harian WAHA')
+    set_setting_value('notification_channel_default', (request.form.get('notification_channel_default') or 'push').strip(), 'Channel default notifikasi')
+    db.session.commit()
+    flash('Konfigurasi WAHA berhasil disimpan.')
+    return redirect(url_for('manage_notifications'))
+
+@app.route('/notifications/waha/sessions')
+@login_required
+def get_waha_sessions():
+    if not current_user.role.can_manage_whatsapp:
+        return jsonify({'error': 'Unauthorized'}), 403
+    result = _waha_request('GET', '/api/sessions')
+    return jsonify(result), (200 if result.get('ok') else 400)
+
+@app.route('/notifications/waha/groups')
+@login_required
+def get_waha_groups():
+    if not current_user.role.can_manage_whatsapp:
+        return jsonify({'error': 'Unauthorized'}), 403
+    session_name = get_setting_value('waha_session', '').strip()
+    if not session_name:
+        return jsonify({'ok': False, 'error': 'Session WAHA belum diatur'}), 400
+    result = _waha_request('GET', f'/api/{session_name}/groups')
+    return jsonify(result), (200 if result.get('ok') else 400)
+
+@app.route('/notifications/test-push', methods=['POST'])
+@login_required
+def test_push_notification():
+    if not current_user.role.can_manage_notifications:
+        return jsonify({'error': 'Unauthorized'}), 403
+    send_push('Test Push Famousbytee', 'Ini adalah notifikasi uji dari backend.', user_id=current_user.id, sender_id=current_user.id, extra_data={'source': 'test_push'})
+    return jsonify({'ok': True, 'message': 'Permintaan test push diproses'})
+
+@app.route('/notifications/test-whatsapp', methods=['POST'])
+@login_required
+def test_whatsapp_notification():
+    if not current_user.role.can_manage_whatsapp:
+        return jsonify({'error': 'Unauthorized'}), 403
+    result = send_whatsapp('Test pesan WAHA dari panel backend Famousbytee.', sender_id=current_user.id, title='Test WhatsApp')
+    return jsonify(result), (200 if result.get('ok') else 400)
 
 @app.route('/notifications/clear')
 @login_required
