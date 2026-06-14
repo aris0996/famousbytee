@@ -92,8 +92,8 @@
             </div>
             <label style="display:flex; gap:8px; align-items:center; margin-top:8px; font-weight:600;"><input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}> Aktifkan WhatsApp WAHA</label>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
-                <pre id="sessions-output" style="margin:0; min-height:120px; padding:12px; background:#0f172a; color:#e2e8f0; border-radius:12px; overflow:auto;">Belum ada data session.</pre>
-                <pre id="groups-output" style="margin:0; min-height:120px; padding:12px; background:#052e16; color:#dcfce7; border-radius:12px; overflow:auto;">Belum ada data grup.</pre>
+                <div id="sessions-output" style="margin:0; min-height:120px; padding:12px; background:#0f172a; color:#e2e8f0; border-radius:12px; overflow:auto;">Belum ada data session.</div>
+                <div id="groups-output" style="margin:0; min-height:120px; padding:12px; background:#052e16; color:#dcfce7; border-radius:12px; overflow:auto;">Belum ada data grup.</div>
             </div>
             <div style="display:flex; justify-content:flex-end; margin-top:16px;">
                 <button type="submit" class="btn">Simpan Konfigurasi WAHA</button>
@@ -212,14 +212,82 @@ async function runNotificationAction(url, successMessage) {
 
 async function fetchWahaData(url, outputId) {
     const target = document.getElementById(outputId);
-    target.textContent = 'Memuat...';
+    target.innerHTML = '<div style="opacity:0.8;">Memuat...</div>';
     try {
         const response = await fetch(url);
         const data = await response.json();
-        target.textContent = JSON.stringify(data, null, 2);
+        if (!response.ok || data.ok === false) {
+            target.innerHTML = `<div style="background: rgba(239,68,68,0.12); color: #fecaca; border: 1px solid rgba(248,113,113,0.35); padding: 12px; border-radius: 10px;">${escapeHtml(data.error || 'Gagal mengambil data.')}</div>`;
+            return;
+        }
+
+        const items = Array.isArray(data.items) ? data.items : [];
+        if (!items.length) {
+            target.innerHTML = '<div style="opacity:0.8;">Tidak ada data ditemukan.</div>';
+            return;
+        }
+
+        if (outputId === 'sessions-output') {
+            target.innerHTML = renderSessionCards(items);
+        } else {
+            target.innerHTML = renderGroupCards(items);
+        }
     } catch (error) {
-        target.textContent = 'Gagal mengambil data.';
+        target.innerHTML = '<div style="background: rgba(239,68,68,0.12); color: #fecaca; border: 1px solid rgba(248,113,113,0.35); padding: 12px; border-radius: 10px;">Gagal mengambil data.</div>';
     }
+}
+
+function renderSessionCards(items) {
+    return items.map(item => `
+        <div style="background: rgba(255,255,255,0.06); border: 1px solid rgba(148,163,184,0.25); border-radius: 12px; padding: 12px; margin-bottom: 10px;">
+            <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                <div>
+                    <div style="font-weight: 800; font-size: 0.95rem;">${escapeHtml(item.name || '-')}</div>
+                    <div style="font-size: 0.8rem; opacity: 0.85;">Status: ${escapeHtml(item.status || '-')}</div>
+                    <div style="font-size: 0.78rem; opacity: 0.7;">Device: ${escapeHtml(item.me || '-')}</div>
+                    <div style="font-size: 0.78rem; opacity: 0.7;">Engine: ${escapeHtml(item.engine || '-')}</div>
+                </div>
+                <button type="button" class="btn" style="padding: 6px 10px; font-size: 0.75rem;" onclick="applyWahaValue('waha_session', '${escapeAttr(item.name || '')}')">Pakai</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function renderGroupCards(items) {
+    return items.map(item => `
+        <div style="background: rgba(255,255,255,0.08); border: 1px solid rgba(187,247,208,0.22); border-radius: 12px; padding: 12px; margin-bottom: 10px;">
+            <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                <div>
+                    <div style="font-weight: 800; font-size: 0.95rem;">${escapeHtml(item.name || 'Tanpa Nama')}</div>
+                    <div style="font-size: 0.8rem; opacity: 0.85;">Chat ID: ${escapeHtml(item.chat_id || '-')}</div>
+                    <div style="font-size: 0.78rem; opacity: 0.7;">Peserta: ${escapeHtml(String(item.participants ?? '-'))}</div>
+                    <div style="font-size: 0.78rem; opacity: 0.7;">Owner: ${escapeHtml(item.owner || '-')}</div>
+                </div>
+                <button type="button" class="btn" style="padding: 6px 10px; font-size: 0.75rem; background:#16a34a;" onclick="applyWahaValue('waha_group_chat_id', '${escapeAttr(item.chat_id || '')}')">Pakai</button>
+            </div>
+        </div>
+    `).join('');
+}
+
+function applyWahaValue(fieldName, value) {
+    const input = document.querySelector(`[name="${fieldName}"]`);
+    if (input) {
+        input.value = value;
+        input.focus();
+    }
+}
+
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function escapeAttr(value) {
+    return String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
 }
 </script>
 {% endblock %}

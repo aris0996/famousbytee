@@ -2107,7 +2107,22 @@ def get_waha_sessions():
     if not current_user.role.can_manage_whatsapp:
         return jsonify({'error': 'Unauthorized'}), 403
     result = _waha_request('GET', '/api/sessions')
-    return jsonify(result), (200 if result.get('ok') else 400)
+    if not result.get('ok'):
+        return jsonify(result), 400
+
+    raw_data = result.get('data') or []
+    sessions = raw_data if isinstance(raw_data, list) else raw_data.get('sessions', [])
+    normalized = []
+    for item in sessions:
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            'name': item.get('name') or item.get('session') or item.get('id') or '-',
+            'status': item.get('status') or item.get('state') or item.get('connectionStatus') or '-',
+            'me': item.get('me') or item.get('meId') or item.get('phone') or '-',
+            'engine': item.get('engine') or item.get('type') or '-'
+        })
+    return jsonify({'ok': True, 'items': normalized, 'count': len(normalized)})
 
 @app.route('/notifications/waha/groups')
 @login_required
@@ -2118,7 +2133,22 @@ def get_waha_groups():
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session WAHA belum diatur'}), 400
     result = _waha_request('GET', f'/api/{session_name}/groups')
-    return jsonify(result), (200 if result.get('ok') else 400)
+    if not result.get('ok'):
+        return jsonify(result), 400
+
+    raw_data = result.get('data') or []
+    groups = raw_data if isinstance(raw_data, list) else raw_data.get('groups', [])
+    normalized = []
+    for item in groups:
+        if not isinstance(item, dict):
+            continue
+        normalized.append({
+            'name': item.get('name') or item.get('subject') or item.get('formattedTitle') or 'Tanpa Nama',
+            'chat_id': item.get('id') or item.get('chatId') or item.get('_id') or '',
+            'participants': item.get('participantsCount') or item.get('size') or len(item.get('participants', []) if isinstance(item.get('participants'), list) else []),
+            'owner': item.get('owner') or item.get('ownerPn') or '-'
+        })
+    return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': session_name})
 
 @app.route('/notifications/test-push', methods=['POST'])
 @login_required
