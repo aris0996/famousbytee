@@ -108,10 +108,22 @@ def _normalize_waha_chat_id(item):
         if isinstance(item.get('wid'), dict):
             candidates.append(item.get('wid'))
     for candidate in candidates:
-        normalized = _normalize_waha_scalar(candidate).strip()
+        normalized = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate).strip())
         if normalized:
             return normalized
     return ''
+
+def _normalize_waha_chat_identifier(value):
+    value = str(value or '').strip()
+    if not value:
+        return ''
+    if value.endswith('@s.whatsapp.net'):
+        return value.replace('@s.whatsapp.net', '@c.us')
+    if value.endswith('@lid'):
+        local = value.split('@', 1)[0]
+        if local.isdigit():
+            return f"{local}@c.us"
+    return value
 
 def get_fund_periods():
     return FundPeriod.query.filter_by(is_active=True).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
@@ -319,12 +331,16 @@ def _extract_waha_event(payload):
     outgoing_chat_id = ''
     sender_ref = ''
     from_me = False
+    me_id = _normalize_waha_chat_identifier(_normalize_waha_scalar((payload.get('me') or {}).get('id')).strip())
+    message_id_hint = ''
 
     for candidate in candidates:
         if not body:
             value = candidate.get('body') or candidate.get('text') or candidate.get('message')
             if isinstance(value, str):
                 body = value.strip()
+        if not message_id_hint:
+            message_id_hint = _normalize_waha_scalar(candidate.get('id')).strip()
         if not chat_id:
             possible_chat_ids = [
                 candidate.get('chatId'),
@@ -336,7 +352,7 @@ def _extract_waha_event(payload):
                 candidate.get('remote')
             ]
             for possible_chat_id in possible_chat_ids:
-                normalized_chat_id = _normalize_waha_scalar(possible_chat_id).strip()
+                normalized_chat_id = _normalize_waha_chat_identifier(_normalize_waha_scalar(possible_chat_id).strip())
                 if normalized_chat_id and ('@c.us' in normalized_chat_id or '@g.us' in normalized_chat_id or '@newsletter' in normalized_chat_id):
                     chat_id = normalized_chat_id
                     break
@@ -345,26 +361,44 @@ def _extract_waha_event(payload):
                 if normalized_nested_chat_id and ('@c.us' in normalized_nested_chat_id or '@g.us' in normalized_nested_chat_id or '@newsletter' in normalized_nested_chat_id):
                     chat_id = normalized_nested_chat_id
         if not outgoing_chat_id:
-            possible_outgoing = _normalize_waha_scalar(candidate.get('to')).strip()
+            outgoing_candidates = [
+                candidate.get('to'),
+                candidate.get('from')
+            ]
+            for outgoing_candidate in outgoing_candidates:
+                possible_outgoing = _normalize_waha_chat_identifier(_normalize_waha_scalar(outgoing_candidate).strip())
+                if possible_outgoing and possible_outgoing != me_id and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing):
+                    outgoing_chat_id = possible_outgoing
+                    break
+        if not outgoing_chat_id and message_id_hint.startswith('true_'):
+            parts = message_id_hint.split('_')
+            if len(parts) >= 2:
+                hinted_chat_id = _normalize_waha_chat_identifier(parts[1])
+                if hinted_chat_id and hinted_chat_id != me_id and ('@c.us' in hinted_chat_id or '@g.us' in hinted_chat_id or '@newsletter' in hinted_chat_id):
+                    outgoing_chat_id = hinted_chat_id
+        if not outgoing_chat_id:
+            possible_outgoing = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('to')).strip())
             if possible_outgoing and ('@c.us' in possible_outgoing or '@g.us' in possible_outgoing or '@newsletter' in possible_outgoing):
                 outgoing_chat_id = possible_outgoing
         if not sender_ref:
             sender_ref = (
-                _normalize_waha_scalar(candidate.get('participant')).strip()
-                or _normalize_waha_scalar(candidate.get('author')).strip()
-                or _normalize_waha_scalar(candidate.get('participant')).strip()
-                or _normalize_waha_scalar(candidate.get('sender')).strip()
-                or _normalize_waha_scalar(candidate.get('from')).strip()
-                or _normalize_waha_scalar(candidate.get('to')).strip()
+                _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('participant')).strip())
+                or _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('author')).strip())
+                or _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('participant')).strip())
+                or _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('sender')).strip())
+                or _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('from')).strip())
+                or _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('to')).strip())
             )
         if candidate.get('fromMe') is True:
             from_me = True
 
     if from_me and outgoing_chat_id:
         chat_id = outgoing_chat_id
+    elif chat_id == me_id and outgoing_chat_id:
+        chat_id = outgoing_chat_id
     elif not chat_id and from_me:
         for candidate in candidates:
-            fallback_to = _normalize_waha_scalar(candidate.get('to')).strip()
+            fallback_to = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate.get('to')).strip())
             if fallback_to and ('@c.us' in fallback_to or '@g.us' in fallback_to or '@newsletter' in fallback_to):
                 chat_id = fallback_to
                 break
@@ -2708,6 +2742,7 @@ def waha_webhook():
         }), 200
 
     result = send_whatsapp(response_text, title=f"WA Bot {body.split()[0]}", chat_id=chat_id, force=True)
+    print(f"WAHA webhook reply: target={chat_id or '-'}, sent={result.get('ok', False)}, error={result.get('error', '-') if not result.get('ok') else '-'}")
     return jsonify({
         'ok': True,
         'accepted': True,
