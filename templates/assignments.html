@@ -2,8 +2,8 @@
 {% block content %}
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem;">
     <div>
-        <h1 style="font-weight: 900; letter-spacing: -1.5px; font-size: 2.5rem;">Manajemen Tugas</h1>
-        <p style="color: var(--text-muted);">Kelola daftar tugas dan tenggat waktu untuk seluruh mahasiswa.</p>
+        <h1 style="font-weight: 900; letter-spacing: -1.5px; font-size: 2.5rem;">{{ 'Manajemen Tugas' if current_user.role.can_manage_assignments else 'Daftar Tugas' }}</h1>
+        <p style="color: var(--text-muted);">{{ 'Kelola daftar tugas dan tenggat waktu untuk seluruh mahasiswa.' if current_user.role.can_manage_assignments else 'Lihat daftar tugas dan tenggat waktu terbaru.' }}</p>
     </div>
 </header>
 
@@ -19,6 +19,7 @@
 
 <div style="display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 2rem;">
     <!-- Form Tambah -->
+    {% if current_user.role.can_manage_assignments %}
     <div class="card" style="flex: 1; min-width: 300px; max-width: 400px; height: fit-content;">
         <h3 style="margin-bottom: 1.5rem; font-weight: 800; display: flex; align-items: center; gap: 10px;">
             <i data-lucide="plus-circle" style="color: var(--primary);"></i> Tambah Tugas
@@ -45,6 +46,7 @@
             </button>
         </form>
     </div>
+    {% endif %}
 
     <!-- Daftar Tugas -->
     <div style="flex: 2; min-width: 320px;">
@@ -82,11 +84,13 @@
                             </p>
                             {% endif %}
                         </div>
+                        {% if current_user.role.can_manage_assignments %}
                         <div style="margin-left: 20px;">
                             <a href="{{ url_for('delete_assignment', id=a.id) }}" onclick="return confirm('Hapus tugas ini?')" class="btn" style="background: #fff5f5; color: #ef4444; border: 1px solid #fee2e2; padding: 8px;">
                                 <i data-lucide="trash-2" style="width: 18px;"></i>
                             </a>
                         </div>
+                        {% endif %}
                     </div>
                     {% endfor %}
                 {% else %}

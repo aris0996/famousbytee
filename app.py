@@ -49,6 +49,11 @@ _initialize_firebase()
 def _log_notification_history(title, body, user_id, sender_id, status):
     """Helper to log notification history."""
     try:
+        title = (title or '').strip()
+        body = (body or '').strip()
+        if not title and not body:
+            return
+
         # Safer truncation (20 chars) to support old database schema if not migrated
         safe_status = str(status)[:19]
         
@@ -67,6 +72,16 @@ def _log_notification_history(title, body, user_id, sender_id, status):
 
 def send_push(title, body, user_id=None, sender_id=None):
     """Sends push notification to a specific user or everyone."""
+    title = (title or '').strip()
+    body = (body or '').strip()
+    if not title and not body:
+        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)")
+        return
+    if not title:
+        title = "Notifikasi"
+    if not body:
+        body = title
+
     if not _initialize_firebase():
         _log_notification_history(title, body, user_id, sender_id, "Failed (Config)")
         return
@@ -285,34 +300,43 @@ with app.app_context():
     def auto_recalculate_points():
         try:
             print("Auto-recalculating points for all users...")
+            target_payment = get_fund_target()
             users = User.query.all()
-            for u in users:
-                u.points = 0
             
-            # +50 for Kas
-            funds = BatchFund.query.filter_by(type='Masuk').all()
-            for f in funds:
-                if f.student_id:
-                    student = Student.query.get(f.student_id)
-                    if student and student.user:
-                        student.user.points += 50
-                        
-            # +10 for Gallery
-            photos = GalleryPhoto.query.filter_by(status='Published').all()
-            for p in photos:
-                if p.uploaded_by:
-                    uploader = User.query.get(p.uploaded_by)
-                    if uploader:
-                        uploader.points += 10
+            for u in users:
+                # Base points calculation
+                base_points = 0
+                
+                # 1. Kas fairness: reward paid coverage, not number of entries.
+                if u.student_id:
+                    total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+                        BatchFund.student_id == u.student_id,
+                        BatchFund.type == 'Masuk'
+                    ).scalar() or 0
+
+                    if target_payment > 0:
+                        paid_ratio = min(total_paid / target_payment, 1)
+                        base_points += int(paid_ratio * 500)
+                    else:
+                        base_points += int(total_paid / 1000)
+                    
+                    # Deduct for arrears (Penalty: -1 point per 1000 IDR nunggak)
+                    arrears = max(0, target_payment - total_paid)
+                    penalty = int(arrears / 1000)
+                    base_points -= penalty
+                
+                # 2. Gallery (+10 per published photo)
+                photos_count = GalleryPhoto.query.filter_by(uploaded_by=u.id, status='Published').count()
+                base_points += (photos_count * 10)
+                
+                u.points = base_points
             
             db.session.commit()
-            print("Point Recalculation: Success.")
+            print("Point Recalculation: Success (Including Arrears Penalty).")
         except Exception as e:
             db.session.rollback()
             print(f"Point Recalculation Error: {e}")
             
-    auto_recalculate_points()
-
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -458,27 +482,36 @@ def log_activity(action, details=None):
         db.session.add(log)
         db.session.commit()
 
-def get_fund_target():
-    """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""
+def get_fund_target(as_of=None):
+    """Calculates cumulative target based on the configured payable period."""
     try:
         start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
+        end_setting = SystemSetting.query.filter_by(key='fund_end_date').first()
         rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
         
         start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
+        end_date = datetime.strptime(end_setting.value, '%Y-%m-%d').date() if end_setting and end_setting.value else None
         daily_rate = int(rate_setting.value) if rate_setting else 1000
     except:
         start_date = datetime(2024, 3, 30).date()
+        end_date = None
         daily_rate = 1000
 
-    today = datetime.now().date()
+    today = as_of or datetime.now().date()
+    if isinstance(today, datetime):
+        today = today.date()
+    target_until = min(today, end_date) if end_date else today
     target = 0
-    if today >= start_date:
+    if target_until >= start_date:
         curr = start_date
-        while curr <= today:
+        while curr <= target_until:
             if curr.weekday() < 5: # Monday (0) to Friday (4)
                 target += daily_rate
             curr += timedelta(days=1)
     return target
+
+with app.app_context():
+    auto_recalculate_points()
 
 
 @app.route('/announcements/manage')
@@ -757,7 +790,7 @@ def manage_schedule():
 @app.route('/assignments', methods=['GET', 'POST'])
 @login_required
 def manage_assignments():
-    if not current_user.role.can_manage_assignments:
+    if request.method == 'POST' and not current_user.role.can_manage_assignments:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
@@ -1031,10 +1064,6 @@ def manage_fund():
         # Notify student and award points if it's a payment
         if fund.type == 'Masuk' and fund.student_id:
             s = Student.query.get(fund.student_id)
-            if s and s.user:
-                s.user.points = (s.user.points or 0) + 50
-                log_activity("Point Awarded", f"+50 Poin untuk {s.full_name} (Bayar Kas)")
-                
             send_push("Pembayaran Diterima!", f"Dana {fund.category} sebesar Rp {fund.amount:,.0f} telah dicatat.", user_id=s.user.id if s and s.user else None)
         
         # Suggestion #1: Auto-Announcement on Keluar
@@ -1047,6 +1076,7 @@ def manage_fund():
             db.session.add(ann)
             
         db.session.commit()
+        auto_recalculate_points()
         flash('Data kas berhasil ditambahkan!')
         return redirect(url_for('manage_fund'))
     
@@ -1116,6 +1146,7 @@ def edit_fund(id):
     if tags: f.tags = tags if tags.startswith('#') else '#' + tags
     
     db.session.commit()
+    auto_recalculate_points()
 
     # Suggestion #1: Auto-Announcement for Edit transactions
     new_ann = Announcement(
@@ -1148,6 +1179,7 @@ def duplicate_fund(id):
     )
     db.session.add(new_f)
     db.session.commit()
+    auto_recalculate_points()
     flash('Transaksi diduplikasikan.')
     return redirect(url_for('manage_fund'))
 
@@ -1178,6 +1210,7 @@ def batch_add_fund():
                 db.session.add(f)
                 count += 1
     db.session.commit()
+    auto_recalculate_points()
     log_activity("Batch Input", f"Total: {count} entri.")
     flash(f'Berhasil mencatat {count} transaksi massal.')
     return redirect(url_for('manage_fund'))
@@ -1190,6 +1223,7 @@ def delete_fund(id):
     log_activity("Hapus Kas", f"ID: {id}, Ket: {f.description}")
     db.session.delete(f)
     db.session.commit()
+    auto_recalculate_points()
     return redirect(url_for('manage_fund'))
 
 @app.route('/fund/export')
@@ -1221,7 +1255,7 @@ def manage_settings():
     
     if request.method == 'POST':
         # 1. Handle Text Settings
-        text_keys = ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_daily_rate', 
+        text_keys = ['web_title', 'web_logo', 'favicon_url', 'fund_start_date', 'fund_end_date', 'fund_daily_rate', 
                      'web_desc', 'social_ig', 'social_wa', 'seo_keywords']
         for key in text_keys:
             if key in request.form:
@@ -1292,7 +1326,11 @@ def manage_roles():
                 can_manage_roles='can_manage_roles' in request.form,
                 can_view_logs='can_view_logs' in request.form,
                 can_export_data='can_export_data' in request.form,
-                can_edit_settings='can_edit_settings' in request.form
+                can_edit_settings='can_edit_settings' in request.form,
+                can_manage_gallery='can_manage_gallery' in request.form,
+                can_manage_notifications='can_manage_notifications' in request.form,
+                can_manage_assignments='can_manage_assignments' in request.form,
+                can_use_api='can_use_api' in request.form
             )
             db.session.add(new_role)
             db.session.commit()
@@ -1492,6 +1530,7 @@ def upload_gallery():
                 count += 1
                 
     db.session.commit()
+    auto_recalculate_points()
     log_activity("Upload Foto Galeri", f"{count} foto diunggah (Status: {status}).")
     if status == 'Pending':
         flash(f'{count} foto berhasil diunggah. Menunggu persetujuan Admin untuk dipublikasikan.')
@@ -1523,6 +1562,7 @@ def delete_gallery(id):
     log_activity("Hapus Foto", f"ID: {photo.id}")
     db.session.delete(photo)
     db.session.commit()
+    auto_recalculate_points()
     flash('Foto berhasil dihapus.')
     return redirect(url_for('manage_gallery'))
 
@@ -1536,6 +1576,7 @@ def approve_gallery(id):
     photo = GalleryPhoto.query.get_or_404(id)
     photo.status = 'Published'
     db.session.commit()
+    auto_recalculate_points()
     log_activity("Approve Foto", f"ID: {photo.id}")
     flash(f'Foto oleh {photo.user.full_name} disetujui.')
     return redirect(url_for('manage_gallery'))
@@ -1559,6 +1600,7 @@ def reject_gallery(id):
     log_activity("Reject Foto", f"ID: {photo.id}, Uploader: {photo.user.username}")
     db.session.delete(photo)
     db.session.commit()
+    auto_recalculate_points()
     flash('Foto ditolak dan dihapus permanen.')
     return redirect(url_for('manage_gallery'))
 
@@ -1674,7 +1716,8 @@ def init_db():
                 
                 # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
-                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery', 'can_use_api']:
+                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery',
+                            'can_manage_notifications', 'can_manage_assignments', 'can_use_api']:
                     if col not in role_cols:
                         conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
                 
@@ -1720,6 +1763,7 @@ def init_db():
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=True,
                     can_view_logs=True, can_export_data=True, can_edit_settings=True, can_manage_gallery=True,
+                    can_manage_notifications=True, can_manage_assignments=True,
                     can_use_api=True
                 )
                 staff_r = Role(
@@ -1727,6 +1771,7 @@ def init_db():
                     can_manage_students=True, can_manage_schedule=True, can_manage_fund=True, 
                     can_manage_announcements=True, can_manage_roles=False,
                     can_view_logs=True, can_export_data=True, can_edit_settings=False, can_manage_gallery=True,
+                    can_manage_notifications=True, can_manage_assignments=True,
                     can_use_api=False
                 )
                 member_r = Role(
@@ -1734,6 +1779,7 @@ def init_db():
                     can_manage_students=False, can_manage_schedule=False, can_manage_fund=False, 
                     can_manage_announcements=False, can_manage_roles=False,
                     can_view_logs=False, can_export_data=False, can_edit_settings=False, can_manage_gallery=False,
+                    can_manage_notifications=False, can_manage_assignments=False,
                     can_use_api=False
                 )
                 db.session.add_all([admin_r, staff_r, member_r])
@@ -1768,6 +1814,7 @@ def init_db():
                     SystemSetting(key='web_title', value='Famousbytee.b Portal', description='Judul Utama Portal'),
                     SystemSetting(key='favicon_url', value='/static/favicon.ico', description='URL Favicon'),
                     SystemSetting(key='fund_start_date', value='2024-03-30', description='Tanggal Mulai Kas (YYYY-MM-DD)'),
+                    SystemSetting(key='fund_end_date', value='', description='Tanggal Akhir Periode Wajib Kas (YYYY-MM-DD, kosong = sampai hari ini)'),
                     SystemSetting(key='fund_daily_rate', value='1000', description='Iuran Harian Kas (Senin-Jumat)'),
                     SystemSetting(key='web_desc', value='Portal Resmi Manajemen Kelas Famousbytee.b', description='Deskripsi Web (SEO)'),
                     SystemSetting(key='social_ig', value='#', description='Link Instagram Kelas'),
@@ -1806,13 +1853,21 @@ def manage_notifications():
     if request.method == 'POST':
         if request.is_json:
             data = request.get_json()
-            title = data.get('title')
-            body = data.get('body')
+            title = (data.get('title') or '').strip()
+            body = (data.get('body') or '').strip()
             target = data.get('target')
         else:
-            title = request.form.get('title')
-            body = request.form.get('body')
+            title = (request.form.get('title') or '').strip()
+            body = (request.form.get('body') or '').strip()
             target = request.form.get('target') # "all" or user_id
+
+        if not title and not body:
+            flash('Judul atau isi notifikasi wajib diisi.')
+            return redirect(url_for('manage_notifications'))
+        if not title:
+            title = 'Notifikasi'
+        if not body:
+            body = title
         
         if target == 'all':
             send_push(title, body, sender_id=current_user.id)

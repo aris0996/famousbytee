@@ -1,33 +1,11 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog, Assignment
+from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog, Assignment, NotificationHistory
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
-
-def get_fund_target():
-    """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""
-    try:
-        start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
-        rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
-        
-        start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
-        daily_rate = int(rate_setting.value) if rate_setting else 1000
-    except:
-        start_date = datetime(2024, 3, 30).date()
-        daily_rate = 1000
-
-    today = datetime.now().date()
-    target = 0
-    if today >= start_date:
-        curr = start_date
-        while curr <= today:
-            if curr.weekday() < 5: # Monday (0) to Friday (4)
-                target += daily_rate
-            curr += timedelta(days=1)
-    return target
 
 @api_bp.route('/login', methods=['POST'])
 def login():
@@ -89,6 +67,7 @@ def login():
                     "can_manage_announcements": user.role.can_manage_announcements,
                     "can_manage_notifications": user.role.can_manage_notifications,
                     "can_manage_gallery": user.role.can_manage_gallery,
+                    "can_manage_assignments": user.role.can_manage_assignments,
                     "can_view_logs": user.role.can_view_logs,
                 },
                 "student": student_data
@@ -160,6 +139,7 @@ def get_profile():
             "can_manage_announcements": user.role.can_manage_announcements,
             "can_manage_notifications": user.role.can_manage_notifications,
             "can_manage_gallery": user.role.can_manage_gallery,
+            "can_manage_assignments": user.role.can_manage_assignments,
             "can_view_logs": user.role.can_view_logs,
         },
         "student": student_data
@@ -273,24 +253,29 @@ def modify_schedule(id):
         
         return jsonify({"status": "success"})
 
-def get_fund_target():
-    """Calculates cumulative target based on 1000/day rule (Mon-Fri)"""
+def get_fund_target(as_of=None):
+    """Calculates cumulative target based on the configured payable period."""
     try:
-        from app import SystemSetting
         start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
+        end_setting = SystemSetting.query.filter_by(key='fund_end_date').first()
         rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
         
         start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
+        end_date = datetime.strptime(end_setting.value, '%Y-%m-%d').date() if end_setting and end_setting.value else None
         daily_rate = int(rate_setting.value) if rate_setting else 1000
     except:
         start_date = datetime(2024, 3, 30).date()
+        end_date = None
         daily_rate = 1000
 
-    today = datetime.now().date()
+    today = as_of or datetime.now().date()
+    if isinstance(today, datetime):
+        today = today.date()
+    target_until = min(today, end_date) if end_date else today
     target = 0
-    if today >= start_date:
+    if target_until >= start_date:
         curr = start_date
-        while curr <= today:
+        while curr <= target_until:
             if curr.weekday() < 5: # Monday (0) to Friday (4)
                 target += daily_rate
             curr += timedelta(days=1)
@@ -445,25 +430,24 @@ def moderate_gallery(photo_id):
             
             db.session.delete(photo)
             db.session.commit()
+            try:
+                from app import auto_recalculate_points
+                auto_recalculate_points()
+            except Exception:
+                pass
             return jsonify({"status": "deleted", "message": "Foto ditolak dan dihapus permanen"})
         except Exception as e:
             db.session.rollback()
             return jsonify({"error": str(e)}), 500
     
     photo.status = status
-    
-    # Award points if Published for the first time
-    if status == 'Published' and photo.uploaded_by:
-        uploader = User.query.get(photo.uploaded_by)
-        if uploader:
-            uploader.points = (uploader.points or 0) + 10
-            # Note: log_activity might need import or context
-            try:
-                from app import log_activity
-                log_activity("Point Awarded", f"+10 Poin untuk {uploader.full_name} (Upload Galeri)", user_id=user_id)
-            except: pass
             
     db.session.commit()
+    try:
+        from app import auto_recalculate_points
+        auto_recalculate_points()
+    except Exception:
+        pass
     return jsonify({"status": "success", "new_status": photo.status})
 
 
@@ -491,6 +475,11 @@ def delete_gallery_photo(photo_id):
         
         db.session.delete(photo)
         db.session.commit()
+        try:
+            from app import auto_recalculate_points
+            auto_recalculate_points()
+        except Exception:
+            pass
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -568,6 +557,11 @@ def upload_gallery_api():
     )
     db.session.add(photo)
     db.session.commit()
+    try:
+        from app import auto_recalculate_points
+        auto_recalculate_points()
+    except Exception:
+        pass
     
     if status == 'Published':
         try:
@@ -606,7 +600,8 @@ def get_notification_history():
     
     # Show notifications that are for "All" or for this specific user
     history = NotificationHistory.query.filter(
-        (NotificationHistory.target == 'All') | (NotificationHistory.target == str(user_id))
+        ((NotificationHistory.target == 'All') | (NotificationHistory.target == str(user_id))) &
+        ((NotificationHistory.title != '') | (NotificationHistory.body != ''))
     ).order_by(NotificationHistory.sent_at.desc()).limit(30).all()
     
     return jsonify([{
@@ -637,10 +632,20 @@ def api_send_notifications():
         return jsonify({"error": "Unauthorized"}), 403
     
     from app import send_push
-    data = request.get_json()
-    title = data.get('title')
-    body = data.get('body')
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
+    title = (data.get('title') or '').strip()
+    body = (data.get('body') or '').strip()
     target = data.get('target') # "all" or user_id
+    if not title and not body:
+        return jsonify({"error": "Judul atau isi notifikasi wajib diisi"}), 400
+    if not title:
+        title = "Notifikasi"
+    if not body:
+        body = title
     
     if target == 'all':
         send_push(title, body, sender_id=user.id)
@@ -657,12 +662,25 @@ def api_manage_fund():
     if not user.role.can_manage_fund:
         return jsonify({"error": "Unauthorized"}), 403
         
-    data = request.get_json()
+    if request.is_json:
+        data = request.get_json()
+    else:
+        data = request.form
+
     description = data.get('desc')
     amount = float(data.get('amount', 0))
     type_val = data.get('type')
     category = data.get('category')
-    date_val = datetime.strptime(data.get('date'), '%Y-%m-%d') if data.get('date') else datetime.now()
+    
+    date_str = data.get('date')
+    if date_str:
+        try:
+            date_val = datetime.strptime(date_str, '%Y-%m-%d')
+        except:
+            date_val = datetime.now()
+    else:
+        date_val = datetime.now()
+        
     student_id_val = data.get('student_id')
     tags = data.get('tags', '')
     evidence_note = data.get('note', '')
@@ -683,7 +701,7 @@ def api_manage_fund():
     db.session.add(fund)
     db.session.commit()
 
-    from app import send_push, log_activity
+    from app import send_push, log_activity, auto_recalculate_points
     # Notify student if it's a payment
     if fund.type == 'Masuk' and fund.student_id:
         student_user = User.query.filter_by(student_id=fund.student_id).first()
@@ -691,6 +709,7 @@ def api_manage_fund():
             send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id)
 
     log_activity("Input Kas (Mobile)", f"{fund.description}: Rp {fund.amount:,.0f}")
+    auto_recalculate_points()
     return jsonify({"status": "success", "id": fund.id})
 
 @api_bp.route('/assignments', methods=['GET'])
@@ -711,7 +730,7 @@ def get_assignments():
 def create_assignment():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
-    if not user.role.can_manage_schedule:
+    if not user.role.can_manage_assignments:
         return jsonify({"error": "Unauthorized"}), 403
         
     data = request.get_json()
@@ -734,7 +753,7 @@ def create_assignment():
 def modify_assignment(id):
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
-    if not user.role.can_manage_schedule:
+    if not user.role.can_manage_assignments:
         return jsonify({"error": "Unauthorized"}), 403
         
     a = Assignment.query.get_or_404(id)
@@ -758,5 +777,3 @@ def modify_assignment(id):
         send_push("Tugas Diperbarui", f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}")
         
         return jsonify({"status": "success"})
-
-

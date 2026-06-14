@@ -1,15 +1,13 @@
-name: Build iOS
+name: Build iOS IPA
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    name: Build iOS IPA
+    name: Build & Sign IPA
     runs-on: macos-latest
     
     steps:
@@ -18,24 +16,31 @@ jobs:
       - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.x' # Sesuai dengan sdk di pubspec.yaml
+          flutter-version: '3.x'
           channel: 'stable'
           cache: true
+
+      - name: Install Apple Certificate
+        uses: apple-actions/import-codesign-certs@v2
+        with:
+          p12-file-base64: ${{ secrets.P12_CERTIFICATE }}
+          p12-password: ${{ secrets.P12_PASSWORD }}
+
+      - name: Install Provisioning Profile
+        uses: apple-actions/download-provisioning-profiles@v1
+        with:
+          bundle-id: 'com.famousbytee.mobile'
+          profile-type: 'IOS_APP_STORE'
+          issuer-id: ${{ secrets.APPSTORE_ISSUER_ID }}
+          api-key-id: ${{ secrets.APPSTORE_KEY_ID }}
+          api-private-key: ${{ secrets.APPSTORE_PRIVATE_KEY }}
 
       - name: Install Dependencies
         run: |
           cd mobile
           flutter pub get
 
-      - name: Cache Pods
-        uses: actions/cache@v3
-        with:
-          path: mobile/ios/Pods
-          key: ${{ runner.os }}-pods-${{ hashFiles('**/Podfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-pods-
-
-      - name: Setup GoogleService-Info.plist
+      - name: Setup Firebase
         run: |
           echo "${{ secrets.GOOGLE_SERVICE_INFO_PLIST }}" | base64 --decode > mobile/ios/Runner/GoogleService-Info.plist
         env:
@@ -44,10 +49,10 @@ jobs:
       - name: Build IPA
         run: |
           cd mobile
-          flutter build ios --no-codesign
+          flutter build ipa --release --export-options-plist=ios/ExportOptions.plist
         
-      - name: Upload Artifact
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ios-build
-          path: mobile/build/ios/iphoneos/Runner.app
+          name: release-ipa
+          path: mobile/build/ios/ipa/*.ipa

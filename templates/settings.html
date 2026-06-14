@@ -82,10 +82,14 @@
                 </div>
                 <h4 style="font-size: 1rem;">Konfigurasi Kas/Iuran</h4>
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px;">
                 <div class="form-group">
                     <label>Tanggal Mulai Perhitungan</label>
                     <input type="date" name="fund_start_date" class="form-control" value="{{ settings.get('fund_start_date', '2024-03-30') }}">
+                </div>
+                <div class="form-group">
+                    <label>Tanggal Akhir Wajib Bayar</label>
+                    <input type="date" name="fund_end_date" class="form-control" value="{{ settings.get('fund_end_date', '') }}">
                 </div>
                 <div class="form-group">
                     <label>Nominal Harian (Senin-Jumat)</label>
@@ -94,7 +98,7 @@
             </div>
             <p style="font-size: 0.7rem; color: #92400e; margin-top: 5px;">
                 <i data-lucide="info" style="width: 12px; vertical-align: middle;"></i> 
-                Sistem akan menghitung iuran otomatis dari tanggal mulai dipilih hingga hari ini (hanya Senin-Jumat).
+                Sistem menghitung iuran dari tanggal mulai sampai tanggal akhir periode. Kosongkan tanggal akhir untuk menghitung sampai hari ini (hanya Senin-Jumat).
             </p>
         </div>
 
