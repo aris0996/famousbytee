@@ -543,13 +543,13 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
     
     _log_notification_history(title, body, user_id, sender_id, status, channel='push')
 
-def send_whatsapp(text, sender_id=None, title=None, chat_id=None):
+def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False):
     text = (text or '').strip()
     if not text:
         _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp')
         return {'ok': False, 'error': 'Pesan WhatsApp kosong'}
 
-    if get_setting_value('waha_enabled', 'false').lower() != 'true':
+    if not force and get_setting_value('waha_enabled', 'false').lower() != 'true':
         _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp')
         return {'ok': False, 'error': 'WhatsApp nonaktif'}
 
@@ -2637,26 +2637,47 @@ def test_whatsapp_notification():
 
 @app.route('/webhooks/waha', methods=['POST'])
 def waha_webhook():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if payload is None:
+        payload = request.form.to_dict(flat=True) if request.form else {}
+    if not payload:
+        raw_body = request.get_data(cache=False, as_text=True) or ''
+        payload = {'raw_body': raw_body}
+
     event_data = _extract_waha_event(payload)
     body = (event_data.get('body') or '').strip()
     chat_id = (event_data.get('chat_id') or '').strip()
+    print(f"WAHA webhook received: event={event_data.get('event', '')}, chat_id={chat_id or '-'}, body={body[:80] or '-'}")
 
     if not body.startswith('/') or not chat_id:
-        return jsonify({'ok': True, 'ignored': True})
+        print(f"WAHA webhook ignored. Payload preview: {json.dumps(payload, ensure_ascii=True)[:300]}")
+        return jsonify({
+            'ok': True,
+            'accepted': True,
+            'ignored': True,
+            'reason': 'not-command-or-missing-chat',
+            'event': event_data.get('event', '')
+        }), 200
 
     response_text = _build_waha_command_response(body, sender_ref=event_data.get('sender_ref') or chat_id)
     if not response_text:
-        return jsonify({'ok': True, 'ignored': True})
+        return jsonify({
+            'ok': True,
+            'accepted': True,
+            'ignored': True,
+            'reason': 'empty-response',
+            'command': body
+        }), 200
 
-    result = send_whatsapp(response_text, title=f"WA Bot {body.split()[0]}", chat_id=chat_id)
-    status_code = 200 if result.get('ok') else 400
+    result = send_whatsapp(response_text, title=f"WA Bot {body.split()[0]}", chat_id=chat_id, force=True)
     return jsonify({
-        'ok': result.get('ok', False),
+        'ok': True,
+        'accepted': True,
         'command': body,
         'chat_id': chat_id,
+        'reply_sent': result.get('ok', False),
         'result': result
-    }), status_code
+    }), 200
 
 @app.route('/notifications/clear')
 @login_required
