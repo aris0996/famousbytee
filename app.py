@@ -159,6 +159,31 @@ def _waha_request(method, path, payload=None):
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
+def _apply_whatsapp_admin_header(text, title=None):
+    text = (text or '').strip()
+    if not text:
+        return text
+
+    header_enabled = get_setting_value('waha_admin_header_enabled', 'true').strip().lower() == 'true'
+    if not header_enabled:
+        return text
+
+    header_template = get_setting_value(
+        'waha_admin_header_text',
+        '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n'
+    )
+    title_block = f"*Topik:* {title}\n" if (title or '').strip() else ''
+    header = _render_template_string(header_template, {
+        'title': (title or '').strip(),
+        'title_block': title_block
+    }).strip()
+
+    if not header:
+        return text
+    if text.startswith(header):
+        return text
+    return f"{header}\n\n{text}".strip()
+
 def get_notification_channel_mode():
     mode = get_setting_value('notification_channel_default', 'push').strip().lower()
     if mode not in {'push', 'whatsapp', 'both'}:
@@ -476,30 +501,62 @@ def _build_deadline_command_response(limit=5):
 def _build_help_command_response():
     return (
         "Perintah WA yang tersedia:\n"
-        "/jadwal\n"
+        "\n"
+        "1. /help\n"
+        "   Menampilkan daftar command yang bisa digunakan.\n"
+        "\n"
+        "2. /jadwal\n"
+        "   Menampilkan jadwal hari ini.\n"
+        "\n"
+        "3. /jadwal besok\n"
+        "   Menampilkan jadwal besok.\n"
+        "\n"
+        "4. /tugas\n"
+        "   Menampilkan tugas aktif terdekat.\n"
+        "\n"
+        "5. /tugas 10\n"
+        "   Menampilkan 10 tugas aktif terdekat.\n"
+        "\n"
+        "6. /deadline\n"
+        "   Menampilkan deadline terdekat.\n"
+        "\n"
+        "7. /deadline 10\n"
+        "   Menampilkan 10 deadline terdekat.\n"
+        "\n"
+        "8. /datakas\n"
+        "   Menampilkan ringkasan kas kelas dan data personal jika nomor cocok.\n"
+        "\n"
+        "Contoh:\n"
         "/jadwal besok\n"
-        "/jadwak\n"
-        "/tugas\n"
-        "/deadline\n"
+        "/tugas 7\n"
+        "/deadline 3\n"
         "/datakas"
     )
+
+def _extract_command_limit(command_text, default_limit=5, max_limit=15):
+    parts = (command_text or '').split()
+    if len(parts) >= 2 and parts[1].isdigit():
+        return min(max_limit, max(1, int(parts[1])))
+    return default_limit
 
 def _build_waha_command_response(command_text, sender_ref=''):
     command_text = (command_text or '').strip()
     lowered = command_text.lower()
-    if lowered.startswith('/jadwak'):
-        lowered = lowered.replace('/jadwak', '/jadwal', 1)
 
+    if lowered in {'/help', '/menu', '/commands', '/cmd'}:
+        return _build_help_command_response()
     if lowered.startswith('/jadwal'):
         target_date = datetime.now().date()
         if 'besok' in lowered:
             target_date = target_date + timedelta(days=1)
+        elif 'hari ini' in lowered:
+            target_date = datetime.now().date()
         response = _build_schedule_summary_message(target_date)
         return response or f"Tidak ada jadwal untuk {_get_indo_day_name(target_date)}, {_format_indo_date(target_date)}."
     if lowered.startswith('/tugas'):
-        return _build_assignment_command_response()
+        return _build_assignment_command_response(limit=_extract_command_limit(lowered))
     if lowered.startswith('/deadline'):
-        return _build_deadline_command_response()
+        return _build_deadline_command_response(limit=_extract_command_limit(lowered))
     if lowered.startswith('/datakas'):
         return _build_kas_command_response(sender_ref=sender_ref)
     return _build_help_command_response()
@@ -616,6 +673,7 @@ def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False):
     if not text:
         _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp')
         return {'ok': False, 'error': 'Pesan WhatsApp kosong'}
+    text = _apply_whatsapp_admin_header(text, title=title)
 
     if not force and get_setting_value('waha_enabled', 'false').lower() != 'true':
         _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp')
@@ -2493,7 +2551,9 @@ def init_db():
                     SystemSetting(key='waha_schedule_template', value='Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih', description='Template ringkasan jadwal WAHA'),
                     SystemSetting(key='waha_schedule_item_template', value='{index}. MK {subject} mulai jam {time_range}', description='Template item jadwal WAHA'),
                     SystemSetting(key='waha_schedule_deadline_item_template', value='{index}. Deadline {subject}: {title} jam {deadline_time}', description='Template item deadline WAHA'),
-                    SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan WAHA')
+                    SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan WAHA'),
+                    SystemSetting(key='waha_admin_header_enabled', value='true', description='Aktifkan header/pengenal admin di pesan WA'),
+                    SystemSetting(key='waha_admin_header_text', value='*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n', description='Template header admin untuk pesan WA')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
@@ -2558,7 +2618,7 @@ def manage_notifications():
         return redirect(url_for('manage_notifications'))
 
     history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(80).all()
-    users = User.query.filter(User.fcm_token.isnot(None)).all()
+    users = User.query.order_by(User.full_name.asc().nullslast(), User.username.asc()).all()
     settings = {
         'waha_enabled': get_setting_value('waha_enabled', 'false'),
         'waha_base_url': get_setting_value('waha_base_url', ''),
@@ -2573,7 +2633,9 @@ def manage_notifications():
         ),
         'waha_schedule_item_template': get_setting_value('waha_schedule_item_template', '{index}. MK {subject} mulai jam {time_range}'),
         'waha_schedule_deadline_item_template': get_setting_value('waha_schedule_deadline_item_template', '{index}. Deadline {subject}: {title} jam {deadline_time}'),
-        'waha_schedule_extra_info': get_setting_value('waha_schedule_extra_info', '')
+        'waha_schedule_extra_info': get_setting_value('waha_schedule_extra_info', ''),
+        'waha_admin_header_enabled': get_setting_value('waha_admin_header_enabled', 'true'),
+        'waha_admin_header_text': get_setting_value('waha_admin_header_text', '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n')
     }
     return render_template('notifications.html', history=history, users=users, settings=settings)
 
@@ -2597,6 +2659,8 @@ def save_waha_config():
     set_setting_value('waha_schedule_item_template', request.form.get('waha_schedule_item_template') or '', 'Template item jadwal WAHA')
     set_setting_value('waha_schedule_deadline_item_template', request.form.get('waha_schedule_deadline_item_template') or '', 'Template item deadline WAHA')
     set_setting_value('waha_schedule_extra_info', request.form.get('waha_schedule_extra_info') or '', 'Info tambahan tetap di ringkasan WAHA')
+    set_setting_value('waha_admin_header_enabled', 'true' if request.form.get('waha_admin_header_enabled') == 'on' else 'false', 'Aktifkan header/pengenal admin di pesan WA')
+    set_setting_value('waha_admin_header_text', request.form.get('waha_admin_header_text') or '', 'Template header admin untuk pesan WA')
     db.session.commit()
     flash('Konfigurasi WAHA berhasil disimpan.')
     return redirect(url_for('manage_notifications'))

@@ -93,6 +93,15 @@
             </div>
             <label style="display:flex; gap:8px; align-items:center; margin-top:8px; font-weight:600;"><input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}> Aktifkan WhatsApp WAHA</label>
             <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#fff;">
+                <h3 style="margin:0 0 10px 0; font-size:1rem;">Header / Pengenal Admin WA</h3>
+                <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-weight:600;"><input type="checkbox" name="waha_admin_header_enabled" {{ 'checked' if settings.waha_admin_header_enabled == 'true' else '' }}> Aktifkan header admin otomatis di semua pesan WA</label>
+                <div class="form-group">
+                    <label>Template Header Admin</label>
+                    <textarea name="waha_admin_header_text" class="form-control" rows="4" placeholder="*[PESAN RESMI ADMIN]*&#10;{title_block}Pesan ini dikirim dari sistem admin.">{{ settings.waha_admin_header_text }}</textarea>
+                </div>
+                <p style="margin:0; color:var(--text-muted); font-size:0.85rem;">Placeholder yang bisa dipakai: <code>{title}</code> dan <code>{title_block}</code>.</p>
+            </div>
+            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#fff;">
                 <h3 style="margin:0 0 10px 0; font-size:1rem;">Template Ringkasan Jadwal WA</h3>
                 <p style="margin:0 0 12px 0; color:var(--text-muted); font-size:0.9rem;">
                     Placeholder yang bisa dipakai: <code>{day_name}</code>, <code>{date_long}</code>, <code>{date_short}</code>, <code>{schedule_lines}</code>, <code>{deadline_section}</code>, <code>{deadline_lines}</code>, <code>{extra_info_section}</code>, <code>{extra_info}</code>.
@@ -167,7 +176,7 @@
             <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc;">
                 <h3 style="margin:0 0 8px 0; font-size:1rem;">Webhook Command WA</h3>
                 <p style="margin:0 0 8px 0; color:var(--text-muted); font-size:0.9rem;">
-                    Daftarkan webhook WAHA ke endpoint <code>/webhooks/waha</code>. Command yang didukung: <code>/jadwal</code>, <code>/jadwal besok</code>, <code>/jadwak</code>, <code>/tugas</code>, <code>/deadline</code>, <code>/datakas</code>.
+                    Daftarkan webhook WAHA ke endpoint <code>/webhooks/waha</code>. Command yang didukung: <code>/help</code>, <code>/jadwal</code>, <code>/jadwal besok</code>, <code>/tugas</code>, <code>/tugas 10</code>, <code>/deadline</code>, <code>/deadline 10</code>, <code>/datakas</code>.
                 </p>
                 <p style="margin:0; color:var(--text-muted); font-size:0.85rem;">
                     Balasan akan dikirim ke chat yang sama, termasuk saat command dikirim dari akun Anda sendiri selama pesan diawali slash.
@@ -260,13 +269,13 @@
                 <label>Target Penerima</label>
                 <select name="target" class="form-control">
                     <option value="all">Kirim ke Semua Siswa (Broadcast)</option>
-                    <optgroup label="Siswa Spesifik (Dengan Token)">
+                    <optgroup label="User / Siswa Spesifik">
                         {% for u in users %}
-                        <option value="{{ u.id }}">{{ u.username }} - {{ u.full_name }}</option>
+                        <option value="{{ u.id }}">{{ u.username }} - {{ u.full_name or u.username }} {{ ' | Push siap' if u.fcm_token else ' | Belum login mobile / token kosong' }}</option>
                         {% endfor %}
                     </optgroup>
                 </select>
-                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">*Hanya siswa yang telah menginstal dan login di aplikasi yang akan menerima notifikasi.</p>
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">*Daftar sekarang menampilkan semua user. Yang belum punya token tetap bisa dipilih, tetapi hasil kirim akan tercatat sebagai <code>No Token</code>.</p>
             </div>
             <div style="display: flex; gap: 1rem; margin-top: 2rem;">
                 <button type="button" class="btn" onclick="document.getElementById('notif-modal').style.display='none'" style="background: #f1f5f9; color: #475569; flex: 1;">Batal</button>

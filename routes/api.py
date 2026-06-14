@@ -650,11 +650,13 @@ def get_notification_recipients():
     user = User.query.get(int(user_id))
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
-    users = User.query.filter(User.fcm_token.isnot(None)).all()
+    users = User.query.order_by(User.full_name.asc().nullslast(), User.username.asc()).all()
     return jsonify([{
         "id": u.id,
         "full_name": u.student.full_name if u.student else u.username,
-        "username": u.username
+        "username": u.username,
+        "has_token": bool(u.fcm_token),
+        "status": u.status or 'Active'
     } for u in users])
 
 @api_bp.route('/notifications/send', methods=['POST'])
