@@ -4,8 +4,79 @@ from models import db, User, Announcement, Schedule, BatchFund, Student, Gallery
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
+from sqlalchemy import or_
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+
+def _explore_contains(column, query):
+    return db.func.lower(db.func.coalesce(column, '')).like(f"%{query}%")
+
+
+def _explore_snippet(*values, fallback=''):
+    for value in values:
+        text = str(value or '').strip()
+        if text:
+            return text[:140]
+    return fallback
+
+
+def _day_index(day_name):
+    order = {
+        'senin': 0,
+        'selasa': 1,
+        'rabu': 2,
+        'kamis': 3,
+        'jumat': 4,
+        'sabtu': 5,
+        'minggu': 6,
+    }
+    return order.get((day_name or '').strip().lower(), 7)
+
+
+def _next_schedule_sort_at(schedule):
+    now = datetime.now()
+    current_day = now.weekday()
+    target_day = _day_index(schedule.day)
+    delta_days = (target_day - current_day) % 7
+
+    try:
+        hour, minute = [int(part) for part in (schedule.time_start or '00:00').split(':')[:2]]
+    except Exception:
+        hour, minute = 0, 0
+
+    next_occurrence = now.replace(hour=hour, minute=minute, second=0, microsecond=0) + timedelta(days=delta_days)
+    if delta_days == 0 and next_occurrence < now:
+        next_occurrence += timedelta(days=7)
+
+    # Reverse closeness into descending-friendly value: sooner schedule gets larger timestamp.
+    return now + timedelta(days=7) - (next_occurrence - now)
+
+
+def _interleave_explore_items(items):
+    grouped = {}
+    for item in items:
+        grouped.setdefault(item['type'], []).append(item)
+
+    for bucket in grouped.values():
+        bucket.sort(key=lambda value: value['sort_at'], reverse=True)
+
+    group_order = sorted(
+        grouped.keys(),
+        key=lambda key: grouped[key][0]['sort_at'] if grouped[key] else datetime.min,
+        reverse=True
+    )
+
+    mixed = []
+    while True:
+        added = False
+        for key in group_order:
+            if grouped[key]:
+                mixed.append(grouped[key].pop(0))
+                added = True
+        if not added:
+            break
+    return mixed
 
 @api_bp.route('/login', methods=['POST'])
 def login():
@@ -176,6 +247,245 @@ def get_announcements():
         "is_public": a.is_public,
         "date_posted": a.date_posted.isoformat()
     } for a in announcements])
+
+
+@api_bp.route('/explore', methods=['GET'])
+@jwt_required()
+def get_explore():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    query = (request.args.get('q') or '').strip().lower()
+    filter_type = (request.args.get('type') or 'all').strip().lower()
+    page = max(1, int(request.args.get('page') or 1))
+    per_page = min(50, max(1, int(request.args.get('per_page') or 20)))
+
+    allowed_types = {'all', 'announcement', 'schedule', 'assignment', 'fund', 'gallery', 'member'}
+    if filter_type not in allowed_types:
+        filter_type = 'all'
+
+    items = []
+
+    if filter_type in {'all', 'announcement'}:
+        announcement_query = Announcement.query
+        if query:
+            announcement_query = announcement_query.filter(or_(
+                _explore_contains(Announcement.title, query),
+                _explore_contains(Announcement.content, query),
+                _explore_contains(Announcement.category, query),
+            ))
+
+        for announcement in announcement_query.order_by(Announcement.date_posted.desc()).limit(40).all():
+            items.append({
+                'id': announcement.id,
+                'type': 'announcement',
+                'title': announcement.title,
+                'subtitle': announcement.category or 'Pengumuman',
+                'snippet': _explore_snippet(announcement.content, fallback='Pengumuman kelas'),
+                'date_label': announcement.date_posted.strftime('%d %b %Y %H:%M'),
+                'sort_at': announcement.date_posted,
+                'thumbnail_url': None,
+                'route_hint': 'announcement',
+                'route_params': {'id': announcement.id},
+                'badge': 'Pengumuman',
+                'meta': {
+                    'category': announcement.category or 'Info',
+                    'is_pinned': bool(announcement.is_pinned),
+                    'content': announcement.content or '',
+                    'date_posted': announcement.date_posted.isoformat(),
+                }
+            })
+
+    if filter_type in {'all', 'schedule'}:
+        schedule_query = Schedule.query
+        if user.student and user.student.classroom_id:
+            schedule_query = schedule_query.filter_by(classroom_id=user.student.classroom_id)
+        if query:
+            schedule_query = schedule_query.filter(or_(
+                _explore_contains(Schedule.subject, query),
+                _explore_contains(Schedule.lecturer, query),
+                _explore_contains(Schedule.room, query),
+                _explore_contains(Schedule.day, query),
+                _explore_contains(Schedule.time_start, query),
+                _explore_contains(Schedule.time_end, query),
+            ))
+
+        for schedule in schedule_query.all():
+            sort_at = _next_schedule_sort_at(schedule)
+            items.append({
+                'id': schedule.id,
+                'type': 'schedule',
+                'title': schedule.subject,
+                'subtitle': f"{schedule.day}, {schedule.time_start}-{schedule.time_end}",
+                'snippet': _explore_snippet(f"Dosen: {schedule.lecturer or '-'} | Ruang: {schedule.room or '-'}"),
+                'date_label': schedule.day or '-',
+                'sort_at': sort_at,
+                'thumbnail_url': None,
+                'route_hint': 'schedule',
+                'route_params': {'id': schedule.id},
+                'badge': 'Jadwal',
+                'meta': {
+                    'day': schedule.day,
+                    'time_start': schedule.time_start,
+                    'time_end': schedule.time_end,
+                    'room': schedule.room or '-',
+                    'lecturer': schedule.lecturer or '-',
+                }
+            })
+
+    if filter_type in {'all', 'assignment'}:
+        assignment_query = Assignment.query
+        if query:
+            assignment_query = assignment_query.filter(or_(
+                _explore_contains(Assignment.title, query),
+                _explore_contains(Assignment.subject, query),
+                _explore_contains(Assignment.description, query),
+            ))
+
+        for assignment in assignment_query.order_by(Assignment.deadline.desc()).limit(40).all():
+            items.append({
+                'id': assignment.id,
+                'type': 'assignment',
+                'title': assignment.title,
+                'subtitle': assignment.subject or 'Tugas',
+                'snippet': _explore_snippet(assignment.description, fallback='Tugas kelas'),
+                'date_label': assignment.deadline.strftime('%d %b %Y %H:%M'),
+                'sort_at': assignment.deadline,
+                'thumbnail_url': None,
+                'route_hint': 'assignment',
+                'route_params': {'id': assignment.id},
+                'badge': 'Tugas',
+                'meta': {
+                    'subject': assignment.subject or 'Tugas',
+                    'deadline': assignment.deadline.isoformat(),
+                    'description': assignment.description or '',
+                }
+            })
+
+    if filter_type in {'all', 'fund'}:
+        fund_query = BatchFund.query
+        if query:
+            fund_query = fund_query.outerjoin(Student, BatchFund.student_id == Student.id).filter(or_(
+                _explore_contains(BatchFund.description, query),
+                _explore_contains(BatchFund.category, query),
+                _explore_contains(BatchFund.tags, query),
+                _explore_contains(Student.full_name, query),
+            ))
+
+        for fund in fund_query.order_by(BatchFund.date.desc()).limit(40).all():
+            items.append({
+                'id': fund.id,
+                'type': 'fund',
+                'title': fund.description,
+                'subtitle': f"{fund.type} • {fund.category or 'Kas'}",
+                'snippet': _explore_snippet(f"Nominal: Rp {int(fund.amount):,}".replace(',', '.'), fund.tags, fund.student.full_name if fund.student else ''),
+                'date_label': fund.date.strftime('%d %b %Y'),
+                'sort_at': datetime.combine(fund.date, datetime.min.time()),
+                'thumbnail_url': None,
+                'route_hint': 'fund',
+                'route_params': {'id': fund.id},
+                'badge': 'Kas',
+                'meta': {
+                    'amount': fund.amount,
+                    'fund_type': fund.type,
+                    'category': fund.category or 'Kas',
+                    'student_name': fund.student.full_name if fund.student else None,
+                }
+            })
+
+    if filter_type in {'all', 'gallery'}:
+        if user.role.can_manage_gallery:
+            gallery_query = GalleryPhoto.query
+        else:
+            gallery_query = GalleryPhoto.query.filter(
+                (GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == int(user_id))
+            )
+
+        if query:
+            gallery_query = gallery_query.outerjoin(User, GalleryPhoto.uploaded_by == User.id).filter(or_(
+                _explore_contains(GalleryPhoto.caption, query),
+                _explore_contains(GalleryPhoto.tags, query),
+                _explore_contains(User.full_name, query),
+                _explore_contains(User.username, query),
+            ))
+
+        for photo in gallery_query.order_by(GalleryPhoto.created_at.desc()).limit(40).all():
+            items.append({
+                'id': photo.id,
+                'type': 'gallery',
+                'title': photo.caption or 'Foto Galeri',
+                'subtitle': photo.user.full_name if photo.user and photo.user.full_name else (photo.user.username if photo.user else 'Galeri'),
+                'snippet': _explore_snippet(photo.tags, fallback='Foto galeri kelas'),
+                'date_label': photo.created_at.strftime('%d %b %Y %H:%M'),
+                'sort_at': photo.created_at,
+                'thumbnail_url': photo.filename,
+                'route_hint': 'gallery',
+                'route_params': {
+                    'id': photo.id,
+                    'filename': photo.filename,
+                    'caption': photo.caption or '',
+                    'uploaded_by': photo.user.full_name if photo.user and photo.user.full_name else (photo.user.username if photo.user else 'System'),
+                    'tags': photo.tags or '',
+                    'status': photo.status,
+                    'is_public': photo.is_public,
+                    'created_at': photo.created_at.isoformat(),
+                    'comments': [],
+                },
+                'badge': 'Galeri',
+                'meta': {
+                    'status': photo.status,
+                    'tags': photo.tags or '',
+                }
+            })
+
+    if filter_type in {'all', 'member'}:
+        member_query = Student.query
+        if user.student and user.student.classroom_id:
+            member_query = member_query.filter_by(classroom_id=user.student.classroom_id)
+        if query:
+            member_query = member_query.filter(or_(
+                _explore_contains(Student.full_name, query),
+                _explore_contains(Student.nim, query),
+                _explore_contains(Student.status, query),
+            ))
+
+        for member in member_query.order_by(Student.full_name.asc()).limit(40).all():
+            items.append({
+                'id': member.id,
+                'type': 'member',
+                'title': member.full_name,
+                'subtitle': member.nim,
+                'snippet': _explore_snippet(member.status, fallback='Anggota kelas'),
+                'date_label': member.status or 'Aktif',
+                'sort_at': datetime(1970, 1, 1),
+                'thumbnail_url': None,
+                'route_hint': 'member',
+                'route_params': {'id': member.id},
+                'badge': 'Anggota',
+                'meta': {
+                    'nim': member.nim,
+                    'status': member.status or 'Aktif',
+                }
+            })
+
+    if query:
+        ordered_items = sorted(items, key=lambda value: value['sort_at'], reverse=True)
+    else:
+        ordered_items = _interleave_explore_items(sorted(items, key=lambda value: value['sort_at'], reverse=True))
+
+    total = len(ordered_items)
+    start = (page - 1) * per_page
+    paged_items = ordered_items[start:start + per_page]
+
+    return jsonify({
+        'items': [{
+            **item,
+            'sort_at': item['sort_at'].isoformat(),
+        } for item in paged_items],
+        'page': page,
+        'per_page': per_page,
+        'has_more': start + per_page < total,
+        'total': total,
+    })
 
 @api_bp.route('/schedules', methods=['GET', 'POST'])
 @jwt_required()
