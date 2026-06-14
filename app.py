@@ -2,7 +2,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
+from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
 import json
 from PIL import Image
@@ -62,6 +62,67 @@ def set_setting_value(key, value, description=None):
             setting.description = description
     else:
         db.session.add(SystemSetting(key=key, value=value, description=description))
+
+def _normalize_waha_scalar(value):
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, dict):
+        if 'serialized' in value:
+            return _normalize_waha_scalar(value.get('serialized'))
+        if '_serialized' in value:
+            return _normalize_waha_scalar(value.get('_serialized'))
+        if 'id' in value and isinstance(value.get('id'), str):
+            return value.get('id')
+        user = value.get('user') or value.get('number') or value.get('phone')
+        server = value.get('server')
+        if user and server:
+            return f"{user}@{server}"
+        if 'pushname' in value:
+            return _normalize_waha_scalar(value.get('pushname'))
+        if 'name' in value:
+            return _normalize_waha_scalar(value.get('name'))
+        if 'wid' in value:
+            return _normalize_waha_scalar(value.get('wid'))
+        return json.dumps(value, ensure_ascii=True)[:120]
+    if isinstance(value, list):
+        return ', '.join(_normalize_waha_scalar(v) for v in value[:5])
+    return str(value)
+
+def _normalize_waha_chat_id(item):
+    candidates = []
+    if isinstance(item, dict):
+        candidates.extend([
+            item.get('chatId'),
+            item.get('id'),
+            item.get('_id'),
+            item.get('wid'),
+            item.get('contactId')
+        ])
+        if isinstance(item.get('id'), dict):
+            candidates.append(item.get('id'))
+        if isinstance(item.get('wid'), dict):
+            candidates.append(item.get('wid'))
+    for candidate in candidates:
+        normalized = _normalize_waha_scalar(candidate).strip()
+        if normalized:
+            return normalized
+    return ''
+
+def get_fund_periods():
+    return FundPeriod.query.filter_by(is_active=True).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+
+def _count_weekdays_between(start_date, end_date):
+    total = 0
+    current = start_date
+    while current <= end_date:
+        if current.weekday() < 5:
+            total += 1
+        current += timedelta(days=1)
+    return total
 
 def _waha_headers():
     api_key = get_setting_value('waha_api_key', '').strip()
@@ -391,6 +452,11 @@ with app.app_context():
         except Exception as e:
             print(f"Database Patch Error: {e}")
 
+    try:
+        FundPeriod.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception as e:
+        print(f"Database Patch Error (fund_period): {e}")
+
 
     
     # Sync and Harden RBAC
@@ -491,6 +557,26 @@ with app.app_context():
         except Exception as e:
             db.session.rollback()
             print(f"Point Recalculation Error: {e}")
+
+    try:
+        if FundPeriod.query.count() == 0:
+            legacy_start = get_setting_value('fund_start_date', '2024-03-30')
+            legacy_end = get_setting_value('fund_end_date', '')
+            legacy_rate = int(get_setting_value('fund_daily_rate', '1000') or 1000)
+            start_date = datetime.strptime(legacy_start, '%Y-%m-%d').date()
+            end_date = datetime.strptime(legacy_end, '%Y-%m-%d').date() if legacy_end else datetime.now().date()
+            db.session.add(FundPeriod(
+                title='Periode Awal',
+                start_date=start_date,
+                end_date=end_date,
+                daily_rate=legacy_rate,
+                is_active=True
+            ))
+            db.session.commit()
+            print("Fund Period Seed: Legacy configuration migrated to first period.")
+    except Exception as e:
+        db.session.rollback()
+        print(f"Fund Period Seed Error: {e}")
             
 
 @login_manager.user_loader
@@ -638,32 +724,38 @@ def log_activity(action, details=None):
         db.session.commit()
 
 def get_fund_target(as_of=None):
-    """Calculates cumulative target based on the configured payable period."""
+    """Calculates cumulative target based on advanced periods, with legacy fallback."""
+    today = as_of or datetime.now().date()
+    if isinstance(today, datetime):
+        today = today.date()
+
+    periods = get_fund_periods()
+    if periods:
+        total = 0
+        for period in periods:
+            effective_end = min(today, period.end_date)
+            if effective_end < period.start_date:
+                continue
+            total += _count_weekdays_between(period.start_date, effective_end) * (period.daily_rate or 0)
+        return total
+
     try:
         start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
         end_setting = SystemSetting.query.filter_by(key='fund_end_date').first()
         rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
-        
+
         start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
         end_date = datetime.strptime(end_setting.value, '%Y-%m-%d').date() if end_setting and end_setting.value else None
         daily_rate = int(rate_setting.value) if rate_setting else 1000
-    except:
+    except Exception:
         start_date = datetime(2024, 3, 30).date()
         end_date = None
         daily_rate = 1000
 
-    today = as_of or datetime.now().date()
-    if isinstance(today, datetime):
-        today = today.date()
     target_until = min(today, end_date) if end_date else today
-    target = 0
-    if target_until >= start_date:
-        curr = start_date
-        while curr <= target_until:
-            if curr.weekday() < 5: # Monday (0) to Friday (4)
-                target += daily_rate
-            curr += timedelta(days=1)
-    return target
+    if target_until < start_date:
+        return 0
+    return _count_weekdays_between(start_date, target_until) * daily_rate
 
 with app.app_context():
     auto_recalculate_points()
@@ -1272,6 +1364,7 @@ def manage_fund():
     balance = total_in - total_out
     
     target_payment = get_fund_target()
+    fund_periods = FundPeriod.query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
 
     
     member_statuses = []
@@ -1291,8 +1384,79 @@ def manage_fund():
                          students=students, 
                          member_statuses=member_statuses, 
                          your_status=your_status,
+                         fund_periods=fund_periods,
                          target_daily=int(SystemSetting.query.filter_by(key='fund_daily_rate').first().value) if SystemSetting.query.filter_by(key='fund_daily_rate').first() else 1000,
                          today_date=datetime.now().strftime('%Y-%m-%d'))
+
+@app.route('/fund/periods', methods=['POST'])
+@login_required
+def create_fund_period():
+    if not current_user.role.can_manage_fund:
+        return redirect(url_for('dashboard'))
+
+    title = (request.form.get('title') or '').strip()
+    start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+    end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
+    daily_rate = int(request.form.get('daily_rate') or 1000)
+    is_active = 'is_active' in request.form
+
+    if not title:
+        title = f"Periode {FundPeriod.query.count() + 1}"
+    if end_date < start_date:
+        flash('Tanggal akhir periode tidak boleh sebelum tanggal mulai.')
+        return redirect(url_for('manage_fund'))
+
+    db.session.add(FundPeriod(
+        title=title,
+        start_date=start_date,
+        end_date=end_date,
+        daily_rate=daily_rate,
+        is_active=is_active
+    ))
+    db.session.commit()
+    auto_recalculate_points()
+    flash('Periode kas berhasil ditambahkan.')
+    return redirect(url_for('manage_fund'))
+
+@app.route('/fund/periods/<int:id>', methods=['POST'])
+@login_required
+def update_fund_period(id):
+    if not current_user.role.can_manage_fund:
+        return redirect(url_for('dashboard'))
+
+    period = FundPeriod.query.get_or_404(id)
+    start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+    end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
+    if end_date < start_date:
+        flash('Tanggal akhir periode tidak boleh sebelum tanggal mulai.')
+        return redirect(url_for('manage_fund'))
+
+    period.title = (request.form.get('title') or period.title).strip() or period.title
+    period.start_date = start_date
+    period.end_date = end_date
+    period.daily_rate = int(request.form.get('daily_rate') or period.daily_rate or 1000)
+    period.is_active = 'is_active' in request.form
+    db.session.commit()
+    auto_recalculate_points()
+    flash('Periode kas berhasil diperbarui.')
+    return redirect(url_for('manage_fund'))
+
+@app.route('/fund/periods/delete/<int:id>')
+@login_required
+def delete_fund_period(id):
+    if not current_user.role.can_manage_fund:
+        return redirect(url_for('dashboard'))
+
+    period = FundPeriod.query.get_or_404(id)
+    if FundPeriod.query.count() <= 1:
+        flash('Minimal harus ada satu periode kas aktif/tersimpan.')
+        return redirect(url_for('manage_fund'))
+
+    db.session.delete(period)
+    db.session.commit()
+    auto_recalculate_points()
+    flash('Periode kas dihapus.')
+    return redirect(url_for('manage_fund'))
 
 @app.route('/fund/edit/<int:id>', methods=['POST'])
 @login_required
@@ -2117,10 +2281,10 @@ def get_waha_sessions():
         if not isinstance(item, dict):
             continue
         normalized.append({
-            'name': item.get('name') or item.get('session') or item.get('id') or '-',
-            'status': item.get('status') or item.get('state') or item.get('connectionStatus') or '-',
-            'me': item.get('me') or item.get('meId') or item.get('phone') or '-',
-            'engine': item.get('engine') or item.get('type') or '-'
+            'name': _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
+            'status': _normalize_waha_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or '-'),
+            'me': _normalize_waha_scalar(item.get('me') or item.get('meId') or item.get('phone') or '-'),
+            'engine': _normalize_waha_scalar(item.get('engine') or item.get('type') or '-')
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized)})
 
@@ -2143,10 +2307,42 @@ def get_waha_groups():
         if not isinstance(item, dict):
             continue
         normalized.append({
-            'name': item.get('name') or item.get('subject') or item.get('formattedTitle') or 'Tanpa Nama',
-            'chat_id': item.get('id') or item.get('chatId') or item.get('_id') or '',
+            'name': _normalize_waha_scalar(item.get('name') or item.get('subject') or item.get('formattedTitle') or 'Tanpa Nama'),
+            'chat_id': _normalize_waha_chat_id(item),
             'participants': item.get('participantsCount') or item.get('size') or len(item.get('participants', []) if isinstance(item.get('participants'), list) else []),
-            'owner': item.get('owner') or item.get('ownerPn') or '-'
+            'owner': _normalize_waha_scalar(item.get('owner') or item.get('ownerPn') or '-')
+        })
+    return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': session_name})
+
+@app.route('/notifications/waha/chats')
+@login_required
+def get_waha_chats():
+    if not current_user.role.can_manage_whatsapp:
+        return jsonify({'error': 'Unauthorized'}), 403
+    session_name = get_setting_value('waha_session', '').strip()
+    if not session_name:
+        return jsonify({'ok': False, 'error': 'Session WAHA belum diatur'}), 400
+
+    result = _waha_request('GET', f'/api/{session_name}/chats')
+    if not result.get('ok'):
+        return jsonify(result), 400
+
+    raw_data = result.get('data') or []
+    chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
+    normalized = []
+    for item in chats:
+        if not isinstance(item, dict):
+            continue
+        chat_id = _normalize_waha_chat_id(item)
+        if not chat_id:
+            continue
+        chat_type = 'group' if '@g.us' in chat_id else 'personal'
+        normalized.append({
+            'name': _normalize_waha_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
+            'chat_id': chat_id,
+            'participants': item.get('participantsCount') or item.get('size') or 0,
+            'owner': _normalize_waha_scalar(item.get('owner') or item.get('ownerPn') or '-'),
+            'type': chat_type
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': session_name})
 
@@ -2163,7 +2359,10 @@ def test_push_notification():
 def test_whatsapp_notification():
     if not current_user.role.can_manage_whatsapp:
         return jsonify({'error': 'Unauthorized'}), 403
-    result = send_whatsapp('Test pesan WAHA dari panel backend Famousbytee.', sender_id=current_user.id, title='Test WhatsApp')
+    payload = request.get_json(silent=True) or request.form or {}
+    custom_chat_id = (payload.get('chat_id') or '').strip()
+    custom_message = (payload.get('message') or 'Test pesan WAHA dari panel backend Famousbytee.').strip()
+    result = send_whatsapp(custom_message, sender_id=current_user.id, title='Test WhatsApp', chat_id=custom_chat_id or None)
     return jsonify(result), (200 if result.get('ok') else 400)
 
 @app.route('/notifications/clear')

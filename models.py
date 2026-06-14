@@ -143,6 +143,16 @@ class BatchFund(db.Model):
     original_amount = db.Column(db.Float)
     original_description = db.Column(db.String(200))
     tags = db.Column(db.String(100)) # e.g., "#Event #Futsal"
+
+class FundPeriod(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    daily_rate = db.Column(db.Integer, nullable=False, default=1000)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
 class SystemSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(50), unique=True, nullable=False)

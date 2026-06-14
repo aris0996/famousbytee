@@ -132,6 +132,40 @@
         </div>
     </div>
 
+    <div class="section-card" style="margin-bottom: 1rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+            <div>
+                <h3 style="margin:0;">Periode Kas Aktif</h3>
+                <p style="margin:4px 0 0 0; color: var(--text-muted);">Target iuran dijumlahkan dari semua periode aktif, tanpa mengubah transaksi lama yang sudah tercatat.</p>
+            </div>
+            {% if current_user.role.can_manage_fund %}
+            <button class="btn btn-primary" onclick="document.getElementById('modal-period').style.display='flex'">
+                <i data-lucide="calendar-plus"></i> <span>Tambah Periode</span>
+            </button>
+            {% endif %}
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px;">
+            {% for period in fund_periods %}
+            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:14px; background:#fff;">
+                <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                    <div>
+                        <div style="font-weight:800;">{{ period.title }}</div>
+                        <div style="font-size:0.85rem; color: var(--text-muted);">{{ period.start_date.strftime('%d %b %Y') }} - {{ period.end_date.strftime('%d %b %Y') }}</div>
+                        <div style="font-size:0.85rem; color: var(--primary); margin-top:4px;">Rp {{ "{:,.0f}".format(period.daily_rate) }} / hari kerja</div>
+                    </div>
+                    <span class="status-badge {{ 'status-aktif' if period.is_active else 'status-cuti' }}">{{ 'Aktif' if period.is_active else 'Nonaktif' }}</span>
+                </div>
+                {% if current_user.role.can_manage_fund %}
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:12px;">
+                    <button class="btn-sm btn-outline" onclick="openEditPeriod('{{ period.id }}', '{{ period.title|replace('\'','\\\'') }}', '{{ period.start_date.strftime('%Y-%m-%d') }}', '{{ period.end_date.strftime('%Y-%m-%d') }}', '{{ period.daily_rate }}', {{ 'true' if period.is_active else 'false' }})">Edit</button>
+                    <a href="{{ url_for('delete_fund_period', id=period.id) }}" class="btn-sm btn-outline" style="color:#b91c1c; border-color:#fecaca;" onclick="return confirm('Hapus periode ini?')">Hapus</a>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
     <!-- AUDIT TAB -->
     <div id="tab-audit" class="tab-pane">
         <div class="control-bar">
@@ -185,6 +219,49 @@
 </div>
 
 <!-- Modals -->
+<div id="modal-period" class="modal-overlay">
+    <div class="modal-card">
+        <div class="header">
+            <h2>Tambah Periode Kas</h2><button onclick="document.getElementById('modal-period').style.display='none'"><i data-lucide="x"></i></button>
+        </div>
+        <form method="POST" action="{{ url_for('create_fund_period') }}">
+            <div class="body">
+                <div class="f-group"><label>Nama Periode</label><input type="text" name="title" class="form-control" placeholder="Contoh: Semester Ganjil 2026"></div>
+                <div class="f-row">
+                    <div class="f-group"><label>Tanggal Mulai</label><input type="date" name="start_date" class="form-control" required></div>
+                    <div class="f-group"><label>Tanggal Akhir</label><input type="date" name="end_date" class="form-control" required></div>
+                </div>
+                <div class="f-row">
+                    <div class="f-group"><label>Nominal Harian</label><input type="number" name="daily_rate" class="form-control" value="1000" required></div>
+                    <div class="f-group"><label>Status</label><label style="display:flex; gap:8px; align-items:center; margin-top:10px;"><input type="checkbox" name="is_active" checked> Aktif</label></div>
+                </div>
+            </div>
+            <div class="footer"><button type="submit" class="btn btn-primary wide">Simpan Periode</button></div>
+        </form>
+    </div>
+</div>
+
+<div id="modal-edit-period" class="modal-overlay">
+    <div class="modal-card">
+        <div class="header">
+            <h2>Edit Periode Kas</h2><button onclick="document.getElementById('modal-edit-period').style.display='none'"><i data-lucide="x"></i></button>
+        </div>
+        <form id="edit-period-form" method="POST">
+            <div class="body">
+                <div class="f-group"><label>Nama Periode</label><input type="text" name="title" id="edit-period-title" class="form-control"></div>
+                <div class="f-row">
+                    <div class="f-group"><label>Tanggal Mulai</label><input type="date" name="start_date" id="edit-period-start" class="form-control" required></div>
+                    <div class="f-group"><label>Tanggal Akhir</label><input type="date" name="end_date" id="edit-period-end" class="form-control" required></div>
+                </div>
+                <div class="f-row">
+                    <div class="f-group"><label>Nominal Harian</label><input type="number" name="daily_rate" id="edit-period-rate" class="form-control" required></div>
+                    <div class="f-group"><label>Status</label><label style="display:flex; gap:8px; align-items:center; margin-top:10px;"><input type="checkbox" name="is_active" id="edit-period-active"> Aktif</label></div>
+                </div>
+            </div>
+            <div class="footer"><button type="submit" class="btn btn-primary wide">Update Periode</button></div>
+        </form>
+    </div>
+</div>
 <div id="modal-batch" class="modal-overlay">
     <div class="modal-card wide">
         <div class="header">
@@ -1219,8 +1296,18 @@
         lucide.createIcons();
     }
 
+    function openEditPeriod(id, title, start, end, rate, isActive) {
+        document.getElementById('edit-period-form').action = '/fund/periods/' + id;
+        document.getElementById('edit-period-title').value = title;
+        document.getElementById('edit-period-start').value = start;
+        document.getElementById('edit-period-end').value = end;
+        document.getElementById('edit-period-rate').value = rate;
+        document.getElementById('edit-period-active').checked = isActive;
+        document.getElementById('modal-edit-period').style.display = 'flex';
+    }
+
     window.onclick = function (event) {
-        ['modal-fund', 'modal-edit-fund', 'modal-batch'].forEach(id => {
+        ['modal-fund', 'modal-edit-fund', 'modal-batch', 'modal-period', 'modal-edit-period'].forEach(id => {
             if (event.target == document.getElementById(id)) document.getElementById(id).style.display = "none";
         });
     }

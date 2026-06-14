@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, ActivityLog, Assignment, NotificationHistory
+from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
@@ -267,33 +267,48 @@ def modify_schedule(id):
         
         return jsonify({"status": "success"})
 
+def _count_weekdays_between(start_date, end_date):
+    total = 0
+    current = start_date
+    while current <= end_date:
+        if current.weekday() < 5:
+            total += 1
+        current += timedelta(days=1)
+    return total
+
 def get_fund_target(as_of=None):
-    """Calculates cumulative target based on the configured payable period."""
+    """Calculates cumulative target based on advanced periods, with legacy fallback."""
+    today = as_of or datetime.now().date()
+    if isinstance(today, datetime):
+        today = today.date()
+
+    periods = FundPeriod.query.filter_by(is_active=True).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    if periods:
+        total = 0
+        for period in periods:
+            effective_end = min(today, period.end_date)
+            if effective_end < period.start_date:
+                continue
+            total += _count_weekdays_between(period.start_date, effective_end) * (period.daily_rate or 0)
+        return total
+
     try:
         start_setting = SystemSetting.query.filter_by(key='fund_start_date').first()
         end_setting = SystemSetting.query.filter_by(key='fund_end_date').first()
         rate_setting = SystemSetting.query.filter_by(key='fund_daily_rate').first()
-        
+
         start_date = datetime.strptime(start_setting.value, '%Y-%m-%d').date() if start_setting else datetime(2024, 3, 30).date()
         end_date = datetime.strptime(end_setting.value, '%Y-%m-%d').date() if end_setting and end_setting.value else None
         daily_rate = int(rate_setting.value) if rate_setting else 1000
-    except:
+    except Exception:
         start_date = datetime(2024, 3, 30).date()
         end_date = None
         daily_rate = 1000
 
-    today = as_of or datetime.now().date()
-    if isinstance(today, datetime):
-        today = today.date()
     target_until = min(today, end_date) if end_date else today
-    target = 0
-    if target_until >= start_date:
-        curr = start_date
-        while curr <= target_until:
-            if curr.weekday() < 5: # Monday (0) to Friday (4)
-                target += daily_rate
-            curr += timedelta(days=1)
-    return target
+    if target_until < start_date:
+        return 0
+    return _count_weekdays_between(start_date, target_until) * daily_rate
 
 @api_bp.route('/funds/summary', methods=['GET'])
 @jwt_required()
