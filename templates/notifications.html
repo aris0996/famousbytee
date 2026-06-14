@@ -81,7 +81,7 @@
                 <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="http://103.210.121.29:3000"></div>
                 <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" value="" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
                 <div class="form-group"><label>Session WAHA</label><input type="text" name="waha_session" class="form-control" value="{{ settings.waha_session }}"></div>
-                <div class="form-group"><label>Group Chat ID</label><input type="text" name="waha_group_chat_id" class="form-control" value="{{ settings.waha_group_chat_id }}"></div>
+                <div class="form-group"><label>Default Group Chat ID</label><input type="text" name="waha_group_chat_id" class="form-control" value="{{ settings.waha_group_chat_id }}"></div>
                 <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
                 <div class="form-group"><label>Channel Default</label>
                     <select name="notification_channel_default" class="form-control">
@@ -92,6 +92,30 @@
                 </div>
             </div>
             <label style="display:flex; gap:8px; align-items:center; margin-top:8px; font-weight:600;"><input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}> Aktifkan WhatsApp WAHA</label>
+            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#fff;">
+                <h3 style="margin:0 0 10px 0; font-size:1rem;">Template Ringkasan Jadwal WA</h3>
+                <p style="margin:0 0 12px 0; color:var(--text-muted); font-size:0.9rem;">
+                    Placeholder yang bisa dipakai: <code>{day_name}</code>, <code>{date_long}</code>, <code>{date_short}</code>, <code>{schedule_lines}</code>, <code>{deadline_section}</code>, <code>{deadline_lines}</code>, <code>{extra_info_section}</code>, <code>{extra_info}</code>.
+                </p>
+                <div class="form-group">
+                    <label>Template Pesan Utama</label>
+                    <textarea name="waha_schedule_template" class="form-control" rows="8">{{ settings.waha_schedule_template }}</textarea>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px;">
+                    <div class="form-group">
+                        <label>Template Item Jadwal</label>
+                        <input type="text" name="waha_schedule_item_template" class="form-control" value="{{ settings.waha_schedule_item_template }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Template Item Deadline</label>
+                        <input type="text" name="waha_schedule_deadline_item_template" class="form-control" value="{{ settings.waha_schedule_deadline_item_template }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Info Tambahan Tetap</label>
+                    <textarea name="waha_schedule_extra_info" class="form-control" rows="3" placeholder="Contoh: INFOO!!&#10;1. Untuk MK BHS Indonesia masih menunggu konfirmasi.">{{ settings.waha_schedule_extra_info }}</textarea>
+                </div>
+            </div>
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-top:16px;">
                 <div style="background:#0f172a; color:#e2e8f0; border-radius:12px; padding:12px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
@@ -139,6 +163,15 @@
                 <div style="display:flex; justify-content:flex-end; margin-top:10px;">
                     <button type="button" class="btn" style="background:#16a34a;" onclick="runWahaTest()">Kirim Test ke Target Ini</button>
                 </div>
+            </div>
+            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc;">
+                <h3 style="margin:0 0 8px 0; font-size:1rem;">Webhook Command WA</h3>
+                <p style="margin:0 0 8px 0; color:var(--text-muted); font-size:0.9rem;">
+                    Daftarkan webhook WAHA ke endpoint <code>/webhooks/waha</code>. Command yang didukung: <code>/jadwal</code>, <code>/jadwal besok</code>, <code>/jadwak</code>, <code>/tugas</code>, <code>/deadline</code>, <code>/datakas</code>.
+                </p>
+                <p style="margin:0; color:var(--text-muted); font-size:0.85rem;">
+                    Balasan akan dikirim ke chat yang sama, termasuk saat command dikirim dari akun Anda sendiri selama pesan diawali slash.
+                </p>
             </div>
             <div style="display:flex; justify-content:flex-end; margin-top:16px;">
                 <button type="submit" class="btn">Simpan Konfigurasi WAHA</button>

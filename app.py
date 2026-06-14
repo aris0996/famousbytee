@@ -5,6 +5,7 @@ from flask_migrate import Migrate
 from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
 import json
+import re
 from PIL import Image
 import csv
 from io import StringIO
@@ -156,32 +157,284 @@ def get_notification_channel_mode():
         return 'push'
     return mode
 
-def _build_tomorrow_summary_message():
-    tomorrow = datetime.now().date() + timedelta(days=1)
-    day_name = {
+def _get_indo_day_name(date_value):
+    return {
         'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
         'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'
-    }.get(tomorrow.strftime('%A'), tomorrow.strftime('%A'))
+    }.get(date_value.strftime('%A'), date_value.strftime('%A'))
+
+def _format_indo_date(date_value):
+    month_name = {
+        1: 'Januari', 2: 'Februari', 3: 'Maret', 4: 'April',
+        5: 'Mei', 6: 'Juni', 7: 'Juli', 8: 'Agustus',
+        9: 'September', 10: 'Oktober', 11: 'November', 12: 'Desember'
+    }.get(date_value.month, str(date_value.month))
+    return f"{date_value.day:02d} {month_name} {date_value.year}"
+
+def _render_template_string(template, values):
+    result = template or ''
+    for key, value in values.items():
+        result = result.replace(f"{{{key}}}", str(value))
+    return result
+
+def _normalize_multiline_text(text):
+    lines = [line.rstrip() for line in str(text or '').replace('\r\n', '\n').split('\n')]
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+
+    normalized = []
+    previous_blank = False
+    for line in lines:
+        is_blank = not line.strip()
+        if is_blank and previous_blank:
+            continue
+        normalized.append(line)
+        previous_blank = is_blank
+    return '\n'.join(normalized).strip()
+
+def _build_schedule_summary_message(target_date=None):
+    target_date = target_date or (datetime.now().date() + timedelta(days=1))
+    day_name = _get_indo_day_name(target_date)
+    date_long = _format_indo_date(target_date)
 
     schedules = Schedule.query.filter_by(day=day_name).order_by(Schedule.time_start.asc()).all()
     assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
-    due_items = [a for a in assignments if a.deadline.date() == tomorrow]
+    due_items = [a for a in assignments if a.deadline.date() == target_date]
 
     if not schedules and not due_items:
         return ''
 
-    lines = [f"Ringkasan untuk {day_name}, {tomorrow.strftime('%d-%m-%Y')}"]
-    if schedules:
-        lines.append("")
-        lines.append("Jadwal kuliah besok:")
-        for s in schedules:
-            lines.append(f"- {s.time_start}-{s.time_end} | {s.subject} | {s.room}")
-    if due_items:
-        lines.append("")
-        lines.append("Deadline tugas:")
-        for a in due_items:
-            lines.append(f"- {a.subject}: {a.title} ({a.deadline.strftime('%H:%M')})")
+    item_template = get_setting_value(
+        'waha_schedule_item_template',
+        '{index}. MK {subject} mulai jam {time_range}'
+    )
+    deadline_item_template = get_setting_value(
+        'waha_schedule_deadline_item_template',
+        '{index}. Deadline {subject}: {title} jam {deadline_time}'
+    )
+    full_template = get_setting_value(
+        'waha_schedule_template',
+        'Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n'
+        '{schedule_lines}\n'
+        '{deadline_section}'
+        '(Sesuai jadwal dari pihak kampus)\n'
+        '{extra_info_section}'
+        'Sekian dan terimakasih'
+    )
+    extra_info = _normalize_multiline_text(get_setting_value('waha_schedule_extra_info', ''))
+
+    schedule_lines = []
+    for index, schedule in enumerate(schedules, start=1):
+        schedule_lines.append(_render_template_string(item_template, {
+            'index': index,
+            'subject': schedule.subject or '-',
+            'time_start': schedule.time_start or '-',
+            'time_end': schedule.time_end or '-',
+            'time_range': f"{schedule.time_start or '-'}-{schedule.time_end or '-'}",
+            'room': schedule.room or '-',
+            'lecturer': schedule.lecturer or '-',
+            'day_name': day_name,
+            'date_long': date_long
+        }))
+
+    if not schedule_lines:
+        schedule_lines = ['Tidak ada jadwal mata kuliah pada tanggal tersebut.']
+
+    deadline_lines = []
+    for index, assignment in enumerate(due_items, start=1):
+        deadline_lines.append(_render_template_string(deadline_item_template, {
+            'index': index,
+            'subject': assignment.subject or 'Tugas',
+            'title': assignment.title or '-',
+            'deadline_time': assignment.deadline.strftime('%H:%M'),
+            'deadline_date': _format_indo_date(assignment.deadline.date())
+        }))
+
+    deadline_section = ''
+    if deadline_lines:
+        deadline_section = "Deadline Tugas:\n" + "\n".join(deadline_lines) + "\n"
+
+    extra_info_section = ''
+    if extra_info:
+        extra_info_section = extra_info + "\n"
+
+    message = _render_template_string(full_template, {
+        'day_name': day_name,
+        'date_long': date_long,
+        'date_short': target_date.strftime('%d-%m-%Y'),
+        'schedule_lines': '\n'.join(schedule_lines),
+        'deadline_lines': '\n'.join(deadline_lines),
+        'deadline_section': deadline_section,
+        'extra_info': extra_info,
+        'extra_info_section': extra_info_section
+    })
+    return _normalize_multiline_text(message)
+
+def _build_tomorrow_summary_message():
+    return _build_schedule_summary_message(datetime.now().date() + timedelta(days=1))
+
+def _normalize_phone_number(raw_value):
+    digits = re.sub(r'\D', '', str(raw_value or ''))
+    if not digits:
+        return ''
+    if digits.startswith('0'):
+        digits = '62' + digits[1:]
+    elif digits.startswith('8'):
+        digits = '62' + digits
+    return digits
+
+def _find_user_by_whatsapp(raw_value):
+    candidate = _normalize_phone_number(raw_value)
+    if not candidate:
+        return None
+    for user in User.query.filter(User.whatsapp.isnot(None)).all():
+        user_phone = _normalize_phone_number(user.whatsapp)
+        if not user_phone:
+            continue
+        if user_phone == candidate or user_phone.endswith(candidate) or candidate.endswith(user_phone):
+            return user
+    return None
+
+def _extract_waha_event(payload):
+    payload = payload if isinstance(payload, dict) else {}
+    candidates = [payload]
+    for key in ('payload', 'message', 'data', 'eventPayload'):
+        candidate = payload.get(key)
+        if isinstance(candidate, dict):
+            candidates.append(candidate)
+
+    body = ''
+    chat_id = ''
+    sender_ref = ''
+    from_me = False
+
+    for candidate in candidates:
+        if not body:
+            value = candidate.get('body') or candidate.get('text') or candidate.get('message')
+            if isinstance(value, str):
+                body = value.strip()
+        if not chat_id:
+            chat_id = (
+                _normalize_waha_scalar(candidate.get('chatId')).strip()
+                or _normalize_waha_chat_id(candidate)
+                or _normalize_waha_scalar(candidate.get('from')).strip()
+            )
+        if not sender_ref:
+            sender_ref = (
+                _normalize_waha_scalar(candidate.get('author')).strip()
+                or _normalize_waha_scalar(candidate.get('participant')).strip()
+                or _normalize_waha_scalar(candidate.get('sender')).strip()
+                or _normalize_waha_scalar(candidate.get('from')).strip()
+            )
+        if candidate.get('fromMe') is True:
+            from_me = True
+
+    return {
+        'body': body,
+        'chat_id': chat_id,
+        'sender_ref': sender_ref,
+        'from_me': from_me,
+        'event': _normalize_waha_scalar(payload.get('event') or payload.get('eventName') or '')
+    }
+
+def _build_kas_command_response(sender_ref=''):
+    total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
+    total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
+    balance = total_in - total_out
+    target_payment = get_fund_target()
+    active_periods = get_fund_periods()
+
+    lines = [
+        "Info kas kelas:",
+        f"- Saldo kas saat ini: Rp {'{:,.0f}'.format(balance)}",
+        f"- Target iuran aktif sampai hari ini: Rp {'{:,.0f}'.format(target_payment)}"
+    ]
+
+    if active_periods:
+        latest_periods = active_periods[:3]
+        period_labels = [
+            f"{period.title} ({period.start_date.strftime('%d/%m/%Y')} - {period.end_date.strftime('%d/%m/%Y')})"
+            for period in latest_periods
+        ]
+        lines.append("- Periode aktif: " + "; ".join(period_labels))
+
+    user = _find_user_by_whatsapp(sender_ref)
+    if user and user.student:
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == user.student.id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        arrears = max(0, target_payment - total_paid)
+        lines.extend([
+            "",
+            f"Data Anda ({user.student.full_name}):",
+            f"- Sudah bayar: Rp {'{:,.0f}'.format(total_paid)}",
+            f"- Kekurangan: Rp {'{:,.0f}'.format(arrears)}"
+        ])
+    else:
+        lines.extend([
+            "",
+            "Data personal belum bisa dicocokkan ke akun. Isi nomor WhatsApp user di backend bila ingin balasan personal ikut tampil."
+        ])
+
     return "\n".join(lines)
+
+def _build_assignment_command_response(limit=5):
+    assignments = Assignment.query.filter(Assignment.deadline >= datetime.now()).order_by(Assignment.deadline.asc()).limit(limit).all()
+    if not assignments:
+        return "Tidak ada tugas yang sedang aktif."
+    lines = ["Daftar tugas terdekat:"]
+    for index, assignment in enumerate(assignments, start=1):
+        lines.append(
+            f"{index}. {assignment.subject or 'Tugas'} - {assignment.title} "
+            f"(deadline {assignment.deadline.strftime('%d/%m/%Y %H:%M')})"
+        )
+    return "\n".join(lines)
+
+def _build_deadline_command_response(limit=5):
+    assignments = Assignment.query.filter(Assignment.deadline >= datetime.now()).order_by(Assignment.deadline.asc()).limit(limit).all()
+    if not assignments:
+        return "Tidak ada deadline terdekat."
+    lines = ["Deadline terdekat:"]
+    for index, assignment in enumerate(assignments, start=1):
+        deadline_date = assignment.deadline.date()
+        lines.append(
+            f"{index}. {assignment.title} - {_get_indo_day_name(deadline_date)}, {assignment.deadline.strftime('%d/%m/%Y %H:%M')} ({assignment.subject or 'Tanpa matkul'})"
+        )
+    return "\n".join(lines)
+
+def _build_help_command_response():
+    return (
+        "Perintah WA yang tersedia:\n"
+        "/jadwal\n"
+        "/jadwal besok\n"
+        "/jadwak\n"
+        "/tugas\n"
+        "/deadline\n"
+        "/datakas"
+    )
+
+def _build_waha_command_response(command_text, sender_ref=''):
+    command_text = (command_text or '').strip()
+    lowered = command_text.lower()
+    if lowered.startswith('/jadwak'):
+        lowered = lowered.replace('/jadwak', '/jadwal', 1)
+
+    if lowered.startswith('/jadwal'):
+        target_date = datetime.now().date()
+        if 'besok' in lowered:
+            target_date = target_date + timedelta(days=1)
+        response = _build_schedule_summary_message(target_date)
+        return response or f"Tidak ada jadwal untuk {_get_indo_day_name(target_date)}, {_format_indo_date(target_date)}."
+    if lowered.startswith('/tugas'):
+        return _build_assignment_command_response()
+    if lowered.startswith('/deadline'):
+        return _build_deadline_command_response()
+    if lowered.startswith('/datakas'):
+        return _build_kas_command_response(sender_ref=sender_ref)
+    return _build_help_command_response()
 
 def _log_notification_history(title, body, user_id, sender_id, status, channel='push'):
     """Helper to log notification history."""
@@ -2168,7 +2421,11 @@ def init_db():
                     SystemSetting(key='waha_group_chat_id', value='', description='Chat ID grup WAHA'),
                     SystemSetting(key='waha_daily_time', value='18:00', description='Jam ringkasan harian WAHA'),
                     SystemSetting(key='waha_last_daily_summary_date', value='', description='Tanggal ringkasan harian terakhir'),
-                    SystemSetting(key='notification_channel_default', value='push', description='Channel default notifikasi: push, whatsapp, both')
+                    SystemSetting(key='notification_channel_default', value='push', description='Channel default notifikasi: push, whatsapp, both'),
+                    SystemSetting(key='waha_schedule_template', value='Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih', description='Template ringkasan jadwal WAHA'),
+                    SystemSetting(key='waha_schedule_item_template', value='{index}. MK {subject} mulai jam {time_range}', description='Template item jadwal WAHA'),
+                    SystemSetting(key='waha_schedule_deadline_item_template', value='{index}. Deadline {subject}: {title} jam {deadline_time}', description='Template item deadline WAHA'),
+                    SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan WAHA')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
@@ -2241,7 +2498,14 @@ def manage_notifications():
         'waha_session': get_setting_value('waha_session', ''),
         'waha_group_chat_id': get_setting_value('waha_group_chat_id', ''),
         'waha_daily_time': get_setting_value('waha_daily_time', '18:00'),
-        'notification_channel_default': get_setting_value('notification_channel_default', 'push')
+        'notification_channel_default': get_setting_value('notification_channel_default', 'push'),
+        'waha_schedule_template': get_setting_value(
+            'waha_schedule_template',
+            'Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih'
+        ),
+        'waha_schedule_item_template': get_setting_value('waha_schedule_item_template', '{index}. MK {subject} mulai jam {time_range}'),
+        'waha_schedule_deadline_item_template': get_setting_value('waha_schedule_deadline_item_template', '{index}. Deadline {subject}: {title} jam {deadline_time}'),
+        'waha_schedule_extra_info': get_setting_value('waha_schedule_extra_info', '')
     }
     return render_template('notifications.html', history=history, users=users, settings=settings)
 
@@ -2261,6 +2525,10 @@ def save_waha_config():
     set_setting_value('waha_group_chat_id', (request.form.get('waha_group_chat_id') or '').strip(), 'Chat ID grup WAHA')
     set_setting_value('waha_daily_time', (request.form.get('waha_daily_time') or '18:00').strip(), 'Jam ringkasan harian WAHA')
     set_setting_value('notification_channel_default', (request.form.get('notification_channel_default') or 'push').strip(), 'Channel default notifikasi')
+    set_setting_value('waha_schedule_template', request.form.get('waha_schedule_template') or '', 'Template ringkasan jadwal WAHA')
+    set_setting_value('waha_schedule_item_template', request.form.get('waha_schedule_item_template') or '', 'Template item jadwal WAHA')
+    set_setting_value('waha_schedule_deadline_item_template', request.form.get('waha_schedule_deadline_item_template') or '', 'Template item deadline WAHA')
+    set_setting_value('waha_schedule_extra_info', request.form.get('waha_schedule_extra_info') or '', 'Info tambahan tetap di ringkasan WAHA')
     db.session.commit()
     flash('Konfigurasi WAHA berhasil disimpan.')
     return redirect(url_for('manage_notifications'))
@@ -2337,6 +2605,8 @@ def get_waha_chats():
         if not chat_id:
             continue
         chat_type = 'group' if '@g.us' in chat_id else 'personal'
+        if chat_type != 'personal':
+            continue
         normalized.append({
             'name': _normalize_waha_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
             'chat_id': chat_id,
@@ -2364,6 +2634,29 @@ def test_whatsapp_notification():
     custom_message = (payload.get('message') or 'Test pesan WAHA dari panel backend Famousbytee.').strip()
     result = send_whatsapp(custom_message, sender_id=current_user.id, title='Test WhatsApp', chat_id=custom_chat_id or None)
     return jsonify(result), (200 if result.get('ok') else 400)
+
+@app.route('/webhooks/waha', methods=['POST'])
+def waha_webhook():
+    payload = request.get_json(silent=True) or {}
+    event_data = _extract_waha_event(payload)
+    body = (event_data.get('body') or '').strip()
+    chat_id = (event_data.get('chat_id') or '').strip()
+
+    if not body.startswith('/') or not chat_id:
+        return jsonify({'ok': True, 'ignored': True})
+
+    response_text = _build_waha_command_response(body, sender_ref=event_data.get('sender_ref') or chat_id)
+    if not response_text:
+        return jsonify({'ok': True, 'ignored': True})
+
+    result = send_whatsapp(response_text, title=f"WA Bot {body.split()[0]}", chat_id=chat_id)
+    status_code = 200 if result.get('ok') else 400
+    return jsonify({
+        'ok': result.get('ok', False),
+        'command': body,
+        'chat_id': chat_id,
+        'result': result
+    }), status_code
 
 @app.route('/notifications/clear')
 @login_required
