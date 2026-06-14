@@ -650,7 +650,7 @@ def get_notification_recipients():
     user = User.query.get(int(user_id))
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
-    users = User.query.order_by(User.full_name.asc().nullslast(), User.username.asc()).all()
+    users = User.query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     return jsonify([{
         "id": u.id,
         "full_name": u.student.full_name if u.student else u.username,

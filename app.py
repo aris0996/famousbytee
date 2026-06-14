@@ -2618,7 +2618,7 @@ def manage_notifications():
         return redirect(url_for('manage_notifications'))
 
     history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(80).all()
-    users = User.query.order_by(User.full_name.asc().nullslast(), User.username.asc()).all()
+    users = User.query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
         'waha_enabled': get_setting_value('waha_enabled', 'false'),
         'waha_base_url': get_setting_value('waha_base_url', ''),
