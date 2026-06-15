@@ -4,6 +4,7 @@ from models import db, User, Announcement, Schedule, BatchFund, Student, Gallery
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash
 from sqlalchemy import or_
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -80,20 +81,35 @@ def _interleave_explore_items(items):
 
 @api_bp.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
+    data = request.get_json(silent=True) or request.form or {}
     if not data:
         return jsonify({"msg": "Missing JSON in request"}), 400
         
-    username = data.get('username')
-    password = data.get('password')
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
     
     if not username or not password:
         return jsonify({"msg": "Missing username or password"}), 400
     
-    user = User.query.filter_by(username=username).first()
+    user = User.query.filter(
+        or_(
+            db.func.lower(User.username) == username.lower(),
+            db.func.lower(User.email) == username.lower(),
+            User.student.has(Student.nim == username)
+        )
+    ).first()
     
     # Check if user exists and password matches
-    if user and user.password == password:
+    if user:
+        stored_password = user.password or ''
+        if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+            is_valid = check_password_hash(stored_password, password)
+        else:
+            is_valid = (stored_password == password)
+
+        if not is_valid:
+            return jsonify({"msg": "Invalid credentials"}), 401
+
         if user.status != 'Active':
             return jsonify({"msg": "Account is disabled"}), 403
             

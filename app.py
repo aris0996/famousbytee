@@ -26,6 +26,9 @@ from routes.api import api_bp
 app = Flask(__name__)
 app.config.from_object(Config)
 
+_WAHA_RECENT_COMMANDS = {}
+_WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 12
+
 # Initialize Firebase Admin
 def _initialize_firebase():
     """Helper to initialize Firebase Admin on-demand."""
@@ -429,8 +432,44 @@ def _extract_waha_event(payload):
         'chat_id': chat_id,
         'sender_ref': sender_ref,
         'from_me': from_me,
-        'event': _normalize_waha_scalar(payload.get('event') or payload.get('eventName') or '')
+        'event': _normalize_waha_scalar(payload.get('event') or payload.get('eventName') or ''),
+        'message_id': message_id_hint or _normalize_waha_scalar(payload.get('id')).strip()
     }
+
+
+def _is_duplicate_waha_command(event_data):
+    now = datetime.now()
+    expired_keys = [
+        key for key, expires_at in _WAHA_RECENT_COMMANDS.items()
+        if expires_at <= now
+    ]
+    for key in expired_keys:
+        _WAHA_RECENT_COMMANDS.pop(key, None)
+
+    body = (event_data.get('body') or '').strip().lower()
+    chat_id = (event_data.get('chat_id') or '').strip()
+    message_id = (event_data.get('message_id') or '').strip()
+    event_name = (event_data.get('event') or '').strip().lower()
+
+    if not body or not chat_id or not event_name.startswith('message'):
+        return False
+
+    if message_id:
+        message_key = f"id:{message_id}"
+        if message_key in _WAHA_RECENT_COMMANDS:
+            return True
+        _WAHA_RECENT_COMMANDS[message_key] = now + timedelta(
+            seconds=_WAHA_COMMAND_DEDUP_WINDOW_SECONDS
+        )
+
+    command_key = f"cmd:{chat_id}:{body}"
+    if command_key in _WAHA_RECENT_COMMANDS:
+        return True
+
+    _WAHA_RECENT_COMMANDS[command_key] = now + timedelta(
+        seconds=_WAHA_COMMAND_DEDUP_WINDOW_SECONDS
+    )
+    return False
 
 def _build_kas_command_response(sender_ref=''):
     total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
@@ -2799,6 +2838,16 @@ def waha_webhook():
     chat_id = (event_data.get('chat_id') or '').strip()
     print(f"WAHA webhook received: event={event_data.get('event', '')}, chat_id={chat_id or '-'}, body={body[:80] or '-'}")
 
+    if event_data.get('from_me') is True:
+        print("WAHA webhook ignored. Reason: outgoing/self message.")
+        return jsonify({
+            'ok': True,
+            'accepted': True,
+            'ignored': True,
+            'reason': 'outgoing-message',
+            'event': event_data.get('event', '')
+        }), 200
+
     if not body.startswith('/') or not chat_id:
         print(f"WAHA webhook ignored. Payload preview: {json.dumps(payload, ensure_ascii=True)[:300]}")
         return jsonify({
@@ -2807,6 +2856,18 @@ def waha_webhook():
             'ignored': True,
             'reason': 'not-command-or-missing-chat',
             'event': event_data.get('event', '')
+        }), 200
+
+    if _is_duplicate_waha_command(event_data):
+        print(f"WAHA webhook ignored. Reason: duplicate command for {chat_id or '-'} body={body[:40]}")
+        return jsonify({
+            'ok': True,
+            'accepted': True,
+            'ignored': True,
+            'reason': 'duplicate-command',
+            'event': event_data.get('event', ''),
+            'command': body,
+            'chat_id': chat_id
         }), 200
 
     response_text = _build_waha_command_response(body, sender_ref=event_data.get('sender_ref') or chat_id)
