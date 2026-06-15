@@ -699,11 +699,13 @@ def get_funds_summary():
     total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
     total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
     balance = total_in - total_out
+    target_payment = get_fund_target()
     
     return jsonify({
         "total_in": total_in,
         "total_out": total_out,
-        "balance": balance
+        "balance": balance,
+        "target": target_payment
     })
 
 @api_bp.route('/funds/history', methods=['GET'])
@@ -718,7 +720,15 @@ def get_funds_history():
         "category": f.category,
         "date": f.date.isoformat(),
         "tags": f.tags,
-        "student_name": f.student.full_name if f.student else None
+        "student_id": f.student_id,
+        "student_name": f.student.full_name if f.student else None,
+        "note": f.evidence_note,
+        "recorded_by": f.recorded_by,
+        "added_by_name": f.recorded_by,
+        "is_edited": f.is_edited,
+        "edit_reason": f.edit_reason,
+        "original_amount": f.original_amount,
+        "original_description": f.original_description
     } for f in history])
 
 @api_bp.route('/funds/audit', methods=['GET'])
@@ -762,6 +772,154 @@ def get_members():
         "full_name": s.full_name,
         "status": s.status
     } for s in students])
+
+
+def _get_member_detail_for_requester(request_user, member_id):
+    member = Student.query.get_or_404(member_id)
+
+    if request_user.student and request_user.student.classroom_id:
+        if member.classroom_id != request_user.student.classroom_id:
+            return None
+    elif request_user.role.name not in ['Admin', 'Pengurus', 'Staff']:
+        return None
+
+    linked_user = member.user
+    total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+        BatchFund.student_id == member.id,
+        BatchFund.type == 'Masuk'
+    ).scalar() or 0
+    target_payment = get_fund_target()
+    arrears = max(0, target_payment - total_paid)
+
+    return {
+        "id": member.id,
+        "full_name": member.full_name,
+        "nim": member.nim,
+        "status": member.status or 'Aktif',
+        "whatsapp": linked_user.whatsapp if linked_user and linked_user.whatsapp else None,
+        "financial": {
+            "paid": total_paid,
+            "target": target_payment,
+            "arrears": arrears,
+            "is_settled": arrears == 0
+        }
+    }
+
+
+@api_bp.route('/members/<int:member_id>', methods=['GET'])
+@jwt_required()
+def get_member_detail(member_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+
+    payload = _get_member_detail_for_requester(user, member_id)
+    if payload is None:
+        return jsonify({"error": "Member tidak ditemukan atau tidak dapat diakses"}), 404
+
+    return jsonify(payload)
+
+
+@api_bp.route('/fund-periods', methods=['GET'])
+@jwt_required()
+def get_fund_periods_api():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    periods = FundPeriod.query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    return jsonify([{
+        "id": period.id,
+        "title": period.title,
+        "start_date": period.start_date.isoformat(),
+        "end_date": period.end_date.isoformat(),
+        "daily_rate": period.daily_rate,
+        "is_active": period.is_active
+    } for period in periods])
+
+
+@api_bp.route('/fund-periods', methods=['POST'])
+@jwt_required()
+def create_fund_period_api():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or request.form or {}
+    title = (data.get('title') or '').strip()
+    if not title:
+        return jsonify({"error": "Nama periode wajib diisi"}), 400
+
+    try:
+        start_date = datetime.strptime((data.get('start_date') or '').strip(), '%Y-%m-%d').date()
+        end_date = datetime.strptime((data.get('end_date') or '').strip(), '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({"error": "Format tanggal tidak valid"}), 400
+
+    if end_date < start_date:
+        return jsonify({"error": "Tanggal akhir periode tidak boleh sebelum tanggal mulai"}), 400
+
+    try:
+        daily_rate = int(data.get('daily_rate') or 0)
+    except Exception:
+        daily_rate = 0
+    if daily_rate <= 0:
+        return jsonify({"error": "Nominal harian wajib lebih dari 0"}), 400
+
+    period = FundPeriod(
+        title=title,
+        start_date=start_date,
+        end_date=end_date,
+        daily_rate=daily_rate,
+        is_active=str(data.get('is_active', 'true')).lower() in {'true', '1', 'yes', 'on'}
+    )
+    db.session.add(period)
+    db.session.commit()
+
+    from app import log_activity
+    log_activity("Tambah Periode Kas (Mobile)", f"{period.title} ({period.start_date} - {period.end_date})")
+    return jsonify({"status": "success", "id": period.id})
+
+
+@api_bp.route('/fund-periods/<int:period_id>', methods=['PUT'])
+@jwt_required()
+def update_fund_period_api(period_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    period = FundPeriod.query.get_or_404(period_id)
+    data = request.get_json(silent=True) or request.form or {}
+
+    title = (data.get('title') or period.title).strip() or period.title
+    try:
+        start_date = datetime.strptime((data.get('start_date') or period.start_date.isoformat()).strip(), '%Y-%m-%d').date()
+        end_date = datetime.strptime((data.get('end_date') or period.end_date.isoformat()).strip(), '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({"error": "Format tanggal tidak valid"}), 400
+
+    if end_date < start_date:
+        return jsonify({"error": "Tanggal akhir periode tidak boleh sebelum tanggal mulai"}), 400
+
+    try:
+        daily_rate = int(data.get('daily_rate') or period.daily_rate or 0)
+    except Exception:
+        daily_rate = 0
+    if daily_rate <= 0:
+        return jsonify({"error": "Nominal harian wajib lebih dari 0"}), 400
+
+    period.title = title
+    period.start_date = start_date
+    period.end_date = end_date
+    period.daily_rate = daily_rate
+    period.is_active = str(data.get('is_active', period.is_active)).lower() in {'true', '1', 'yes', 'on'}
+    db.session.commit()
+
+    from app import log_activity
+    log_activity("Edit Periode Kas (Mobile)", f"ID {period.id}: {period.title}")
+    return jsonify({"status": "success"})
 
 @api_bp.route('/gallery', methods=['GET'])
 @jwt_required()
@@ -1191,6 +1349,124 @@ def api_manage_fund():
     log_activity("Input Kas (Mobile)", f"{fund.description}: Rp {fund.amount:,.0f}")
     auto_recalculate_points()
     return jsonify({"status": "success", "id": fund.id})
+
+
+@api_bp.route('/fund/<int:fund_id>', methods=['PUT'])
+@jwt_required()
+def update_fund_api(fund_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    fund = BatchFund.query.get_or_404(fund_id)
+    data = request.get_json(silent=True) or request.form or {}
+    reason = (data.get('reason') or '').strip()
+    if not reason:
+        return jsonify({"error": "Alasan perubahan wajib diisi"}), 400
+
+    description = (data.get('desc') or '').strip()
+    type_val = (data.get('type') or '').strip()
+    category = (data.get('category') or '').strip()
+    if not description or not type_val or not category:
+        return jsonify({"error": "Deskripsi, tipe, dan kategori wajib diisi"}), 400
+
+    try:
+        amount = float(data.get('amount') or 0)
+    except Exception:
+        amount = 0
+    if amount <= 0:
+        return jsonify({"error": "Nominal wajib lebih dari 0"}), 400
+
+    tags = (data.get('tags') or '').strip()
+    if tags and not tags.startswith('#'):
+        tags = '#' + tags
+
+    student_id_val = data.get('student_id')
+    student_id = fund.student_id
+    if student_id_val is not None:
+        student_id = None if str(student_id_val).lower() == 'none' or str(student_id_val).strip() == '' else int(student_id_val)
+
+    note = data.get('note')
+
+    if not fund.is_edited:
+        fund.original_amount = fund.amount
+        fund.original_description = fund.description
+
+    fund.is_edited = True
+    fund.edit_reason = reason
+    fund.last_edited_by = user.username
+    fund.description = description
+    fund.amount = amount
+    fund.type = type_val
+    fund.category = category
+    fund.student_id = student_id
+    fund.tags = tags or None
+    if note is not None:
+        fund.evidence_note = str(note).strip() or None
+    db.session.commit()
+
+    from app import auto_recalculate_points, log_activity
+    auto_recalculate_points()
+
+    new_ann = Announcement(
+        title=f"Update Transaksi: {fund.description}",
+        content=f"ID: {fund.id} diperbarui oleh {user.username}.\nAlasan: {fund.edit_reason}\nNilai Baru: Rp {fund.amount:,.0f}",
+        category='Penting'
+    )
+    db.session.add(new_ann)
+    db.session.commit()
+
+    log_activity("Edit Kas (Mobile)", f"ID: {fund.id}, Alasan: {fund.edit_reason}")
+    return jsonify({"status": "success"})
+
+
+@api_bp.route('/fund/<int:fund_id>', methods=['DELETE'])
+@jwt_required()
+def delete_fund_api(fund_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    fund = BatchFund.query.get_or_404(fund_id)
+    description = fund.description
+    db.session.delete(fund)
+    db.session.commit()
+
+    from app import auto_recalculate_points, log_activity
+    auto_recalculate_points()
+    log_activity("Hapus Kas (Mobile)", f"ID: {fund_id}, Deskripsi: {description}")
+    return jsonify({"status": "success"})
+
+
+@api_bp.route('/fund/<int:fund_id>/duplicate', methods=['POST'])
+@jwt_required()
+def duplicate_fund_api(fund_id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_fund:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    fund = BatchFund.query.get_or_404(fund_id)
+    duplicated = BatchFund(
+        description=f"{fund.description} (Copy)",
+        amount=fund.amount,
+        type=fund.type,
+        category=fund.category,
+        date=datetime.now(),
+        recorded_by=user.username,
+        student_id=fund.student_id,
+        tags=fund.tags,
+        evidence_note=fund.evidence_note
+    )
+    db.session.add(duplicated)
+    db.session.commit()
+
+    from app import auto_recalculate_points, log_activity
+    auto_recalculate_points()
+    log_activity("Duplikat Kas (Mobile)", f"Sumber ID: {fund.id}, Baru ID: {duplicated.id}")
+    return jsonify({"status": "success", "id": duplicated.id})
 
 @api_bp.route('/assignments', methods=['GET'])
 @jwt_required()
