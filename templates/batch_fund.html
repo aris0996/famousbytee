@@ -132,11 +132,11 @@
         </div>
     </div>
 
-    <div class="section-card" style="margin-bottom: 1rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <div class="section-card period-section">
+        <div class="period-section-head">
             <div>
-                <h3 style="margin:0;">Periode Kas Aktif</h3>
-                <p style="margin:4px 0 0 0; color: var(--text-muted);">Target iuran dijumlahkan dari semua periode aktif, tanpa mengubah transaksi lama yang sudah tercatat.</p>
+                <h3 class="section-title">Periode Kas Aktif</h3>
+                <p class="section-copy">Target iuran dijumlahkan dari semua periode aktif, tanpa mengubah transaksi lama yang sudah tercatat.</p>
             </div>
             {% if current_user.role.can_manage_fund %}
             <button class="btn btn-primary" onclick="document.getElementById('modal-period').style.display='flex'">
@@ -144,21 +144,21 @@
             </button>
             {% endif %}
         </div>
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px;">
+        <div class="period-grid">
             {% for period in fund_periods %}
-            <div style="border:1px solid #e2e8f0; border-radius:14px; padding:14px; background:#fff;">
-                <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+            <div class="period-card">
+                <div class="period-card-top">
                     <div>
-                        <div style="font-weight:800;">{{ period.title }}</div>
-                        <div style="font-size:0.85rem; color: var(--text-muted);">{{ period.start_date.strftime('%d %b %Y') }} - {{ period.end_date.strftime('%d %b %Y') }}</div>
-                        <div style="font-size:0.85rem; color: var(--primary); margin-top:4px;">Rp {{ "{:,.0f}".format(period.daily_rate) }} / hari kerja</div>
+                        <div class="period-title">{{ period.title }}</div>
+                        <div class="period-date">{{ period.start_date.strftime('%d %b %Y') }} - {{ period.end_date.strftime('%d %b %Y') }}</div>
+                        <div class="period-rate">Rp {{ "{:,.0f}".format(period.daily_rate) }} / hari kerja</div>
                     </div>
                     <span class="status-badge {{ 'status-aktif' if period.is_active else 'status-cuti' }}">{{ 'Aktif' if period.is_active else 'Nonaktif' }}</span>
                 </div>
                 {% if current_user.role.can_manage_fund %}
-                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:12px;">
+                <div class="period-actions">
                     <button class="btn-sm btn-outline" onclick="openEditPeriod('{{ period.id }}', '{{ period.title|replace('\'','\\\'') }}', '{{ period.start_date.strftime('%Y-%m-%d') }}', '{{ period.end_date.strftime('%Y-%m-%d') }}', '{{ period.daily_rate }}', {{ 'true' if period.is_active else 'false' }})">Edit</button>
-                    <a href="{{ url_for('delete_fund_period', id=period.id) }}" class="btn-sm btn-outline" style="color:#b91c1c; border-color:#fecaca;" onclick="return confirm('Hapus periode ini?')">Hapus</a>
+                    <a href="{{ url_for('delete_fund_period', id=period.id) }}" class="btn-sm btn-outline period-delete-btn" onclick="return confirm('Hapus periode ini?')">Hapus</a>
                 </div>
                 {% endif %}
             </div>
@@ -174,10 +174,10 @@
                 <input type="text" id="search-audit" placeholder="Cari nama anggota/NIM..." onkeyup="filterAudit()">
             </div>
             <div class="audit-summary-mini">
-                <span>Iuran: <strong style="color: var(--primary);">Rp {{ site_settings.get('fund_daily_rate', '1000')
+                <span>Iuran: <strong class="accent-strong">Rp {{ site_settings.get('fund_daily_rate', '1000')
                         }}</strong></span>
                 <span class="sep">|</span>
-                <span>Target: <strong style="color: var(--primary);">Rp {{ "{:,.0f}".format(member_statuses[0].target if
+                <span>Target: <strong class="accent-strong">Rp {{ "{:,.0f}".format(member_statuses[0].target if
                         member_statuses else 0) }}</strong></span>
             </div>
         </div>
@@ -194,7 +194,7 @@
                         <div class="amount-paid">Rp {{ "{:,.0f}".format(m.paid) }}</div>
                         <div class="status-status">
                             {% if m.arrears == 0 %}
-                            <span class="badge-status ok">LUNAS ★</span>
+                            <span class="badge-status ok">LUNAS</span>
                             {% if m.paid > m.target %}<span class="bonus">Lebih: +{{ "{:,.0f}".format(m.paid - m.target)
                                 }}</span>{% endif %}
                             {% else %}
@@ -416,6 +416,23 @@
         border-color: #cbd5e1;
     }
 
+    .section-title {
+        margin: 0;
+        font-size: 1.05rem;
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .section-copy {
+        margin: 0.35rem 0 0;
+        color: #64748b;
+        font-size: 0.9rem;
+    }
+
+    .accent-strong {
+        color: var(--primary);
+    }
+
     /* Stats Overview Mini */
     .stats-overview-mini {
         display: grid;
@@ -507,6 +524,71 @@
         border-radius: 14px;
         margin-bottom: 1.5rem;
         border: 1px solid #e2e8f0;
+    }
+
+    .period-section {
+        margin-bottom: 1rem;
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
+    }
+
+    .period-section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 1rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+    }
+
+    .period-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 12px;
+    }
+
+    .period-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 14px;
+        background: #fff;
+        box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    .period-card-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: flex-start;
+    }
+
+    .period-title {
+        font-weight: 800;
+        color: #0f172a;
+    }
+
+    .period-date {
+        font-size: 0.85rem;
+        color: #64748b;
+    }
+
+    .period-rate {
+        font-size: 0.85rem;
+        color: var(--primary);
+        margin-top: 4px;
+        font-weight: 700;
+    }
+
+    .period-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .period-delete-btn {
+        color: #b91c1c;
+        border-color: #fecaca;
     }
 
     .tab-btn {
@@ -1313,3 +1395,4 @@
     }
 </script>
 {% endblock %}
+

@@ -1,46 +1,263 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <header>
+<style>
+    .notifications-page {
+        display: grid;
+        gap: 1.5rem;
+    }
+    .notify-hero,
+    .notify-panel,
+    .notify-history-card {
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 24px;
+        box-shadow: 0 20px 45px rgba(15, 23, 42, 0.06);
+    }
+    .notify-hero {
+        padding: 1.75rem;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+    .notify-hero h1,
+    .notify-panel h2,
+    .notify-history-card h2 {
+        margin: 0;
+        color: #0f172a;
+    }
+    .notify-subtitle,
+    .notify-muted {
+        color: #64748b;
+        margin: 0.35rem 0 0;
+    }
+    .notify-actions {
+        display: flex;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .notify-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .notify-alert {
+        padding: 1rem 1.1rem;
+        border-radius: 16px;
+        border: 1px solid #bbf7d0;
+        background: #f0fdf4;
+        color: #166534;
+        font-weight: 600;
+    }
+    .notify-stats {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+    }
+    .notify-stat-card {
+        background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+        border: 1px solid #e2e8f0;
+        border-radius: 22px;
+        padding: 1.1rem;
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+    }
+    .notify-stat-card .stat-icon {
+        width: 50px;
+        height: 50px;
+        border-radius: 16px;
+        display: grid;
+        place-items: center;
+        flex-shrink: 0;
+    }
+    .notify-stat-card .stat-info p {
+        margin: 0.15rem 0 0;
+    }
+    .notify-panel {
+        padding: 1.5rem;
+        display: grid;
+        gap: 1.25rem;
+    }
+    .notify-section-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+        flex-wrap: wrap;
+    }
+    .notify-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1rem;
+    }
+    .notify-stack {
+        display: grid;
+        gap: 1rem;
+    }
+    .notify-subcard {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 18px;
+        padding: 1rem;
+    }
+    .notify-discovery-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1rem;
+    }
+    .notify-discovery-card {
+        border-radius: 18px;
+        padding: 1rem;
+        min-height: 320px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .notify-discovery-card.session {
+        background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
+        color: #e2e8f0;
+    }
+    .notify-discovery-card.group {
+        background: linear-gradient(180deg, #14532d 0%, #166534 100%);
+        color: #dcfce7;
+    }
+    .notify-discovery-card.chat {
+        background: linear-gradient(180deg, #0c4a6e 0%, #0369a1 100%);
+        color: #e0f2fe;
+    }
+    .notify-discovery-top,
+    .notify-discovery-footer,
+    .notify-history-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .notify-discovery-card .form-control {
+        background: rgba(255,255,255,0.95);
+        color: #0f172a;
+        border: none;
+    }
+    .notify-output {
+        min-height: 180px;
+        max-height: 420px;
+        overflow: auto;
+        padding-right: 0.25rem;
+    }
+    .notify-note {
+        font-size: 0.85rem;
+        color: #64748b;
+        margin: 0.4rem 0 0;
+    }
+    .notify-history-card {
+        padding: 1.5rem;
+    }
+    .notify-history-card table td {
+        vertical-align: top;
+    }
+    .notify-message-title {
+        font-weight: 700;
+        color: #0f172a;
+        margin-bottom: 0.2rem;
+    }
+    .notify-modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.55);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+        backdrop-filter: blur(6px);
+        padding: 1rem;
+    }
+    .notify-modal-card {
+        width: min(560px, 100%);
+        background: #fff;
+        border-radius: 24px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+        padding: 1.5rem;
+        position: relative;
+    }
+    .notify-modal-close {
+        position: absolute;
+        right: 1.25rem;
+        top: 1.25rem;
+        border: none;
+        background: #f8fafc;
+        color: #64748b;
+        width: 38px;
+        height: 38px;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+    .notify-form-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+    .notify-form-actions > * {
+        flex: 1;
+    }
+    @media (max-width: 768px) {
+        .notify-hero,
+        .notify-panel,
+        .notify-history-card,
+        .notify-modal-card {
+            border-radius: 18px;
+            padding: 1rem;
+        }
+        .notify-form-actions {
+            flex-direction: column;
+        }
+    }
+</style>
+
+<div class="container notifications-page">
+    <section class="notify-hero">
         <div>
             <h1>Manajemen Notifikasi</h1>
-            <p style="color: var(--text-muted)">Kelola push notification dan integrasi WhatsApp dari satu panel backend.</p>
+            <p class="notify-subtitle">Kelola push notification dan integrasi WhatsApp dari satu panel backend.</p>
         </div>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <div class="notify-actions">
             {% if current_user.role.can_manage_notifications %}
-            <button class="btn" onclick="runNotificationAction('{{ url_for('test_push_notification') }}', 'Test push dikirim ke akun Anda.')">
-                <i data-lucide="smartphone" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+            <button class="btn notify-btn" onclick="runNotificationAction('{{ url_for('test_push_notification') }}', 'Test push dikirim ke akun Anda.')">
+                <i data-lucide="smartphone" style="width: 18px; height: 18px;"></i>
                 Test Push Saya
             </button>
             {% endif %}
             {% if current_user.role.can_manage_whatsapp %}
-            <button class="btn" style="background:#16a34a;" onclick="runNotificationAction('{{ url_for('test_whatsapp_notification') }}', 'Test WhatsApp sedang diproses.')">
-                <i data-lucide="message-circle" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+            <button class="btn notify-btn" style="background:#16a34a;" onclick="runNotificationAction('{{ url_for('test_whatsapp_notification') }}', 'Test WhatsApp sedang diproses.')">
+                <i data-lucide="message-circle" style="width: 18px; height: 18px;"></i>
                 Test WhatsApp
             </button>
             {% endif %}
             {% if current_user.role.can_manage_notifications %}
-            <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
-                <i data-lucide="plus" style="width: 18px; height: 18px; vertical-align: middle; margin-right: 4px;"></i>
+            <button class="btn notify-btn" onclick="document.getElementById('notif-modal').style.display='flex'">
+                <i data-lucide="plus" style="width: 18px; height: 18px;"></i>
                 Buat Notifikasi
             </button>
             {% endif %}
         </div>
-    </header>
+    </section>
 
     {% with messages = get_flashed_messages() %}
     {% if messages %}
         {% for message in messages %}
-        <div class="card" style="padding: 1rem; background: #dcfce7; color: #166534; margin-bottom: 1rem; border-left: 4px solid #166534;">
+        <div class="notify-alert">
             {{ message }}
         </div>
         {% endfor %}
     {% endif %}
     {% endwith %}
 
-    <div class="stats-grid">
-        <div class="stat-card">
+    <section class="notify-stats">
+        <div class="notify-stat-card">
             <div class="stat-icon" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
                 <i data-lucide="send"></i>
             </div>
@@ -49,7 +266,7 @@
                 <p>{{ history|length }}</p>
             </div>
         </div>
-        <div class="stat-card">
+        <div class="notify-stat-card">
             <div class="stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
                 <i data-lucide="smartphone"></i>
             </div>
@@ -61,23 +278,23 @@
                 {% endif %}
             </div>
         </div>
-    </div>
+    </section>
 
     {% if current_user.role.can_manage_whatsapp %}
-    <div class="card" style="margin-bottom: 1.5rem;">
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <section class="notify-panel">
+        <div class="notify-section-head">
             <div>
-                <h2 style="font-size: 1.25rem; margin:0;">Integrasi WhatsApp (WAHA)</h2>
-                <p style="color: var(--text-muted); margin:4px 0 0 0;">Session discovery, grup target, target personal untuk testing, dan mode channel dikelola dari sini.</p>
+                <h2>Integrasi WhatsApp (WAHA)</h2>
+                <p class="notify-subtitle">Session discovery, grup target, target personal untuk testing, dan mode channel dikelola dari sini.</p>
             </div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+            <div class="notify-actions">
                 <button type="button" class="btn" style="background:#0f172a;" onclick="fetchWahaData('{{ url_for('get_waha_sessions') }}', 'sessions-output')">Cek Session</button>
                 <button type="button" class="btn" style="background:#14532d;" onclick="fetchWahaData('{{ url_for('get_waha_groups') }}', 'groups-output')">Ambil Grup</button>
                 <button type="button" class="btn" style="background:#0369a1;" onclick="fetchWahaData('{{ url_for('get_waha_chats') }}', 'chats-output')">Ambil Chat Personal</button>
             </div>
         </div>
         <form method="POST" action="{{ url_for('save_waha_config') }}">
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px;">
+            <div class="notify-grid">
                 <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="http://103.210.121.29:3000"></div>
                 <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" value="" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
                 <div class="form-group"><label>Session WAHA</label><input type="text" name="waha_session" class="form-control" value="{{ settings.waha_session }}"></div>
@@ -92,25 +309,26 @@
                 </div>
             </div>
             <label style="display:flex; gap:8px; align-items:center; margin-top:8px; font-weight:600;"><input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}> Aktifkan WhatsApp WAHA</label>
-            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#fff;">
+            <div class="notify-stack">
+            <div class="notify-subcard">
                 <h3 style="margin:0 0 10px 0; font-size:1rem;">Header / Pengenal Admin WA</h3>
                 <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-weight:600;"><input type="checkbox" name="waha_admin_header_enabled" {{ 'checked' if settings.waha_admin_header_enabled == 'true' else '' }}> Aktifkan header admin otomatis di semua pesan WA</label>
                 <div class="form-group">
                     <label>Template Header Admin</label>
                     <textarea name="waha_admin_header_text" class="form-control" rows="4" placeholder="*[PESAN RESMI ADMIN]*&#10;{title_block}Pesan ini dikirim dari sistem admin.">{{ settings.waha_admin_header_text }}</textarea>
                 </div>
-                <p style="margin:0; color:var(--text-muted); font-size:0.85rem;">Placeholder yang bisa dipakai: <code>{title}</code> dan <code>{title_block}</code>.</p>
+                <p class="notify-note">Placeholder yang bisa dipakai: <code>{title}</code> dan <code>{title_block}</code>.</p>
             </div>
-            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#fff;">
+            <div class="notify-subcard">
                 <h3 style="margin:0 0 10px 0; font-size:1rem;">Template Ringkasan Jadwal WA</h3>
-                <p style="margin:0 0 12px 0; color:var(--text-muted); font-size:0.9rem;">
+                <p class="notify-note" style="margin-bottom:12px;">
                     Placeholder yang bisa dipakai: <code>{day_name}</code>, <code>{date_long}</code>, <code>{date_short}</code>, <code>{schedule_lines}</code>, <code>{deadline_section}</code>, <code>{deadline_lines}</code>, <code>{extra_info_section}</code>, <code>{extra_info}</code>.
                 </p>
                 <div class="form-group">
                     <label>Template Pesan Utama</label>
                     <textarea name="waha_schedule_template" class="form-control" rows="8">{{ settings.waha_schedule_template }}</textarea>
                 </div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:12px;">
+                <div class="notify-grid">
                     <div class="form-group">
                         <label>Template Item Jadwal</label>
                         <input type="text" name="waha_schedule_item_template" class="form-control" value="{{ settings.waha_schedule_item_template }}">
@@ -125,47 +343,48 @@
                     <textarea name="waha_schedule_extra_info" class="form-control" rows="3" placeholder="Contoh: INFOO!!&#10;1. Untuk MK BHS Indonesia masih menunggu konfirmasi.">{{ settings.waha_schedule_extra_info }}</textarea>
                 </div>
             </div>
-            <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-top:16px;">
-                <div style="background:#0f172a; color:#e2e8f0; border-radius:12px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
+            </div>
+            <div class="notify-discovery-grid">
+                <div class="notify-discovery-card session">
+                    <div class="notify-discovery-top">
                         <strong>Session WAHA</strong>
                         <span id="sessions-meta" style="font-size:0.75rem; opacity:0.7;">0 item</span>
                     </div>
                     <input type="text" id="sessions-search" class="form-control" placeholder="Cari session..." oninput="filterWahaList('sessions')" style="margin-bottom:10px;">
-                    <div id="sessions-output" style="min-height:180px; max-height:420px; overflow:auto;">Belum ada data session.</div>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                    <div id="sessions-output" class="notify-output">Belum ada data session.</div>
+                    <div class="notify-discovery-footer">
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('sessions', -1)">Prev</button>
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('sessions', 1)">Next</button>
                     </div>
                 </div>
-                <div style="background:#052e16; color:#dcfce7; border-radius:12px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
+                <div class="notify-discovery-card group">
+                    <div class="notify-discovery-top">
                         <strong>Daftar Grup</strong>
                         <span id="groups-meta" style="font-size:0.75rem; opacity:0.75;">0 item</span>
                     </div>
                     <input type="text" id="groups-search" class="form-control" placeholder="Cari grup..." oninput="filterWahaList('groups')" style="margin-bottom:10px;">
-                    <div id="groups-output" style="min-height:180px; max-height:420px; overflow:auto;">Belum ada data grup.</div>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                    <div id="groups-output" class="notify-output">Belum ada data grup.</div>
+                    <div class="notify-discovery-footer">
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('groups', -1)">Prev</button>
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('groups', 1)">Next</button>
                     </div>
                 </div>
-                <div style="background:#082f49; color:#e0f2fe; border-radius:12px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:10px;">
+                <div class="notify-discovery-card chat">
+                    <div class="notify-discovery-top">
                         <strong>Chat Personal</strong>
                         <span id="chats-meta" style="font-size:0.75rem; opacity:0.75;">0 item</span>
                     </div>
                     <input type="text" id="chats-search" class="form-control" placeholder="Cari chat personal..." oninput="filterWahaList('chats')" style="margin-bottom:10px;">
-                    <div id="chats-output" style="min-height:180px; max-height:420px; overflow:auto;">Belum ada data chat personal.</div>
-                    <div style="display:flex; justify-content:space-between; margin-top:10px;">
+                    <div id="chats-output" class="notify-output">Belum ada data chat personal.</div>
+                    <div class="notify-discovery-footer">
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('chats', -1)">Prev</button>
                         <button type="button" class="btn-sm btn-outline" onclick="changeWahaPage('chats', 1)">Next</button>
                     </div>
                 </div>
             </div>
-            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc;">
+            <div class="notify-subcard">
                 <h3 style="margin:0 0 10px 0; font-size:1rem;">Testing WhatsApp</h3>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
+                <div class="notify-grid">
                     <div class="form-group"><label>Target Test Chat ID</label><input type="text" id="waha_test_chat_id" class="form-control" placeholder="Kosongkan untuk pakai Group Chat ID default"></div>
                     <div class="form-group"><label>Pesan Test</label><input type="text" id="waha_test_message" class="form-control" value="Test pesan WAHA dari panel backend Famousbytee."></div>
                 </div>
@@ -173,12 +392,12 @@
                     <button type="button" class="btn" style="background:#16a34a;" onclick="runWahaTest()">Kirim Test ke Target Ini</button>
                 </div>
             </div>
-            <div style="margin-top:16px; padding:14px; border:1px solid #cbd5e1; border-radius:12px; background:#f8fafc;">
+            <div class="notify-subcard">
                 <h3 style="margin:0 0 8px 0; font-size:1rem;">Webhook Command WA</h3>
-                <p style="margin:0 0 8px 0; color:var(--text-muted); font-size:0.9rem;">
+                <p class="notify-note" style="margin-bottom:8px;">
                     Daftarkan webhook WAHA ke endpoint <code>/webhooks/waha</code>. Command yang didukung: <code>/help</code>, <code>/jadwal</code>, <code>/jadwal besok</code>, <code>/tugas</code>, <code>/tugas 10</code>, <code>/deadline</code>, <code>/deadline 10</code>, <code>/datakas</code>.
                 </p>
-                <p style="margin:0; color:var(--text-muted); font-size:0.85rem;">
+                <p class="notify-note">
                     Balasan akan dikirim ke chat yang sama, termasuk saat command dikirim dari akun Anda sendiri selama pesan diawali slash.
                 </p>
             </div>
@@ -186,12 +405,12 @@
                 <button type="submit" class="btn">Simpan Konfigurasi WAHA</button>
             </div>
         </form>
-    </div>
+    </section>
     {% endif %}
 
-    <div class="card">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-            <h2 style="font-size: 1.25rem;">Riwayat Notifikasi</h2>
+    <section class="notify-history-card">
+        <div class="notify-history-top" style="margin-bottom: 1.5rem;">
+            <h2>Riwayat Notifikasi</h2>
             {% if history %}
             <a href="{{ url_for('clear_notification_history') }}" class="btn" style="background: #fee2e2; color: #991b1b; padding: 0.5rem 1rem; font-size: 0.85rem;" onclick="return confirm('Apakah Anda yakin ingin menghapus seluruh riwayat notifikasi? Tindakan ini tidak dapat dibatalkan.')">
                 <i data-lucide="trash-2" style="width: 14px; height: 14px; vertical-align: middle; margin-right: 4px;"></i>
@@ -216,7 +435,7 @@
                     <tr>
                         <td style="font-size: 0.85rem; white-space: nowrap;">{{ h.sent_at.strftime('%d %b %Y, %H:%M') }}</td>
                         <td>
-                            <div style="font-weight: 600;">{{ h.title }}</div>
+                            <div class="notify-message-title">{{ h.title }}</div>
                             <div style="font-size: 0.85rem; color: var(--text-muted);">{{ h.body }}</div>
                         </td>
                         <td><span class="status-badge" style="background:#f1f5f9; color:#334155;">{{ h.channel or 'push' }}</span></td>
@@ -245,14 +464,14 @@
                 </tbody>
             </table>
         </div>
-    </div>
+    </section>
 </div>
 
 {% if current_user.role.can_manage_notifications %}
 <!-- Modal Kirim Notifikasi -->
-<div id="notif-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
-    <div class="card" style="width: 100%; max-width: 500px; margin: 1rem; position: relative;">
-        <button onclick="document.getElementById('notif-modal').style.display='none'" style="position: absolute; right: 1.5rem; top: 1.5rem; border: none; background: none; cursor: pointer; color: var(--text-muted);">
+<div id="notif-modal" class="notify-modal">
+    <div class="notify-modal-card">
+        <button onclick="document.getElementById('notif-modal').style.display='none'" class="notify-modal-close">
             <i data-lucide="x"></i>
         </button>
         <h2 style="margin-bottom: 1.5rem;">Kirim Notifikasi Baru</h2>
@@ -275,9 +494,9 @@
                         {% endfor %}
                     </optgroup>
                 </select>
-                <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">*Daftar sekarang menampilkan semua user. Yang belum punya token tetap bisa dipilih, tetapi hasil kirim akan tercatat sebagai <code>No Token</code>.</p>
+                <p class="notify-note">Daftar sekarang menampilkan semua user. Yang belum punya token tetap bisa dipilih, tetapi hasil kirim akan tercatat sebagai <code>No Token</code>.</p>
             </div>
-            <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+            <div class="notify-form-actions">
                 <button type="button" class="btn" onclick="document.getElementById('notif-modal').style.display='none'" style="background: #f1f5f9; color: #475569; flex: 1;">Batal</button>
                 <button type="submit" class="btn" style="flex: 2;">Kirim Sekarang</button>
             </div>
