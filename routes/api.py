@@ -696,16 +696,70 @@ def get_fund_target(as_of=None):
 @api_bp.route('/funds/summary', methods=['GET'])
 @jwt_required()
 def get_funds_summary():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
     total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
     total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
     balance = total_in - total_out
     target_payment = get_fund_target()
+
+    if user.student and user.student.classroom_id:
+        students = Student.query.filter_by(
+            classroom_id=user.student.classroom_id
+        ).order_by(Student.full_name.asc()).all()
+    else:
+        students = Student.query.order_by(Student.full_name.asc()).all()
+
+    members_total = len(students)
+    members_settled = 0
+    members_unsettled = 0
+    total_paid_all = 0
+    total_arrears_all = 0
+
+    for student in students:
+        paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == student.id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        arrears = max(0, target_payment - paid)
+        total_paid_all += paid
+        total_arrears_all += arrears
+        if arrears == 0:
+            members_settled += 1
+        else:
+            members_unsettled += 1
+
+    progress_percent = 0.0
+    denominator = target_payment * members_total
+    if denominator > 0:
+        progress_percent = max(0.0, min((total_paid_all / denominator) * 100.0, 100.0))
+
+    my_financial = None
+    if user.student:
+        my_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == user.student.id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        my_arrears = max(0, target_payment - my_paid)
+        my_financial = {
+            "paid": my_paid,
+            "target": target_payment,
+            "arrears": my_arrears,
+            "is_settled": my_arrears == 0
+        }
     
     return jsonify({
         "total_in": total_in,
         "total_out": total_out,
         "balance": balance,
-        "target": target_payment
+        "target": target_payment,
+        "members_total": members_total,
+        "members_settled": members_settled,
+        "members_unsettled": members_unsettled,
+        "total_paid_all": total_paid_all,
+        "total_arrears_all": total_arrears_all,
+        "progress_percent": round(progress_percent, 1),
+        "my_financial": my_financial
     })
 
 @api_bp.route('/funds/history', methods=['GET'])
