@@ -234,9 +234,38 @@ def update_fcm_token():
         
     return jsonify({"msg": "Token missing"}), 400
 
-@api_bp.route('/announcements', methods=['GET'])
+@api_bp.route('/announcements', methods=['GET', 'POST'])
 @jwt_required()
 def get_announcements():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+
+    if request.method == 'POST':
+        if not user.role.can_manage_announcements:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        data = request.get_json() or {}
+        title = (data.get('title') or '').strip()
+        content = (data.get('content') or '').strip()
+        if not title or not content:
+            return jsonify({"error": "Judul dan isi pengumuman wajib diisi"}), 400
+
+        ann = Announcement(
+            title=title,
+            content=content,
+            category=(data.get('category') or 'Info').strip(),
+            is_pinned=bool(data.get('is_pinned', False)),
+            is_public=bool(data.get('is_public', True)),
+        )
+        db.session.add(ann)
+        db.session.commit()
+
+        from app import send_push, log_activity
+        title_prefix = "Pengumuman Baru!" if ann.category != 'Penting' else "PENTING: Pengumuman!"
+        send_push(title_prefix, ann.title, sender_id=user.id)
+        log_activity("Tambah Pengumuman API", f"Judul: {ann.title}")
+        return jsonify({"status": "success", "id": ann.id})
+
     announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     return jsonify([{
         "id": a.id,
@@ -247,6 +276,34 @@ def get_announcements():
         "is_public": a.is_public,
         "date_posted": a.date_posted.isoformat()
     } for a in announcements])
+
+@api_bp.route('/announcements/<int:id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def modify_announcement(id):
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user.role.can_manage_announcements:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    ann = Announcement.query.get_or_404(id)
+    if request.method == 'DELETE':
+        title = ann.title
+        db.session.delete(ann)
+        db.session.commit()
+        from app import log_activity
+        log_activity("Hapus Pengumuman API", f"Judul: {title}")
+        return jsonify({"status": "success"})
+
+    data = request.get_json() or {}
+    ann.title = (data.get('title') or ann.title).strip() or ann.title
+    ann.content = (data.get('content') or ann.content).strip() or ann.content
+    ann.category = (data.get('category') or ann.category or 'Info').strip()
+    ann.is_pinned = bool(data.get('is_pinned', ann.is_pinned))
+    ann.is_public = bool(data.get('is_public', ann.is_public))
+    db.session.commit()
+    from app import log_activity
+    log_activity("Edit Pengumuman API", f"Judul: {ann.title}")
+    return jsonify({"status": "success"})
 
 
 @api_bp.route('/explore', methods=['GET'])
@@ -960,14 +1017,56 @@ def get_notification_recipients():
     user = User.query.get(int(user_id))
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
-    users = User.query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
-    return jsonify([{
-        "id": u.id,
-        "full_name": u.student.full_name if u.student else u.username,
-        "username": u.username,
-        "has_token": bool(u.fcm_token),
-        "status": u.status or 'Active'
-    } for u in users])
+
+    if user.student and user.student.classroom_id:
+        students = Student.query.filter_by(
+            classroom_id=user.student.classroom_id
+        ).order_by(Student.full_name.asc()).all()
+    else:
+        students = Student.query.order_by(Student.full_name.asc()).all()
+
+    recipients = []
+    seen_user_ids = set()
+
+    for student in students:
+        linked_user = student.user
+        if linked_user:
+            seen_user_ids.add(linked_user.id)
+
+        recipients.append({
+            "id": f"student:{student.id}",
+            "student_id": student.id,
+            "user_id": linked_user.id if linked_user else None,
+            "full_name": student.full_name,
+            "username": linked_user.username if linked_user else None,
+            "has_account": bool(linked_user),
+            "has_token": bool(linked_user and linked_user.fcm_token),
+            "status": student.status or 'Aktif',
+            "nim": student.nim
+        })
+
+    # Tetap tampilkan user non-member khusus seperti admin/staff agar bisa dites juga.
+    extra_users = User.query.order_by(
+        User.full_name.is_(None),
+        User.full_name.asc(),
+        User.username.asc()
+    ).all()
+    for extra_user in extra_users:
+        if extra_user.id in seen_user_ids:
+            continue
+        recipients.append({
+            "id": f"user:{extra_user.id}",
+            "student_id": extra_user.student_id,
+            "user_id": extra_user.id,
+            "full_name": extra_user.full_name or extra_user.username,
+            "username": extra_user.username,
+            "has_account": True,
+            "has_token": bool(extra_user.fcm_token),
+            "status": extra_user.status or 'Active',
+            "nim": extra_user.student.nim if extra_user.student else None
+        })
+
+    return jsonify(recipients)
 
 @api_bp.route('/notifications/send', methods=['POST'])
 @jwt_required()
@@ -985,7 +1084,7 @@ def api_send_notifications():
 
     title = (data.get('title') or '').strip()
     body = (data.get('body') or '').strip()
-    target = data.get('target') # "all" or user_id
+    target = (data.get('target') or '').strip() # "all", "student:<id>", or "user:<id>"
     if not title and not body:
         return jsonify({"error": "Judul atau isi notifikasi wajib diisi"}), 400
     if not title:
@@ -996,7 +1095,26 @@ def api_send_notifications():
     if target == 'all':
         send_multichannel_notification(title, body, sender_id=user.id, allow_whatsapp=True)
     else:
-        send_push(title, body, user_id=int(target), sender_id=user.id)
+        target_user_id = None
+        if target.startswith('student:'):
+            student = Student.query.get(int(target.split(':', 1)[1]))
+            if not student:
+                return jsonify({"error": "Member tidak ditemukan"}), 404
+            if not student.user:
+                return jsonify({"error": "Member ini belum memiliki akun aplikasi"}), 400
+            target_user_id = student.user.id
+        elif target.startswith('user:'):
+            target_user_id = int(target.split(':', 1)[1])
+        else:
+            target_user_id = int(target)
+
+        target_user = User.query.get(target_user_id)
+        if not target_user:
+            return jsonify({"error": "User penerima tidak ditemukan"}), 404
+        if not target_user.fcm_token:
+            return jsonify({"error": "Penerima belum memiliki token push aktif"}), 400
+
+        send_push(title, body, user_id=target_user_id, sender_id=user.id)
         
     return jsonify({"status": "success"})
 

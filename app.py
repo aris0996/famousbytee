@@ -897,6 +897,48 @@ with app.app_context():
 
     sync_roles()
 
+    def calculate_user_points_breakdown(user, target_payment=None):
+        target_payment = get_fund_target() if target_payment is None else target_payment
+        breakdown = {
+            'fund_points': 0,
+            'gallery_points': 0,
+            'arrears_penalty': 0,
+            'total_paid': 0,
+            'target_payment': target_payment,
+            'arrears': 0,
+            'published_photos': 0,
+        }
+
+        total_points = 0
+        if user.student_id:
+            total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+                BatchFund.student_id == user.student_id,
+                BatchFund.type == 'Masuk'
+            ).scalar() or 0
+            breakdown['total_paid'] = total_paid
+
+            if target_payment > 0:
+                paid_ratio = min(total_paid / target_payment, 1)
+                breakdown['fund_points'] = int(round(paid_ratio * 500))
+            else:
+                breakdown['fund_points'] = min(int(total_paid / 1000), 500)
+
+            arrears = max(0, target_payment - total_paid)
+            breakdown['arrears'] = arrears
+            breakdown['arrears_penalty'] = min(int(arrears / 2000), 100)
+            total_points += breakdown['fund_points']
+            total_points -= breakdown['arrears_penalty']
+
+        photos_count = GalleryPhoto.query.filter_by(uploaded_by=user.id, status='Published').count()
+        breakdown['published_photos'] = photos_count
+        first_tier = min(photos_count, 5) * 10
+        second_tier = max(min(photos_count - 5, 10), 0) * 5
+        breakdown['gallery_points'] = min(first_tier + second_tier, 100)
+        total_points += breakdown['gallery_points']
+
+        breakdown['total_points'] = total_points
+        return breakdown
+
     def auto_recalculate_points():
         try:
             print("Auto-recalculating points for all users...")
@@ -904,32 +946,8 @@ with app.app_context():
             users = User.query.all()
             
             for u in users:
-                # Base points calculation
-                base_points = 0
-                
-                # 1. Kas fairness: reward paid coverage, not number of entries.
-                if u.student_id:
-                    total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
-                        BatchFund.student_id == u.student_id,
-                        BatchFund.type == 'Masuk'
-                    ).scalar() or 0
-
-                    if target_payment > 0:
-                        paid_ratio = min(total_paid / target_payment, 1)
-                        base_points += int(paid_ratio * 500)
-                    else:
-                        base_points += int(total_paid / 1000)
-                    
-                    # Deduct for arrears (Penalty: -1 point per 1000 IDR nunggak)
-                    arrears = max(0, target_payment - total_paid)
-                    penalty = int(arrears / 1000)
-                    base_points -= penalty
-                
-                # 2. Gallery (+10 per published photo)
-                photos_count = GalleryPhoto.query.filter_by(uploaded_by=u.id, status='Published').count()
-                base_points += (photos_count * 10)
-                
-                u.points = base_points
+                breakdown = calculate_user_points_breakdown(u, target_payment=target_payment)
+                u.points = breakdown['total_points']
             
             db.session.commit()
             print("Point Recalculation: Success (Including Arrears Penalty).")
@@ -2863,6 +2881,28 @@ def get_leaderboard():
         "role": u.role.name,
         "nim": u.student.nim if u.student else "-"
     } for u in top_users])
+
+@app.route('/api/leaderboard/<int:user_id>', methods=['GET'])
+def get_leaderboard_detail(user_id):
+    user = User.query.get_or_404(user_id)
+    breakdown = calculate_user_points_breakdown(user)
+    return jsonify({
+        "id": user.id,
+        "full_name": (user.student.full_name if user.student and user.student.full_name else user.full_name) or user.username,
+        "username": user.username,
+        "nim": user.student.nim if user.student else "-",
+        "role": user.role.name if user.role else "-",
+        "points": breakdown['total_points'],
+        "breakdown": {
+            "fund_points": breakdown['fund_points'],
+            "gallery_points": breakdown['gallery_points'],
+            "arrears_penalty": breakdown['arrears_penalty'],
+            "total_paid": breakdown['total_paid'],
+            "target_payment": breakdown['target_payment'],
+            "arrears": breakdown['arrears'],
+            "published_photos": breakdown['published_photos'],
+        }
+    })
 
 # Inisialisasi database saat aplikasi dinyalakan
 init_db()
