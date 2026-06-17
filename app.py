@@ -565,7 +565,7 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
     return "\n".join(lines)
 
 def _build_lunas_command_response(command_text, sender_ref=''):
-    """Build response for /lunas command - uses same logic as Flutter (cumulative)"""
+    """Build response for /lunas command - shows ONLY fully paid students"""
     # Get cumulative target (same as Flutter)
     target_payment = get_fund_target()
     
@@ -573,7 +573,8 @@ def _build_lunas_command_response(command_text, sender_ref=''):
     from models import Student
     all_students = Student.query.filter(Student.status == 'Aktif').all()
     
-    paid_list = []
+    # ONLY collect students who are FULLY PAID
+    fully_paid_list = []
     for student in all_students:
         # Calculate TOTAL paid (all time, not per period - same as Flutter)
         total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
@@ -581,52 +582,30 @@ def _build_lunas_command_response(command_text, sender_ref=''):
             BatchFund.type == 'Masuk'
         ).scalar() or 0
         
-        # Only include students who have paid (fully or partially)
-        if total_paid > 0:
-            arrears = max(0, target_payment - total_paid)
-            is_fully_paid = total_paid >= target_payment
-            
-            paid_list.append({
+        # ONLY include if FULLY PAID (paid >= target)
+        if total_paid >= target_payment:
+            fully_paid_list.append({
                 'name': student.full_name,
                 'target': target_payment,
-                'paid': total_paid,
-                'arrears': arrears,
-                'is_fully_paid': is_fully_paid
+                'paid': total_paid
             })
     
-    if not paid_list:
-        return "Belum ada pembayaran."
+    if not fully_paid_list:
+        return "💰 *Daftar Pembayaran Kas:*\n\nBelum ada mahasiswa yang lunas. Gunakan /tunggakan untuk melihat daftar tunggakan."
     
-    # Sort: fully paid first, then by paid amount (highest first)
-    paid_list.sort(key=lambda x: (not x['is_fully_paid'], -x['paid']))
+    # Sort by paid amount (highest first)
+    fully_paid_list.sort(key=lambda x: -x['paid'])
     
-    # Build response
-    lines = [f"💰 *Daftar Pembayaran Kas:*", ""]
+    # Build response - ONLY show fully paid
+    lines = ["💰 *Daftar Pembayaran Kas - LUNAS:*", ""]
     
-    # Separate fully paid and partially paid
-    fully_paid = [p for p in paid_list if p['is_fully_paid']]
-    partially_paid = [p for p in paid_list if not p['is_fully_paid']]
+    for index, item in enumerate(fully_paid_list, start=1):
+        lines.append(
+            f"{index}. *{item['name']}* - Rp {item['paid']:,}"
+        )
     
-    if fully_paid:
-        lines.append("*✅ LUNAS:*")
-        for index, item in enumerate(fully_paid, start=1):
-            lines.append(
-                f"{index}. *{item['name']}* - Rp {item['paid']:,}"
-            )
-        lines.append("")
-    
-    if partially_paid:
-        lines.append("*⏳ BELUM LUNAS:*")
-        for index, item in enumerate(partially_paid, start=1):
-            lines.append(
-                f"{index}. *{item['name']}*\n"
-                f"   Terbayar: Rp {item['paid']:,}\n"
-                f"   Target: Rp {item['target']:,}\n"
-                f"   *Kurang: Rp {item['arrears']:,}*"
-            )
-        lines.append("")
-    
-    lines.append(f"*Total: {len(fully_paid)} lunas, {len(partially_paid)} belum lunas* dari {len(paid_list)} mahasiswa.")
+    lines.append("")
+    lines.append(f"*Total: {len(fully_paid_list)} mahasiswa* sudah lunas ✅")
     
     return "\n".join(lines)
 
