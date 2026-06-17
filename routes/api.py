@@ -785,6 +785,12 @@ def send_daily_summary_on_demand():
             "error": f"Tidak ada jadwal untuk tanggal {target_date.strftime('%d/%m/%Y')}"
         }), 400
     
+    # Append note if provided
+    note = data.get('note')
+    if note and note.strip():
+        message += f"\n\n📝 *Info Tambahan:*
+{note.strip()}"
+    
     # Send WhatsApp
     result = send_whatsapp(
         message,

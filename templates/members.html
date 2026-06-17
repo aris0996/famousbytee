@@ -27,6 +27,7 @@
                 <label>Status Akademik</label>
                 <select name="status" class="form-control" required>
                     <option value="Aktif">Aktif</option>
+                    <option value="Nonaktif">Nonaktif</option>
                     <option value="Cuti">Cuti</option>
                     <option value="Lulus">Lulus</option>
                 </select>
@@ -77,7 +78,7 @@
                             <span class="nim-target" style="font-family: monospace; color: var(--text-muted); font-weight: 600;">{{ m.nim }}</span>
                         </td>
                         <td style="padding: 1rem;">
-                            <span class="status-badge {{ 'status-aktif' if m.status == 'Aktif' else 'status-cuti' }}" style="font-size: 0.75rem;">
+                            <span class="status-badge {{ 'status-aktif' if m.status == 'Aktif' else ('status-nonaktif' if m.status == 'Nonaktif' else ('status-cuti' if m.status == 'Cuti' else 'status-lulus')) }}" style="font-size: 0.75rem;">
                                 {{ m.status }}
                             </span>
                         </td>
@@ -151,6 +152,7 @@
                 <label>Status</label>
                 <select name="status" id="edit-status" class="form-control">
                     <option value="Aktif">Aktif</option>
+                    <option value="Nonaktif">Nonaktif</option>
                     <option value="Cuti">Cuti</option>
                     <option value="Lulus">Lulus</option>
                 </select>

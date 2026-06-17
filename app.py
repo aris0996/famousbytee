@@ -514,79 +514,42 @@ def _build_kas_command_response(sender_ref=''):
     return "\n".join(lines)
 
 def _build_tunggakan_command_response(command_text, sender_ref=''):
-    """Build response for /tunggakan command with optional period filter"""
-    # Parse period from command (e.g., /tunggakan /periode 1 or /tunggakan periode 1)
-    period_filter = None
-    parts = command_text.split()
+    """Build response for /tunggakan command - uses same logic as Flutter (cumulative)"""
+    # Get cumulative target (same as Flutter)
+    target_payment = get_fund_target()
     
-    # Check for /periode or periode keyword
-    for i, part in enumerate(parts):
-        if part.lower() in ['/periode', 'periode'] and i + 1 < len(parts):
-            try:
-                period_filter = int(parts[i + 1])
-                break
-            except ValueError:
-                pass
-    
-    # Get all active periods
-    active_periods = get_fund_periods()
-    if not active_periods:
-        return "Tidak ada periode kas yang aktif saat ini."
-    
-    # Filter by period if specified
-    if period_filter:
-        if period_filter <= 0 or period_filter > len(active_periods):
-            return f"Periode tidak valid. Tersedia periode 1-{len(active_periods)}. Gunakan /tunggakan untuk melihat semua periode."
-        target_periods = [active_periods[period_filter - 1]]
-    else:
-        target_periods = active_periods
-    
-    # Calculate arrears for all students
+    # Get all active students
     from models import Student
     all_students = Student.query.filter(Student.status == 'Aktif').all()
     
     arrears_list = []
     for student in all_students:
-        total_target = 0
-        total_paid = 0
+        # Calculate TOTAL paid (all time, not per period - same as Flutter)
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == student.id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
         
-        for period in target_periods:
-            # Calculate target for this period using period's daily_rate
-            period_days = _count_weekdays_between(period.start_date, period.end_date)
-            daily_rate = period.daily_rate or 1000  # Use period's rate, fallback to 1000
-            period_target = period_days * daily_rate
-            total_target += period_target
-            
-            # Calculate paid for this period (filter by date range, not period_id)
-            paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
-                BatchFund.student_id == student.id,
-                BatchFund.type == 'Masuk',
-                BatchFund.date >= period.start_date,
-                BatchFund.date <= period.end_date
-            ).scalar() or 0
-            total_paid += paid
+        # Calculate arrears (same logic as Flutter)
+        arrears = max(0, target_payment - total_paid)
         
-        arrears = max(0, total_target - total_paid)
-        
-        # ONLY include students with actual arrears (strict check)
-        if arrears > 0 and total_paid < total_target:
+        # ONLY include students with actual arrears
+        if arrears > 0 and total_paid < target_payment:
             arrears_list.append({
                 'name': student.full_name,
                 'arrears': arrears,
-                'target': total_target,
+                'target': target_payment,
                 'paid': total_paid
             })
     
     if not arrears_list:
-        period_info = f" periode {period_filter}" if period_filter else ""
-        return f"✅ Tidak ada tunggakan{period_info}. Semua mahasiswa sudah lunas!"
+        return "✅ Tidak ada tunggakan. Semua mahasiswa sudah lunas!"
     
     # Sort by arrears (highest first)
     arrears_list.sort(key=lambda x: x['arrears'], reverse=True)
     
     # Build response
-    period_info = f" periode {period_filter}" if period_filter else " semua periode"
-    lines = [f"📊 *Daftar Tunggakan Kas{period_info}:*", ""]
+    lines = [f"📊 *Daftar Tunggakan Kas:*", ""]
     
     for index, item in enumerate(arrears_list, start=1):
         lines.append(
@@ -602,80 +565,43 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
     return "\n".join(lines)
 
 def _build_lunas_command_response(command_text, sender_ref=''):
-    """Build response for /lunas command with optional period filter"""
-    # Parse period from command
-    period_filter = None
-    parts = command_text.split()
+    """Build response for /lunas command - uses same logic as Flutter (cumulative)"""
+    # Get cumulative target (same as Flutter)
+    target_payment = get_fund_target()
     
-    for i, part in enumerate(parts):
-        if part.lower() in ['/periode', 'periode'] and i + 1 < len(parts):
-            try:
-                period_filter = int(parts[i + 1])
-                break
-            except ValueError:
-                pass
-    
-    # Get all active periods
-    active_periods = get_fund_periods()
-    if not active_periods:
-        return "Tidak ada periode kas yang aktif saat ini."
-    
-    # Filter by period if specified
-    if period_filter:
-        if period_filter <= 0 or period_filter > len(active_periods):
-            return f"Periode tidak valid. Tersedia periode 1-{len(active_periods)}. Gunakan /lunas untuk melihat semua periode."
-        target_periods = [active_periods[period_filter - 1]]
-    else:
-        target_periods = active_periods
-    
-    # Calculate paid status for all students
+    # Get all active students
     from models import Student
     all_students = Student.query.filter(Student.status == 'Aktif').all()
     
     paid_list = []
     for student in all_students:
-        total_target = 0
-        total_paid = 0
-        
-        for period in target_periods:
-            # Calculate target for this period using period's daily_rate
-            period_days = _count_weekdays_between(period.start_date, period.end_date)
-            daily_rate = period.daily_rate or 1000  # Use period's rate, fallback to 1000
-            period_target = period_days * daily_rate
-            total_target += period_target
-            
-            # Calculate paid for this period (filter by date range, not period_id)
-            paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
-                BatchFund.student_id == student.id,
-                BatchFund.type == 'Masuk',
-                BatchFund.date >= period.start_date,
-                BatchFund.date <= period.end_date
-            ).scalar() or 0
-            total_paid += paid
+        # Calculate TOTAL paid (all time, not per period - same as Flutter)
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == student.id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
         
         # Only include students who have paid (fully or partially)
         if total_paid > 0:
-            arrears = max(0, total_target - total_paid)
-            is_fully_paid = total_paid >= total_target
+            arrears = max(0, target_payment - total_paid)
+            is_fully_paid = total_paid >= target_payment
             
             paid_list.append({
                 'name': student.full_name,
-                'target': total_target,
+                'target': target_payment,
                 'paid': total_paid,
                 'arrears': arrears,
                 'is_fully_paid': is_fully_paid
             })
     
     if not paid_list:
-        period_info = f" periode {period_filter}" if period_filter else ""
-        return f"Belum ada pembayaran{period_info}."
+        return "Belum ada pembayaran."
     
     # Sort: fully paid first, then by paid amount (highest first)
     paid_list.sort(key=lambda x: (not x['is_fully_paid'], -x['paid']))
     
     # Build response
-    period_info = f" periode {period_filter}" if period_filter else " semua periode"
-    lines = [f"💰 *Daftar Pembayaran Kas{period_info}:*", ""]
+    lines = [f"💰 *Daftar Pembayaran Kas:*", ""]
     
     # Separate fully paid and partially paid
     fully_paid = [p for p in paid_list if p['is_fully_paid']]
