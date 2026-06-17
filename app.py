@@ -551,9 +551,9 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
         total_paid = 0
         
         for period in target_periods:
-            # Calculate target for this period
+            # Calculate target for this period using period's daily_rate
             period_days = _count_weekdays_between(period.start_date, period.end_date)
-            daily_rate = int(get_setting_value('fund_daily_rate', '1000'))
+            daily_rate = period.daily_rate or 1000  # Use period's rate, fallback to 1000
             period_target = period_days * daily_rate
             total_target += period_target
             
@@ -568,8 +568,8 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
         
         arrears = max(0, total_target - total_paid)
         
-        # Only include students with arrears
-        if arrears > 0:
+        # ONLY include students with actual arrears (strict check)
+        if arrears > 0 and total_paid < total_target:
             arrears_list.append({
                 'name': student.full_name,
                 'arrears': arrears,
@@ -586,18 +586,18 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
     
     # Build response
     period_info = f" periode {period_filter}" if period_filter else " semua periode"
-    lines = [f"📊 Daftar Tunggakan Kas{period_info}:", ""]
+    lines = [f"📊 *Daftar Tunggakan Kas{period_info}:*", ""]
     
     for index, item in enumerate(arrears_list, start=1):
         lines.append(
-            f"{index}. {item['name']}\n"
+            f"{index}. *{item['name']}*\n"
             f"   Target: Rp {item['target']:,}\n"
             f"   Terbayar: Rp {item['paid']:,}\n"
-            f"   Tunggakan: Rp {item['arrears']:,}"
+            f"   *Tunggakan: Rp {item['arrears']:,}*"
         )
     
     lines.append("")
-    lines.append(f"Total: {len(arrears_list)} mahasiswa masih memiliki tunggakan.")
+    lines.append(f"*Total: {len(arrears_list)} mahasiswa* masih memiliki tunggakan.")
     
     return "\n".join(lines)
 
@@ -638,9 +638,9 @@ def _build_lunas_command_response(command_text, sender_ref=''):
         total_paid = 0
         
         for period in target_periods:
-            # Calculate target for this period
+            # Calculate target for this period using period's daily_rate
             period_days = _count_weekdays_between(period.start_date, period.end_date)
-            daily_rate = int(get_setting_value('fund_daily_rate', '1000'))
+            daily_rate = period.daily_rate or 1000  # Use period's rate, fallback to 1000
             period_target = period_days * daily_rate
             total_target += period_target
             
@@ -675,32 +675,32 @@ def _build_lunas_command_response(command_text, sender_ref=''):
     
     # Build response
     period_info = f" periode {period_filter}" if period_filter else " semua periode"
-    lines = [f"💰 Daftar Pembayaran Kas{period_info}:", ""]
+    lines = [f"💰 *Daftar Pembayaran Kas{period_info}:*", ""]
     
     # Separate fully paid and partially paid
     fully_paid = [p for p in paid_list if p['is_fully_paid']]
     partially_paid = [p for p in paid_list if not p['is_fully_paid']]
     
     if fully_paid:
-        lines.append("✅ LUNAS:")
+        lines.append("*✅ LUNAS:*")
         for index, item in enumerate(fully_paid, start=1):
             lines.append(
-                f"{index}. {item['name']} - Rp {item['paid']:,}"
+                f"{index}. *{item['name']}* - Rp {item['paid']:,}"
             )
         lines.append("")
     
     if partially_paid:
-        lines.append("⏳ BELUM LUNAS:")
+        lines.append("*⏳ BELUM LUNAS:*")
         for index, item in enumerate(partially_paid, start=1):
             lines.append(
-                f"{index}. {item['name']}\n"
+                f"{index}. *{item['name']}*\n"
                 f"   Terbayar: Rp {item['paid']:,}\n"
                 f"   Target: Rp {item['target']:,}\n"
-                f"   Kurang: Rp {item['arrears']:,}"
+                f"   *Kurang: Rp {item['arrears']:,}*"
             )
         lines.append("")
     
-    lines.append(f"Total: {len(fully_paid)} lunas, {len(partially_paid)} belum lunas dari {len(paid_list)} mahasiswa.")
+    lines.append(f"*Total: {len(fully_paid)} lunas, {len(partially_paid)} belum lunas* dari {len(paid_list)} mahasiswa.")
     
     return "\n".join(lines)
 
