@@ -1606,11 +1606,13 @@ def edit_schedule(id):
     s.lecturer = request.form['lecturer']
     s.room = request.form['room']
     db.session.commit()
+    # Check if WhatsApp notification is enabled for edit (default: false to avoid spam)
+    should_notify = get_setting_value('schedule_notify_on_edit', 'false') == 'true'
     send_multichannel_notification(
         "Jadwal Diubah!",
         f"Jadwal {s.subject} telah diperbarui oleh pengurus.",
         sender_id=current_user.id,
-        allow_whatsapp=True,
+        allow_whatsapp=should_notify,
         whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
     )
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
@@ -1625,11 +1627,13 @@ def delete_schedule(id):
     log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
     db.session.delete(s)
     db.session.commit()
+    # Check if WhatsApp notification is enabled for delete
+    should_notify = get_setting_value('schedule_notify_on_delete', 'true') == 'true'
     send_multichannel_notification(
         "Jadwal Dihapus",
         f"Jadwal {subject_name} telah dihapus dari sistem.",
         sender_id=current_user.id,
-        allow_whatsapp=True,
+        allow_whatsapp=should_notify,
         whatsapp_text=f"Jadwal dihapus\nMata kuliah: {subject_name}"
     )
     return redirect(url_for('manage_schedule'))
@@ -2610,7 +2614,10 @@ def init_db():
                     SystemSetting(key='waha_schedule_deadline_item_template', value='{index}. Deadline {subject}: {title} jam {deadline_time}', description='Template item deadline WAHA'),
                     SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan WAHA'),
                     SystemSetting(key='waha_admin_header_enabled', value='true', description='Aktifkan header/pengenal admin di pesan WA'),
-                    SystemSetting(key='waha_admin_header_text', value='*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n', description='Template header admin untuk pesan WA')
+                    SystemSetting(key='waha_admin_header_text', value='*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n', description='Template header admin untuk pesan WA'),
+                    SystemSetting(key='schedule_notify_on_create', value='true', description='Kirim notifikasi WhatsApp saat jadwal baru dibuat'),
+                    SystemSetting(key='schedule_notify_on_edit', value='false', description='Kirim notifikasi WhatsApp saat jadwal diedit (default: false untuk hindari spam)'),
+                    SystemSetting(key='schedule_notify_on_delete', value='true', description='Kirim notifikasi WhatsApp saat jadwal dihapus')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
@@ -2692,7 +2699,10 @@ def manage_notifications():
         'waha_schedule_deadline_item_template': get_setting_value('waha_schedule_deadline_item_template', '{index}. Deadline {subject}: {title} jam {deadline_time}'),
         'waha_schedule_extra_info': get_setting_value('waha_schedule_extra_info', ''),
         'waha_admin_header_enabled': get_setting_value('waha_admin_header_enabled', 'true'),
-        'waha_admin_header_text': get_setting_value('waha_admin_header_text', '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n')
+        'waha_admin_header_text': get_setting_value('waha_admin_header_text', '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n'),
+        'schedule_notify_on_create': get_setting_value('schedule_notify_on_create', 'true'),
+        'schedule_notify_on_edit': get_setting_value('schedule_notify_on_edit', 'false'),
+        'schedule_notify_on_delete': get_setting_value('schedule_notify_on_delete', 'true')
     }
     return render_template('notifications.html', history=history, users=users, settings=settings)
 
@@ -2718,6 +2728,9 @@ def save_waha_config():
     set_setting_value('waha_schedule_extra_info', request.form.get('waha_schedule_extra_info') or '', 'Info tambahan tetap di ringkasan WAHA')
     set_setting_value('waha_admin_header_enabled', 'true' if request.form.get('waha_admin_header_enabled') == 'on' else 'false', 'Aktifkan header/pengenal admin di pesan WA')
     set_setting_value('waha_admin_header_text', request.form.get('waha_admin_header_text') or '', 'Template header admin untuk pesan WA')
+    set_setting_value('schedule_notify_on_create', 'true' if request.form.get('schedule_notify_on_create') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal baru dibuat')
+    set_setting_value('schedule_notify_on_edit', 'true' if request.form.get('schedule_notify_on_edit') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal diedit')
+    set_setting_value('schedule_notify_on_delete', 'true' if request.form.get('schedule_notify_on_delete') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal dihapus')
     db.session.commit()
     flash('Konfigurasi WAHA berhasil disimpan.')
     return redirect(url_for('manage_notifications'))

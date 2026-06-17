@@ -318,6 +318,15 @@
                     <textarea name="waha_admin_header_text" class="form-control" rows="4" placeholder="*[PESAN RESMI ADMIN]*&#10;{title_block}Pesan ini dikirim dari sistem admin.">{{ settings.waha_admin_header_text }}</textarea>
                 </div>
                 <p class="notify-note">Placeholder yang bisa dipakai: <code>{title}</code> dan <code>{title_block}</code>.</p>
+                </div>
+                <div class="notify-subcard">
+                    <h3 style="margin:0 0 10px 0; font-size:1rem;">Notifikasi Jadwal</h3>
+                    <p class="notify-subtitle" style="margin-bottom:12px;">Atur pengiriman otomatis WhatsApp untuk perubahan jadwal.</p>
+                    <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-weight:600;"><input type="checkbox" name="schedule_notify_on_create" {{ 'checked' if settings.schedule_notify_on_create == 'true' else '' }}> Kirim WhatsApp saat jadwal baru dibuat</label>
+                    <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-weight:600;"><input type="checkbox" name="schedule_notify_on_edit" {{ 'checked' if settings.schedule_notify_on_edit == 'true' else '' }}> Kirim WhatsApp saat jadwal diedit <span style="color:#ef4444; font-size:0.75rem;">(default: nonaktif)</span></label>
+                    <label style="display:flex; gap:8px; align-items:center; margin-bottom:10px; font-weight:600;"><input type="checkbox" name="schedule_notify_on_delete" {{ 'checked' if settings.schedule_notify_on_delete == 'true' else '' }}> Kirim WhatsApp saat jadwal dihapus</label>
+                    <p class="notify-note">💡 Tips: Admin bisa mengirim WhatsApp manual untuk jadwal tertentu melalui aplikasi mobile atau tombol khusus di halaman jadwal.</p>
+                </div>
             </div>
             <div class="notify-subcard">
                 <h3 style="margin:0 0 10px 0; font-size:1rem;">Template Ringkasan Jadwal WA</h3>

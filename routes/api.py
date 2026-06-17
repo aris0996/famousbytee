@@ -586,12 +586,14 @@ def manage_schedules():
         db.session.add(s)
         db.session.commit()
         
-        from app import send_multichannel_notification
+        from app import send_multichannel_notification, get_setting_value
+        # Check if WhatsApp notification is enabled for create
+        should_notify = get_setting_value('schedule_notify_on_create', 'true') == 'true'
         send_multichannel_notification(
             "Jadwal Baru Ditambahkan",
             f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
             sender_id=user.id,
-            allow_whatsapp=True,
+            allow_whatsapp=should_notify,
             whatsapp_text=f"Jadwal baru\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
         )
         
@@ -624,8 +626,21 @@ def modify_schedule(id):
     s = Schedule.query.get_or_404(id)
     
     if request.method == 'DELETE':
+        subject_name = s.subject
         db.session.delete(s)
         db.session.commit()
+        
+        from app import send_multichannel_notification, get_setting_value
+        # Check if WhatsApp notification is enabled for delete
+        should_notify = get_setting_value('schedule_notify_on_delete', 'true') == 'true'
+        send_multichannel_notification(
+            "Jadwal Dihapus",
+            f"Jadwal {subject_name} telah dihapus dari sistem.",
+            sender_id=user.id,
+            allow_whatsapp=should_notify,
+            whatsapp_text=f"Jadwal dihapus\nMata kuliah: {subject_name}"
+        )
+        
         return jsonify({"status": "success"})
         
     if request.method == 'PUT':
@@ -639,16 +654,90 @@ def modify_schedule(id):
         
         db.session.commit()
         
-        from app import send_multichannel_notification
+        from app import send_multichannel_notification, get_setting_value
+        # Check if WhatsApp notification is enabled for edit (default: false to avoid spam)
+        should_notify = get_setting_value('schedule_notify_on_edit', 'false') == 'true'
         send_multichannel_notification(
             "Jadwal Diperbarui",
             f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
             sender_id=user.id,
-            allow_whatsapp=True,
+            allow_whatsapp=should_notify,
             whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
         )
         
         return jsonify({"status": "success"})
+
+@api_bp.route('/notifications/preferences', methods=['GET'])
+@jwt_required()
+def get_notification_preferences():
+    """Get notification preferences for schedule management"""
+    from app import get_setting_value
+    return jsonify({
+        'schedule_notify_on_create': get_setting_value('schedule_notify_on_create', 'true') == 'true',
+        'schedule_notify_on_edit': get_setting_value('schedule_notify_on_edit', 'false') == 'true',
+        'schedule_notify_on_delete': get_setting_value('schedule_notify_on_delete', 'true') == 'true',
+    })
+
+@api_bp.route('/notifications/preferences', methods=['POST'])
+@jwt_required()
+def update_notification_preferences():
+    """Update notification preferences for schedule management"""
+    from app import set_setting_value, db
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.get_json()
+    
+    if 'schedule_notify_on_create' in data:
+        set_setting_value('schedule_notify_on_create', 
+                         'true' if data['schedule_notify_on_create'] else 'false')
+    if 'schedule_notify_on_edit' in data:
+        set_setting_value('schedule_notify_on_edit', 
+                         'true' if data['schedule_notify_on_edit'] else 'false')
+    if 'schedule_notify_on_delete' in data:
+        set_setting_value('schedule_notify_on_delete', 
+                         'true' if data['schedule_notify_on_delete'] else 'false')
+    
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
+@jwt_required()
+def send_schedule_whatsapp(id):
+    """Manually send WhatsApp notification for a specific schedule"""
+    from app import send_whatsapp, get_setting_value
+    from models import Schedule
+    
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    schedule = Schedule.query.get_or_404(id)
+    
+    data = request.get_json() or {}
+    action = data.get('action', 'update')  # create, update, delete, custom
+    
+    whatsapp_text = data.get('message')
+    if not whatsapp_text:
+        if action == 'create':
+            whatsapp_text = f"Jadwal baru\n{schedule.subject}\nHari: {schedule.day}\nJam: {schedule.time_start}-{schedule.time_end}\nRuang: {schedule.room}"
+        elif action == 'delete':
+            whatsapp_text = f"Jadwal dihapus\nMata kuliah: {schedule.subject}"
+        else:  # update
+            whatsapp_text = f"Perubahan jadwal\n{schedule.subject}\nHari: {schedule.day}\nJam: {schedule.time_start}-{schedule.time_end}\nRuang: {schedule.room}"
+    
+    result = send_whatsapp(
+        whatsapp_text,
+        sender_id=user.id,
+        title=f"Jadwal: {schedule.subject}"
+    )
+    
+    return jsonify(result), (200 if result.get('ok') else 400)
 
 def _count_weekdays_between(start_date, end_date):
     total = 0
