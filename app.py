@@ -513,6 +513,195 @@ def _build_kas_command_response(sender_ref=''):
 
     return "\n".join(lines)
 
+def _build_tunggakan_command_response(command_text, sender_ref=''):
+    """Build response for /tunggakan command with optional period filter"""
+    # Parse period from command (e.g., /tunggakan /periode 1 or /tunggakan periode 1)
+    period_filter = None
+    parts = command_text.split()
+    
+    # Check for /periode or periode keyword
+    for i, part in enumerate(parts):
+        if part.lower() in ['/periode', 'periode'] and i + 1 < len(parts):
+            try:
+                period_filter = int(parts[i + 1])
+                break
+            except ValueError:
+                pass
+    
+    # Get all active periods
+    active_periods = get_fund_periods()
+    if not active_periods:
+        return "Tidak ada periode kas yang aktif saat ini."
+    
+    # Filter by period if specified
+    if period_filter:
+        if period_filter <= 0 or period_filter > len(active_periods):
+            return f"Periode tidak valid. Tersedia periode 1-{len(active_periods)}. Gunakan /tunggakan untuk melihat semua periode."
+        target_periods = [active_periods[period_filter - 1]]
+    else:
+        target_periods = active_periods
+    
+    # Calculate arrears for all students
+    from models import Student
+    all_students = Student.query.filter(Student.status == 'Aktif').all()
+    
+    arrears_list = []
+    for student in all_students:
+        total_target = 0
+        total_paid = 0
+        
+        for period in target_periods:
+            # Calculate target for this period
+            period_days = _count_weekdays_between(period.start_date, period.end_date)
+            daily_rate = int(get_setting_value('fund_daily_rate', '1000'))
+            period_target = period_days * daily_rate
+            total_target += period_target
+            
+            # Calculate paid for this period
+            paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+                BatchFund.student_id == student.id,
+                BatchFund.type == 'Masuk',
+                BatchFund.period_id == period.id
+            ).scalar() or 0
+            total_paid += paid
+        
+        arrears = max(0, total_target - total_paid)
+        
+        # Only include students with arrears
+        if arrears > 0:
+            arrears_list.append({
+                'name': student.full_name,
+                'arrears': arrears,
+                'target': total_target,
+                'paid': total_paid
+            })
+    
+    if not arrears_list:
+        period_info = f" periode {period_filter}" if period_filter else ""
+        return f"✅ Tidak ada tunggakan{period_info}. Semua mahasiswa sudah lunas!"
+    
+    # Sort by arrears (highest first)
+    arrears_list.sort(key=lambda x: x['arrears'], reverse=True)
+    
+    # Build response
+    period_info = f" periode {period_filter}" if period_filter else " semua periode"
+    lines = [f"📊 Daftar Tunggakan Kas{period_info}:", ""]
+    
+    for index, item in enumerate(arrears_list, start=1):
+        lines.append(
+            f"{index}. {item['name']}\n"
+            f"   Target: Rp {item['target']:,}\n"
+            f"   Terbayar: Rp {item['paid']:,}\n"
+            f"   Tunggakan: Rp {item['arrears']:,}"
+        )
+    
+    lines.append("")
+    lines.append(f"Total: {len(arrears_list)} mahasiswa masih memiliki tunggakan.")
+    
+    return "\n".join(lines)
+
+def _build_lunas_command_response(command_text, sender_ref=''):
+    """Build response for /lunas command with optional period filter"""
+    # Parse period from command
+    period_filter = None
+    parts = command_text.split()
+    
+    for i, part in enumerate(parts):
+        if part.lower() in ['/periode', 'periode'] and i + 1 < len(parts):
+            try:
+                period_filter = int(parts[i + 1])
+                break
+            except ValueError:
+                pass
+    
+    # Get all active periods
+    active_periods = get_fund_periods()
+    if not active_periods:
+        return "Tidak ada periode kas yang aktif saat ini."
+    
+    # Filter by period if specified
+    if period_filter:
+        if period_filter <= 0 or period_filter > len(active_periods):
+            return f"Periode tidak valid. Tersedia periode 1-{len(active_periods)}. Gunakan /lunas untuk melihat semua periode."
+        target_periods = [active_periods[period_filter - 1]]
+    else:
+        target_periods = active_periods
+    
+    # Calculate paid status for all students
+    from models import Student
+    all_students = Student.query.filter(Student.status == 'Aktif').all()
+    
+    paid_list = []
+    for student in all_students:
+        total_target = 0
+        total_paid = 0
+        
+        for period in target_periods:
+            # Calculate target for this period
+            period_days = _count_weekdays_between(period.start_date, period.end_date)
+            daily_rate = int(get_setting_value('fund_daily_rate', '1000'))
+            period_target = period_days * daily_rate
+            total_target += period_target
+            
+            # Calculate paid for this period
+            paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+                BatchFund.student_id == student.id,
+                BatchFund.type == 'Masuk',
+                BatchFund.period_id == period.id
+            ).scalar() or 0
+            total_paid += paid
+        
+        # Only include students who have paid (fully or partially)
+        if total_paid > 0:
+            arrears = max(0, total_target - total_paid)
+            is_fully_paid = total_paid >= total_target
+            
+            paid_list.append({
+                'name': student.full_name,
+                'target': total_target,
+                'paid': total_paid,
+                'arrears': arrears,
+                'is_fully_paid': is_fully_paid
+            })
+    
+    if not paid_list:
+        period_info = f" periode {period_filter}" if period_filter else ""
+        return f"Belum ada pembayaran{period_info}."
+    
+    # Sort: fully paid first, then by paid amount (highest first)
+    paid_list.sort(key=lambda x: (not x['is_fully_paid'], -x['paid']))
+    
+    # Build response
+    period_info = f" periode {period_filter}" if period_filter else " semua periode"
+    lines = [f"💰 Daftar Pembayaran Kas{period_info}:", ""]
+    
+    # Separate fully paid and partially paid
+    fully_paid = [p for p in paid_list if p['is_fully_paid']]
+    partially_paid = [p for p in paid_list if not p['is_fully_paid']]
+    
+    if fully_paid:
+        lines.append("✅ LUNAS:")
+        for index, item in enumerate(fully_paid, start=1):
+            lines.append(
+                f"{index}. {item['name']} - Rp {item['paid']:,}"
+            )
+        lines.append("")
+    
+    if partially_paid:
+        lines.append("⏳ BELUM LUNAS:")
+        for index, item in enumerate(partially_paid, start=1):
+            lines.append(
+                f"{index}. {item['name']}\n"
+                f"   Terbayar: Rp {item['paid']:,}\n"
+                f"   Target: Rp {item['target']:,}\n"
+                f"   Kurang: Rp {item['arrears']:,}"
+            )
+        lines.append("")
+    
+    lines.append(f"Total: {len(fully_paid)} lunas, {len(partially_paid)} belum lunas dari {len(paid_list)} mahasiswa.")
+    
+    return "\n".join(lines)
+
 def _build_assignment_command_response(limit=5):
     assignments = Assignment.query.filter(Assignment.deadline >= datetime.now()).order_by(Assignment.deadline.asc()).limit(limit).all()
     if not assignments:
@@ -565,11 +754,27 @@ def _build_help_command_response():
         "8. /datakas\n"
         "   Menampilkan ringkasan kas kelas dan data personal jika nomor cocok.\n"
         "\n"
+        "9. /tunggakan\n"
+        "   Menampilkan daftar mahasiswa yang masih memiliki tunggakan kas (semua periode).\n"
+        "\n"
+        "10. /tunggakan /periode 1\n"
+        "    Menampilkan tunggakan kas untuk periode tertentu.\n"
+        "\n"
+        "11. /lunas\n"
+        "    Menampilkan daftar mahasiswa yang sudah bayar kas (semua periode).\n"
+        "\n"
+        "12. /lunas /periode 1\n"
+        "    Menampilkan pembayaran kas untuk periode tertentu.\n"
+        "\n"
         "Contoh:\n"
         "/jadwal besok\n"
         "/tugas 7\n"
         "/deadline 3\n"
-        "/datakas"
+        "/datakas\n"
+        "/tunggakan\n"
+        "/tunggakan /periode 1\n"
+        "/lunas\n"
+        "/lunas /periode 2"
     )
 
 def _extract_command_limit(command_text, default_limit=5, max_limit=15):
@@ -582,8 +787,11 @@ def _build_waha_command_response(command_text, sender_ref=''):
     command_text = (command_text or '').strip()
     lowered = command_text.lower()
 
+    # Help commands
     if lowered in {'/help', '/menu', '/commands', '/cmd'}:
         return _build_help_command_response()
+    
+    # Schedule commands
     if lowered.startswith('/jadwal'):
         target_date = datetime.now().date()
         if 'besok' in lowered:
@@ -592,13 +800,30 @@ def _build_waha_command_response(command_text, sender_ref=''):
             target_date = datetime.now().date()
         response = _build_schedule_summary_message(target_date)
         return response or f"Tidak ada jadwal untuk {_get_indo_day_name(target_date)}, {_format_indo_date(target_date)}."
+    
+    # Assignment commands
     if lowered.startswith('/tugas'):
         return _build_assignment_command_response(limit=_extract_command_limit(lowered))
     if lowered.startswith('/deadline'):
         return _build_deadline_command_response(limit=_extract_command_limit(lowered))
+    
+    # Finance commands
     if lowered.startswith('/datakas'):
         return _build_kas_command_response(sender_ref=sender_ref)
-    return _build_help_command_response()
+    if lowered.startswith('/tunggakan'):
+        return _build_tunggakan_command_response(lowered, sender_ref=sender_ref)
+    if lowered.startswith('/lunas'):
+        return _build_lunas_command_response(lowered, sender_ref=sender_ref)
+    
+    # Invalid command - block unknown commands
+    valid_commands = ['/help', '/menu', '/commands', '/cmd', '/jadwal', '/tugas', '/deadline', '/datakas', '/tunggakan', '/lunas']
+    command_base = lowered.split()[0] if lowered.split() else lowered
+    
+    if command_base in valid_commands:
+        return _build_help_command_response()
+    
+    # Block invalid commands
+    return f"❌ Command tidak dikenal: {command_base}\n\nGunakan /help untuk melihat daftar command yang tersedia."
 
 def _log_notification_history(title, body, user_id, sender_id, status, channel='push'):
     """Helper to log notification history."""

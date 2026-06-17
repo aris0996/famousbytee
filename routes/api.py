@@ -751,6 +751,49 @@ def send_schedule_whatsapp(id):
     
     return jsonify(result), (200 if result.get('ok') else 400)
 
+@api_bp.route('/notifications/send-daily-summary', methods=['POST'])
+@jwt_required()
+def send_daily_summary_on_demand():
+    """Send daily schedule summary WhatsApp on demand"""
+    from app import send_whatsapp, _build_schedule_summary_message, get_setting_value
+    
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    
+    if not user.role.can_manage_schedule and not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    
+    data = request.get_json() or {}
+    target_date_str = data.get('target_date')  # Optional: YYYY-MM-DD format
+    
+    if target_date_str:
+        from datetime import datetime
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+    else:
+        from datetime import datetime, timedelta
+        target_date = datetime.now().date() + timedelta(days=1)  # Default: tomorrow
+    
+    # Build summary message
+    message = _build_schedule_summary_message(target_date)
+    
+    if not message:
+        return jsonify({
+            "ok": False,
+            "error": f"Tidak ada jadwal untuk tanggal {target_date.strftime('%d/%m/%Y')}"
+        }), 400
+    
+    # Send WhatsApp
+    result = send_whatsapp(
+        message,
+        sender_id=user.id,
+        title=f"Ringkasan Jadwal {target_date.strftime('%d/%m/%Y')}"
+    )
+    
+    return jsonify(result), (200 if result.get('ok') else 400)
+
 def _count_weekdays_between(start_date, end_date):
     total = 0
     current = start_date
