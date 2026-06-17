@@ -27,7 +27,7 @@ app = Flask(__name__)
 app.config.from_object(Config)
 
 _WAHA_RECENT_COMMANDS = {}
-_WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 12
+_WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 3  # Reduced from 12 to allow faster re-commands
 
 # Initialize Firebase Admin
 def _initialize_firebase():
@@ -557,11 +557,12 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
             period_target = period_days * daily_rate
             total_target += period_target
             
-            # Calculate paid for this period
+            # Calculate paid for this period (filter by date range, not period_id)
             paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
                 BatchFund.student_id == student.id,
                 BatchFund.type == 'Masuk',
-                BatchFund.period_id == period.id
+                BatchFund.date >= period.start_date,
+                BatchFund.date <= period.end_date
             ).scalar() or 0
             total_paid += paid
         
@@ -643,11 +644,12 @@ def _build_lunas_command_response(command_text, sender_ref=''):
             period_target = period_days * daily_rate
             total_target += period_target
             
-            # Calculate paid for this period
+            # Calculate paid for this period (filter by date range, not period_id)
             paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
                 BatchFund.student_id == student.id,
                 BatchFund.type == 'Masuk',
-                BatchFund.period_id == period.id
+                BatchFund.date >= period.start_date,
+                BatchFund.date <= period.end_date
             ).scalar() or 0
             total_paid += paid
         
