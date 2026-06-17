@@ -1608,12 +1608,12 @@ def edit_schedule(id):
     db.session.commit()
     # Check if WhatsApp notification is enabled for edit (default: false to avoid spam)
     should_notify = get_setting_value('schedule_notify_on_edit', 'false') == 'true'
+    # Only send push notification, WhatsApp via daily summary
     send_multichannel_notification(
         "Jadwal Diubah!",
         f"Jadwal {s.subject} telah diperbarui oleh pengurus.",
         sender_id=current_user.id,
-        allow_whatsapp=should_notify,
-        whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
+        allow_whatsapp=False,  # Don't send per-subject WhatsApp
     )
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
     return redirect(url_for('manage_schedule'))
@@ -1627,14 +1627,12 @@ def delete_schedule(id):
     log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
     db.session.delete(s)
     db.session.commit()
-    # Check if WhatsApp notification is enabled for delete
-    should_notify = get_setting_value('schedule_notify_on_delete', 'true') == 'true'
+    # Only send push notification, WhatsApp via daily summary
     send_multichannel_notification(
         "Jadwal Dihapus",
         f"Jadwal {subject_name} telah dihapus dari sistem.",
         sender_id=current_user.id,
-        allow_whatsapp=should_notify,
-        whatsapp_text=f"Jadwal dihapus\nMata kuliah: {subject_name}"
+        allow_whatsapp=False,  # Don't send per-subject WhatsApp
     )
     return redirect(url_for('manage_schedule'))
 
@@ -2851,8 +2849,9 @@ def waha_webhook():
     chat_id = (event_data.get('chat_id') or '').strip()
     print(f"WAHA webhook received: event={event_data.get('event', '')}, chat_id={chat_id or '-'}, body={body[:80] or '-'}")
 
-    if event_data.get('from_me') is True:
-        print("WAHA webhook ignored. Reason: outgoing/self message.")
+    # Allow self messages if they are commands (for admin testing)
+    if event_data.get('from_me') is True and not body.startswith('/'):
+        print("WAHA webhook ignored. Reason: outgoing/self non-command message.")
         return jsonify({
             'ok': True,
             'accepted': True,

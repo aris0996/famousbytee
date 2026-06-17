@@ -588,14 +588,17 @@ def manage_schedules():
         
         from app import send_multichannel_notification, get_setting_value
         # Check if WhatsApp notification is enabled for create
+        # Note: Sends daily summary, not per-subject message
         should_notify = get_setting_value('schedule_notify_on_create', 'true') == 'true'
-        send_multichannel_notification(
-            "Jadwal Baru Ditambahkan",
-            f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
-            sender_id=user.id,
-            allow_whatsapp=should_notify,
-            whatsapp_text=f"Jadwal baru\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
-        )
+        if should_notify:
+            # Send push notification immediately
+            send_multichannel_notification(
+                "Jadwal Baru Ditambahkan",
+                f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
+                sender_id=user.id,
+                allow_whatsapp=False,  # Don't send per-subject WhatsApp
+            )
+            # WhatsApp will be sent via daily summary at scheduled time
         
         return jsonify({"status": "success", "id": s.id})
 
@@ -633,12 +636,12 @@ def modify_schedule(id):
         from app import send_multichannel_notification, get_setting_value
         # Check if WhatsApp notification is enabled for delete
         should_notify = get_setting_value('schedule_notify_on_delete', 'true') == 'true'
+        # Only send push notification, WhatsApp via daily summary
         send_multichannel_notification(
             "Jadwal Dihapus",
             f"Jadwal {subject_name} telah dihapus dari sistem.",
             sender_id=user.id,
-            allow_whatsapp=should_notify,
-            whatsapp_text=f"Jadwal dihapus\nMata kuliah: {subject_name}"
+            allow_whatsapp=False,  # Don't send per-subject WhatsApp
         )
         
         return jsonify({"status": "success"})
@@ -657,13 +660,22 @@ def modify_schedule(id):
         from app import send_multichannel_notification, get_setting_value
         # Check if WhatsApp notification is enabled for edit (default: false to avoid spam)
         should_notify = get_setting_value('schedule_notify_on_edit', 'false') == 'true'
-        send_multichannel_notification(
-            "Jadwal Diperbarui",
-            f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
-            sender_id=user.id,
-            allow_whatsapp=should_notify,
-            whatsapp_text=f"Perubahan jadwal\n{s.subject}\nHari: {s.day}\nJam: {s.time_start}-{s.time_end}\nRuang: {s.room}"
-        )
+        if should_notify:
+            # Only send push notification, WhatsApp via daily summary
+            send_multichannel_notification(
+                "Jadwal Diperbarui",
+                f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
+                sender_id=user.id,
+                allow_whatsapp=False,  # Don't send per-subject WhatsApp
+            )
+        else:
+            # Still send push notification
+            send_multichannel_notification(
+                "Jadwal Diperbarui",
+                f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
+                sender_id=user.id,
+                allow_whatsapp=False,
+            )
         
         return jsonify({"status": "success"})
 
