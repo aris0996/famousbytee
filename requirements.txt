@@ -1,8 +1,12 @@
 flask
 flask-sqlalchemy
 flask-login
+flask-migrate
+flask-jwt-extended
+flask-cors
 pymysql
 cryptography
 python-dotenv
-flask-jwt-extended
-flask-cors
+Pillow
+apscheduler
+firebase-admin

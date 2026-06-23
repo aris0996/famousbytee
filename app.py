@@ -1,3 +1,5 @@
+import logging
+from logging.handlers import RotatingFileHandler
 from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
@@ -23,11 +25,77 @@ from flask_jwt_extended import JWTManager
 from flask_cors import CORS
 from routes.api import api_bp
 
+# ============================================================
+# LOGGING CONFIGURATION
+# ============================================================
+# Create logs directory if it doesn't exist
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(_log_dir, exist_ok=True)
+
+# Configure root logger for the application
+_log_file = os.path.join(_log_dir, 'famousbytee.log')
+_error_log_file = os.path.join(_log_dir, 'error.log')
+
+# Main rotating log file (all levels)
+_main_handler = RotatingFileHandler(_log_file, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+_main_handler.setLevel(logging.INFO)
+_main_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s in %(module)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Error-only rotating log file
+_error_handler = RotatingFileHandler(_error_log_file, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+_error_handler.setLevel(logging.ERROR)
+_error_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s in %(module)s (%(pathname)s:%(lineno)d):\n%(message)s\n', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Console handler (for development / Apache error log capture)
+_console_handler = logging.StreamHandler()
+_console_handler.setLevel(logging.WARNING)
+_console_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Apply to Flask app logger
 app = Flask(__name__)
+app.logger.handlers.clear()
+app.logger.addHandler(_main_handler)
+app.logger.addHandler(_error_handler)
+app.logger.addHandler(_console_handler)
+app.logger.setLevel(logging.INFO)
+
+# Also configure root logger so library errors are captured
+logging.basicConfig(level=logging.WARNING)
+
+app.logger.info('Famousbytee application starting up...')
 app.config.from_object(Config)
 
 _WAHA_RECENT_COMMANDS = {}
 _WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 3  # Reduced from 12 to allow faster re-commands
+
+# ============================================================
+# REQUEST ACCESS LOGGING (captures access even without Apache logs)
+# ============================================================
+import time as _time
+
+@app.before_request
+def _log_request_start():
+    request._start_time = _time.time()
+
+@app.after_request
+def _log_request_end(response):
+    duration = _time.time() - getattr(request, '_start_time', _time.time())
+    # Skip logging for static files to reduce noise
+    if not request.path.startswith('/static/'):
+        app.logger.info(
+            '%s %s %s -> %s (%.3fs) [IP: %s]',
+            request.method, request.path,
+            'API' if request.path.startswith('/api/') else 'WEB',
+            response.status_code, duration,
+            request.remote_addr
+        )
+    return response
 
 # Initialize Firebase Admin
 def _initialize_firebase():
@@ -40,13 +108,13 @@ def _initialize_firebase():
         if os.path.exists(cred_path):
             cred = credentials.Certificate(cred_path)
             firebase_admin.initialize_app(cred)
-            print("Firebase Admin initialized.")
+            app.logger.info('Firebase Admin initialized successfully.')
             return True
         else:
-            print("serviceAccountKey.json not found. Push notifications disabled.")
+            app.logger.warning('serviceAccountKey.json not found. Push notifications disabled.')
             return False
     except Exception as e:
-        print(f"Firebase Init Error: {e}")
+        app.logger.error(f'Firebase Init Error: {e}')
         return False
 
 # Try initial load
@@ -911,10 +979,18 @@ def run_automated_reminders():
                     set_setting_value('waha_last_daily_summary_date', now.strftime('%Y-%m-%d'))
                     db.session.commit()
 
-# Initialize Scheduler
-scheduler = BackgroundScheduler()
-scheduler.add_job(func=run_automated_reminders, trigger="interval", minutes=1)
-scheduler.start()
+# Initialize Scheduler (WSGI-safe: only start once, not on reload)
+scheduler = None
+try:
+    # Prevent duplicate schedulers in multi-process WSGI deployments
+    if not getattr(app, '_scheduler_started', False):
+        scheduler = BackgroundScheduler(daemon=True)
+        scheduler.add_job(func=run_automated_reminders, trigger="interval", minutes=1)
+        scheduler.start()
+        app._scheduler_started = True
+        app.logger.info('Background scheduler started successfully.')
+except Exception as _sched_err:
+    app.logger.error(f'Failed to start background scheduler: {_sched_err}')
 
 # Enable CORS for all routes (important for mobile/cross-origin requests)
 CORS(app)
@@ -943,11 +1019,11 @@ with app.app_context():
         try:
             from flask_migrate import upgrade
             upgrade()
-            print("Database schema is up to date.")
+            app.logger.info('Database schema is up to date.')
         except Exception as e:
-            print(f"Migration auto-run skipped or failed: {e}")
+            app.logger.error(f'Migration auto-run skipped or failed: {e}')
     else:
-        print("Warning: 'migrations' folder not found. Auto-upgrade skipped.")
+        app.logger.warning("'migrations' folder not found. Auto-upgrade skipped.")
     
     # Auto-Patch for MySQL Production (Missing columns check)
     try:
@@ -1174,20 +1250,35 @@ def inject_settings():
 
 @app.errorhandler(404)
 def page_not_found(e):
+    app.logger.warning(f"404 Not Found: {request.url} (IP: {request.remote_addr})")
     return render_template('errors/404.html'), 404
 
 @app.errorhandler(500)
 def internal_server_error(e):
-    # Log the error details here if needed
+    import traceback
     error_msg = str(e)
+    tb = traceback.format_exc()
+    app.logger.error(f"500 Internal Server Error on {request.url} (IP: {request.remote_addr}):\n{error_msg}\n{tb}")
     return render_template('errors/500.html', error=error_msg), 500
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Catch-all handler for unhandled exceptions."""
+    import traceback
+    app.logger.error(f"Unhandled Exception: {type(e).__name__}: {e}\n{traceback.format_exc()}")
+    # Let Flask's default handler take over for 500 errors
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        return e
+    return render_template('errors/500.html', error=str(e)), 500
 
 @app.route('/report-error', methods=['POST'])
 def report_error():
     err_body = request.form.get('error_details')
     page = request.form.get('page_url')
     # Auto log the error report
-    log_activity("Error Report", f"User reported error on {page}: {err_body[:200]}")
+    app.logger.error(f"User-reported error on {page}: {err_body[:500] if err_body else 'No details'}")
+    log_activity("Error Report", f"User reported error on {page}: {err_body[:200] if err_body else ''}")
     flash('Terima kasih! Laporan galat telah dikirim ke Admin.')
     return redirect(url_for('dashboard'))
 
@@ -3109,8 +3200,15 @@ def get_leaderboard_detail(user_id):
         }
     })
 
-# Inisialisasi database saat aplikasi dinyalakan
-init_db()
+# Inisialisasi database saat aplikasi dinyalakan (WSGI-safe)
+try:
+    init_db()
+    app.logger.info('Database initialization completed successfully.')
+except Exception as _init_err:
+    app.logger.critical(f'FATAL: Database initialization failed: {_init_err}\n'
+                        f'The application may not function correctly. '
+                        f'Check your database configuration and permissions.')
 
 # Mod_wsgi akan mencari objek "application" secara langsung dari file ini.
 # Gunakan "python -m flask run" atau jalankan "wsgi.py" untuk pengembangan lokal.
+app.logger.info('Famousbytee application loaded and ready to serve requests.')
