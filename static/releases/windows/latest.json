@@ -1,0 +1,8 @@
+{
+  "version": "1.1.0",
+  "build_number": 2,
+  "installer_url": "/static/releases/windows/Famousbytee_Setup_1.1.0.exe",
+  "sha256": "",
+  "release_notes": "Rilis awal installer Windows Famousbytee.",
+  "mandatory": false
+}

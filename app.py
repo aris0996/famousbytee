@@ -800,7 +800,23 @@ def _build_waha_command_response(command_text, sender_ref=''):
     # Block invalid commands
     return f"❌ Command tidak dikenal: {command_base}\n\nGunakan /help untuk melihat daftar command yang tersedia."
 
-def _log_notification_history(title, body, user_id, sender_id, status, channel='push'):
+def _resolve_notification_classroom_id(user_id=None, sender_id=None):
+    try:
+        if user_id:
+            user = User.query.get(int(user_id))
+            if user:
+                return user.classroom_id or (user.student.classroom_id if user.student else None)
+        if sender_id:
+            sender = User.query.get(int(sender_id))
+            if sender:
+                return sender.classroom_id or (sender.student.classroom_id if sender.student else None)
+    except Exception:
+        pass
+    default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    return default_class.id if default_class else None
+
+
+def _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=None):
     """Helper to log notification history."""
     try:
         title = (title or '').strip()
@@ -816,6 +832,7 @@ def _log_notification_history(title, body, user_id, sender_id, status, channel='
             channel=channel,
             target=str(user_id) if user_id else "All",
             sent_by=sender_id,
+            classroom_id=classroom_id or _resolve_notification_classroom_id(user_id=user_id, sender_id=sender_id),
             status=safe_status
         )
         db.session.add(history)
@@ -824,12 +841,12 @@ def _log_notification_history(title, body, user_id, sender_id, status, channel='
         db.session.rollback()
         print(f"History Log Error: {e}")
 
-def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
+def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classroom_id=None):
     """Sends push notification to a specific user or everyone."""
     title = (title or '').strip()
     body = (body or '').strip()
     if not title and not body:
-        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)", channel='push')
+        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)", channel='push', classroom_id=classroom_id)
         return
     if not title:
         title = "Notifikasi"
@@ -837,7 +854,7 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
         body = title
 
     if not _initialize_firebase():
-        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)", channel='push')
+        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)", channel='push', classroom_id=classroom_id)
         return
 
     payload_data = {'title': title, 'body': body}
@@ -873,6 +890,11 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
         else:
             # Broadcast
             users = User.query.filter(User.fcm_token.isnot(None)).all()
+            if classroom_id is not None:
+                users = [
+                    u for u in users
+                    if (u.classroom_id == classroom_id) or (u.student and u.student.classroom_id == classroom_id)
+                ]
             if not users:
                 status = "No Recipients"
             else:
@@ -905,42 +927,42 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None):
         print(f"Push Notification General Error: {e}")
         status = f"System Error: {str(e)[:80]}"
     
-    _log_notification_history(title, body, user_id, sender_id, status, channel='push')
+    _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=classroom_id)
 
-def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False):
+def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, classroom_id=None):
     text = (text or '').strip()
     if not text:
-        _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp')
+        _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp', classroom_id=classroom_id)
         return {'ok': False, 'error': 'Pesan WhatsApp kosong'}
     text = _apply_whatsapp_admin_header(text, title=title)
 
     if not force and get_setting_value('waha_enabled', 'false').lower() != 'true':
-        _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp')
+        _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp', classroom_id=classroom_id)
         return {'ok': False, 'error': 'WhatsApp nonaktif'}
 
     session_name = get_setting_value('waha_session', '').strip()
     target_chat = (chat_id or get_setting_value('waha_group_chat_id', '')).strip()
     if not session_name or not target_chat:
-        _log_notification_history(title or "WhatsApp gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp')
+        _log_notification_history(title or "WhatsApp gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp', classroom_id=classroom_id)
         return {'ok': False, 'error': 'Session atau group chat WAHA belum diatur'}
 
     payload = {'session': session_name, 'chatId': target_chat, 'text': text}
     result = _waha_request('POST', '/api/sendText', payload)
     status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
-    _log_notification_history(title or "WhatsApp", text, None, sender_id, status, channel='whatsapp')
+    _log_notification_history(title or "WhatsApp", text, None, sender_id, status, channel='whatsapp', classroom_id=classroom_id)
     return result
 
-def send_multichannel_notification(title, body, user_id=None, sender_id=None, allow_whatsapp=False, whatsapp_text=None, extra_data=None):
+def send_multichannel_notification(title, body, user_id=None, sender_id=None, allow_whatsapp=False, whatsapp_text=None, extra_data=None, classroom_id=None):
     mode = get_notification_channel_mode()
     results = {}
 
     if mode in {'push', 'both'}:
-        send_push(title, body, user_id=user_id, sender_id=sender_id, extra_data=extra_data)
+        send_push(title, body, user_id=user_id, sender_id=sender_id, extra_data=extra_data, classroom_id=classroom_id)
         results['push'] = True
 
     if allow_whatsapp and mode in {'whatsapp', 'both'}:
         wa_text = whatsapp_text or f"{title}\n{body}".strip()
-        results['whatsapp'] = send_whatsapp(wa_text, sender_id=sender_id, title=title)
+        results['whatsapp'] = send_whatsapp(wa_text, sender_id=sender_id, title=title, classroom_id=classroom_id)
 
     return results
 
@@ -1056,6 +1078,19 @@ with app.app_context():
 
     try:
         from sqlalchemy import text
+        db.session.execute(text("SELECT classroom_id FROM user LIMIT 1"))
+    except Exception:
+        db.session.rollback()
+        try:
+            print("Database Patch: Adding classroom_id column to user table...")
+            db.session.execute(text("ALTER TABLE user ADD COLUMN classroom_id INTEGER NULL"))
+            db.session.commit()
+            print("Database Patch: Success.")
+        except Exception as e:
+            print(f"Database Patch Error: {e}")
+
+    try:
+        from sqlalchemy import text
         db.session.execute(text("SELECT can_manage_assignments FROM role LIMIT 1"))
     except Exception:
         db.session.rollback()
@@ -1104,6 +1139,23 @@ with app.app_context():
         ScheduleTemplateItem.__table__.create(bind=db.engine, checkfirst=True)
     except Exception as e:
         print(f"Database Patch Error (schedule preset/template): {e}")
+
+    try:
+        default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+        if default_class:
+            users = User.query.all()
+            changed = False
+            for user in users:
+                if not user.classroom_id:
+                    if user.student and user.student.classroom_id:
+                        user.classroom_id = user.student.classroom_id
+                    else:
+                        user.classroom_id = default_class.id
+                    changed = True
+            if changed:
+                db.session.commit()
+    except Exception as e:
+        print(f"Database Patch Error (user classroom backfill): {e}")
 
 
     
@@ -2981,6 +3033,8 @@ def init_db():
                 user_cols = [c['name'] for c in inspector.get_columns('user')]
                 if 'student_id' not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER NULL"))
+                if 'classroom_id' not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN classroom_id INTEGER NULL"))
                 if 'bio' not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN bio VARCHAR(255) NULL"))
                 if 'whatsapp' not in user_cols:
@@ -3006,15 +3060,32 @@ def init_db():
                 
                 # D. Sinkronisasi tabel 'announcement'
                 ann_cols = [c['name'] for c in inspector.get_columns('announcement')]
+                if 'classroom_id' not in ann_cols:
+                    conn.execute(text("ALTER TABLE announcement ADD COLUMN classroom_id INTEGER NULL"))
                 if 'is_public' not in ann_cols:
                     conn.execute(text("ALTER TABLE announcement ADD COLUMN is_public BOOLEAN DEFAULT 1"))
-                
-                # E. Sinkronisasi tabel 'gallery_photo'
+
+                # E. Sinkronisasi tabel 'assignment'
+                assignment_cols = [c['name'] for c in inspector.get_columns('assignment')]
+                if 'classroom_id' not in assignment_cols:
+                    conn.execute(text("ALTER TABLE assignment ADD COLUMN classroom_id INTEGER NULL"))
+
+                # F. Sinkronisasi tabel 'gallery_photo'
                 gallery_cols = [c['name'] for c in inspector.get_columns('gallery_photo')]
+                if 'classroom_id' not in gallery_cols:
+                    conn.execute(text("ALTER TABLE gallery_photo ADD COLUMN classroom_id INTEGER NULL"))
                 if 'status' not in gallery_cols:
                     conn.execute(text("ALTER TABLE gallery_photo ADD COLUMN status VARCHAR(20) DEFAULT 'Published'"))
 
-                # F. Sinkronisasi tabel 'announcement_read'
+                # G. Sinkronisasi tabel 'class_room'
+                classroom_cols = [c['name'] for c in inspector.get_columns('class_room')]
+                if 'batch' not in classroom_cols:
+                    conn.execute(text("ALTER TABLE class_room ADD COLUMN batch VARCHAR(50) NULL"))
+
+                # H. Sinkronisasi tabel 'announcement_read'
+                notification_cols = [c['name'] for c in inspector.get_columns('notification_history')]
+                if 'classroom_id' not in notification_cols:
+                    conn.execute(text("ALTER TABLE notification_history ADD COLUMN classroom_id INTEGER NULL"))
                 try:
                     # Check if table exists
                     inspector.get_columns('announcement_read')
@@ -3030,6 +3101,12 @@ def init_db():
 
         # 3. Inisialisasi Data Default jika tabel Role masih kosong
         try:
+            fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+            if not fb:
+                fb = ClassRoom(name='Famousbytee.b', batch='TI 2024')
+                db.session.add(fb)
+                db.session.commit()
+
             if not Role.query.first():
                 # Definisikan Role Default dengan izin baru
                 admin_r = Role(
@@ -3060,11 +3137,15 @@ def init_db():
                 db.session.commit()
                 
                 # Buat Admin Default
-                db.session.add(User(username='admin', password='admin', role_id=admin_r.id))
+                db.session.flush()
+                db.session.add(User(
+                    username='admin',
+                    password='admin',
+                    role_id=admin_r.id,
+                    classroom_id=fb.id
+                ))
                 
                 # Seeding Awal
-                fb = ClassRoom(name='Famousbytee.b', batch='TI 2024')
-                db.session.add(fb)
                 db.session.add(Announcement(
                     title='Selamat Datang di Portal Famousbytee.b', 
                     content='Ini adalah portal resmi khusus untuk anggota kelas Famousbytee.b.', 
@@ -3077,6 +3158,11 @@ def init_db():
                 ))
                 db.session.commit()
                 print("Status: Data awal berhasil disuntikkan.")
+            else:
+                admin_user = User.query.filter_by(username='admin').first()
+                if admin_user and not admin_user.classroom_id:
+                    admin_user.classroom_id = fb.id
+                    db.session.commit()
         except Exception as e:
             print(f"Peringatan: Gagal seeding data awal (Mungkin tabel belum sinkron): {e}")
 

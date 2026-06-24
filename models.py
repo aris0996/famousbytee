@@ -8,10 +8,12 @@ class User(UserMixin, db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     password = db.Column(db.String(120), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'))
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     
     # Personal Link to Student Data
     student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=True)
     student = db.relationship('Student', backref=db.backref('user', uselist=False), lazy=True)
+    classroom = db.relationship('ClassRoom', backref=db.backref('users', lazy=True), lazy=True)
     
     full_name = db.Column(db.String(100))
     email = db.Column(db.String(120), unique=True)
@@ -60,6 +62,7 @@ class GalleryAlbum(db.Model):
 
 class GalleryPhoto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     album_id = db.Column(db.Integer, db.ForeignKey('gallery_album.id'), nullable=True)
     filename = db.Column(db.String(255), nullable=False)
     thumbnail = db.Column(db.String(255), nullable=False)
@@ -72,6 +75,7 @@ class GalleryPhoto(db.Model):
     status = db.Column(db.String(20), default='Published') # Pending, Published, Rejected
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     comments = db.relationship('PhotoComment', backref='photo', lazy=True, cascade='all, delete-orphan')
+    classroom = db.relationship('ClassRoom', backref=db.backref('gallery_photos', lazy=True), lazy=True)
 
 class PhotoComment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -158,12 +162,14 @@ class ScheduleTemplateItem(db.Model):
 
 class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     title = db.Column(db.String(150), nullable=False)
     content = db.Column(db.Text, nullable=False)
     category = db.Column(db.String(50), default='Info') # Info, Penting, Event
     is_pinned = db.Column(db.Boolean, default=False)
     is_public = db.Column(db.Boolean, default=True) # Public vs Internal
     date_posted = db.Column(db.DateTime, default=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref=db.backref('announcements', lazy=True), lazy=True)
 
 class BatchFund(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -204,12 +210,14 @@ class SystemSetting(db.Model):
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     title = db.Column(db.String(150), nullable=False)
     description = db.Column(db.Text)
     subject = db.Column(db.String(100))
     deadline = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     is_public = db.Column(db.Boolean, default=True)
+    classroom = db.relationship('ClassRoom', backref=db.backref('assignments', lazy=True), lazy=True)
 
 class AnnouncementRead(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -221,6 +229,7 @@ class AnnouncementRead(db.Model):
 
 class NotificationHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     title = db.Column(db.String(150), nullable=False)
     body = db.Column(db.Text, nullable=False)
     channel = db.Column(db.String(20), default='push') # push, whatsapp, multi
@@ -229,3 +238,4 @@ class NotificationHistory(db.Model):
     user = db.relationship('User', backref='notifications_sent', lazy=True)
     sent_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     status = db.Column(db.String(100)) # Success, Failed, Error Details
+    classroom = db.relationship('ClassRoom', backref=db.backref('notification_histories', lazy=True), lazy=True)

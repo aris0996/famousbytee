@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory
+from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom
 from datetime import datetime, timedelta
 import os
+import json
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
 from sqlalchemy import or_
@@ -20,6 +21,60 @@ def _explore_snippet(*values, fallback=''):
         if text:
             return text[:140]
     return fallback
+
+def _absolute_public_url(path_or_url):
+    value = str(path_or_url or '').strip()
+    if value.startswith(('http://', 'https://')):
+        return value
+    if not value:
+        return ''
+    return request.host_url.rstrip('/') + '/' + value.lstrip('/')
+
+
+def _default_classroom():
+    return ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+
+def _user_classroom(user):
+    if getattr(user, 'classroom_id', None):
+        classroom = ClassRoom.query.get(user.classroom_id)
+        if classroom:
+            return classroom
+    if user.student and user.student.classroom_id:
+        return user.student.classroom
+    return _default_classroom()
+
+@api_bp.route('/app/releases/windows/latest', methods=['GET'])
+def latest_windows_release():
+    manifest_path = os.path.join(
+        current_app.static_folder,
+        'releases',
+        'windows',
+        'latest.json',
+    )
+    default_manifest = {
+        "version": "1.1.0",
+        "build_number": 2,
+        "installer_url": "/static/releases/windows/Famousbytee_Setup_1.1.0.exe",
+        "sha256": "",
+        "release_notes": "Rilis Windows terbaru Famousbytee.",
+        "mandatory": False,
+    }
+
+    manifest = default_manifest
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, 'r', encoding='utf-8') as file:
+                loaded_manifest = json.load(file)
+            if isinstance(loaded_manifest, dict):
+                manifest = {**default_manifest, **loaded_manifest}
+        except (OSError, json.JSONDecodeError):
+            manifest = default_manifest
+
+    manifest["installer_url"] = _absolute_public_url(manifest.get("installer_url"))
+    manifest["build_number"] = int(manifest.get("build_number") or 0)
+    manifest["mandatory"] = bool(manifest.get("mandatory"))
+    return jsonify(manifest)
 
 
 def _day_index(day_name):
@@ -147,6 +202,7 @@ def login():
                 "email": user.email,
                 "role": user.role.name,
                 "points": user.points or 0,
+                "classroom_id": user.classroom_id or (user.student.classroom_id if user.student else None),
                 "permissions": {
                     "can_manage_students": user.role.can_manage_students,
                     "can_manage_schedule": user.role.can_manage_schedule,
@@ -163,6 +219,32 @@ def login():
         }), 200
     
     return jsonify({"msg": "Invalid credentials"}), 401
+
+
+@api_bp.route('/classrooms', methods=['GET'])
+@jwt_required()
+def list_classrooms():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    classroom = _user_classroom(user)
+    if not classroom:
+        return jsonify([])
+
+    if user.role and user.role.can_manage_roles:
+        classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    else:
+        classrooms = [classroom]
+
+    return jsonify([
+        {
+            "id": item.id,
+            "name": item.name,
+            "batch": item.batch,
+        }
+        for item in classrooms
+    ])
 
 @api_bp.route('/change-password', methods=['POST'])
 @jwt_required()
@@ -220,6 +302,7 @@ def get_profile():
         "email": user.email,
         "role": user.role.name,
         "points": user.points or 0,
+        "classroom_id": user.classroom_id or (user.student.classroom_id if user.student else None),
         "permissions": {
             "can_manage_students": user.role.can_manage_students,
             "can_manage_schedule": user.role.can_manage_schedule,
@@ -255,6 +338,7 @@ def update_fcm_token():
 def get_announcements():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
+    classroom = _user_classroom(user)
 
     if request.method == 'POST':
         if not user.role.can_manage_announcements:
@@ -267,6 +351,7 @@ def get_announcements():
             return jsonify({"error": "Judul dan isi pengumuman wajib diisi"}), 400
 
         ann = Announcement(
+            classroom_id=classroom.id if classroom else None,
             title=title,
             content=content,
             category=(data.get('category') or 'Info').strip(),
@@ -282,7 +367,12 @@ def get_announcements():
         log_activity("Tambah Pengumuman API", f"Judul: {ann.title}")
         return jsonify({"status": "success", "id": ann.id})
 
-    announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
+    announcements_query = Announcement.query
+    if classroom:
+        announcements_query = announcements_query.filter(
+            (Announcement.classroom_id == classroom.id) | (Announcement.classroom_id.is_(None))
+        )
+    announcements = announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     return jsonify([{
         "id": a.id,
         "title": a.title,
@@ -302,6 +392,9 @@ def modify_announcement(id):
         return jsonify({"error": "Unauthorized"}), 403
 
     ann = Announcement.query.get_or_404(id)
+    classroom = _user_classroom(user)
+    if classroom and ann.classroom_id not in (classroom.id, None):
+        return jsonify({"error": "Not found"}), 404
     if request.method == 'DELETE':
         title = ann.title
         db.session.delete(ann)
@@ -340,6 +433,12 @@ def get_explore():
 
     if filter_type in {'all', 'announcement'}:
         announcement_query = Announcement.query
+        classroom = _user_classroom(user)
+        if classroom:
+            announcement_query = announcement_query.filter(
+                (Announcement.classroom_id == classroom.id) |
+                (Announcement.classroom_id.is_(None))
+            )
         if query:
             announcement_query = announcement_query.filter(or_(
                 _explore_contains(Announcement.title, query),
@@ -370,8 +469,9 @@ def get_explore():
 
     if filter_type in {'all', 'schedule'}:
         schedule_query = Schedule.query
-        if user.student and user.student.classroom_id:
-            schedule_query = schedule_query.filter_by(classroom_id=user.student.classroom_id)
+        classroom = _user_classroom(user)
+        if classroom:
+            schedule_query = schedule_query.filter_by(classroom_id=classroom.id)
         if query:
             schedule_query = schedule_query.filter(or_(
                 _explore_contains(Schedule.subject, query),
@@ -407,6 +507,12 @@ def get_explore():
 
     if filter_type in {'all', 'assignment'}:
         assignment_query = Assignment.query
+        classroom = _user_classroom(user)
+        if classroom:
+            assignment_query = assignment_query.filter(
+                (Assignment.classroom_id == classroom.id) |
+                (Assignment.classroom_id.is_(None))
+            )
         if query:
             assignment_query = assignment_query.filter(or_(
                 _explore_contains(Assignment.title, query),
@@ -512,8 +618,9 @@ def get_explore():
 
     if filter_type in {'all', 'member'}:
         member_query = Student.query
-        if user.student and user.student.classroom_id:
-            member_query = member_query.filter_by(classroom_id=user.student.classroom_id)
+        classroom = _user_classroom(user)
+        if classroom:
+            member_query = member_query.filter_by(classroom_id=classroom.id)
         if query:
             member_query = member_query.filter(or_(
                 _explore_contains(Student.full_name, query),
@@ -680,10 +787,7 @@ def modify_schedule(id):
         return jsonify({"status": "success"})
 
 def _schedule_classroom_for_user(user):
-    from models import ClassRoom
-    if user.student and user.student.classroom_id:
-        return user.student.classroom
-    return ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    return _user_classroom(user)
 
 def _schedule_preset_payload(preset):
     return {
@@ -1145,9 +1249,10 @@ def get_funds_summary():
     balance = total_in - total_out
     target_payment = get_fund_target()
 
-    if user.student and user.student.classroom_id:
+    classroom = _user_classroom(user)
+    if classroom:
         students = Student.query.filter_by(
-            classroom_id=user.student.classroom_id
+            classroom_id=classroom.id
         ).order_by(Student.full_name.asc()).all()
     else:
         students = Student.query.order_by(Student.full_name.asc()).all()
@@ -1257,8 +1362,9 @@ def get_members():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
-    if user.student and user.student.classroom_id:
-        students = Student.query.filter_by(classroom_id=user.student.classroom_id).order_by(Student.full_name).all()
+    classroom = _user_classroom(user)
+    if classroom:
+        students = Student.query.filter_by(classroom_id=classroom.id).order_by(Student.full_name).all()
     else:
         students = Student.query.order_by(Student.full_name).all()
         
@@ -1273,8 +1379,9 @@ def get_members():
 def _get_member_detail_for_requester(request_user, member_id):
     member = Student.query.get_or_404(member_id)
 
-    if request_user.student and request_user.student.classroom_id:
-        if member.classroom_id != request_user.student.classroom_id:
+    classroom = _user_classroom(request_user)
+    if classroom:
+        if member.classroom_id != classroom.id:
             return None
     elif request_user.role.name not in ['Admin', 'Pengurus', 'Staff']:
         return None
@@ -1423,12 +1530,20 @@ def get_gallery():
     # User can see published photos, or their own pending photos
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
+    classroom = _user_classroom(user)
     
     if user.role.can_manage_gallery:
-        photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
+        photos_query = GalleryPhoto.query
     else:
         # Published OR owned by user
-        photos = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == user_id)).order_by(GalleryPhoto.created_at.desc()).all()
+        photos_query = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == user_id))
+
+    if classroom:
+        photos_query = photos_query.filter(
+            (GalleryPhoto.classroom_id == classroom.id) | (GalleryPhoto.classroom_id.is_(None))
+        )
+
+    photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
 
 
     return jsonify([{
@@ -1453,6 +1568,11 @@ def get_gallery():
 @jwt_required()
 def add_gallery_comment(photo_id):
     user_id = int(get_jwt_identity())
+    user = User.query.get(user_id)
+    classroom = _user_classroom(user)
+    photo = GalleryPhoto.query.get_or_404(photo_id)
+    if classroom and photo.classroom_id not in (classroom.id, None):
+        return jsonify({"error": "Not found"}), 404
     data = request.get_json()
     if not data or not data.get('body'):
         return jsonify({"error": "Pesan komentar diperlukan"}), 400
@@ -1481,6 +1601,9 @@ def moderate_gallery(photo_id):
 
         
     photo = GalleryPhoto.query.get_or_404(photo_id)
+    classroom = _user_classroom(user)
+    if classroom and photo.classroom_id not in (classroom.id, None):
+        return jsonify({"error": "Not found"}), 404
     
     if status == 'Rejected':
         try:
@@ -1523,6 +1646,9 @@ def delete_gallery_photo(photo_id):
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
     photo = GalleryPhoto.query.get_or_404(photo_id)
+    classroom = _user_classroom(user)
+    if classroom and photo.classroom_id not in (classroom.id, None):
+        return jsonify({"error": "Not found"}), 404
     
     # Allow if admin OR the one who uploaded it
     if not user.role.can_manage_gallery and photo.uploaded_by != user_id:
@@ -1590,6 +1716,7 @@ def process_image_upload(file):
 def upload_gallery_api():
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
+    classroom = _user_classroom(user)
     
     # User must at least have use_api (already checked by jwt) 
     # and we check if they have specific gallery upload status
@@ -1613,6 +1740,7 @@ def upload_gallery_api():
         return jsonify({"error": "Gagal memproses gambar"}), 500
         
     photo = GalleryPhoto(
+        classroom_id=classroom.id if classroom else None,
         filename=filename,
         thumbnail=filename,
         caption=caption,
@@ -1663,12 +1791,19 @@ def get_notification_history():
     user_id = get_jwt_identity()
     db.session.rollback()
     user = User.query.get(int(user_id))
+    classroom = _user_classroom(user)
     
     # Show notifications that are for "All" or for this specific user
-    history = NotificationHistory.query.filter(
+    history_query = NotificationHistory.query.filter(
         ((NotificationHistory.target == 'All') | (NotificationHistory.target == str(user_id))) &
         ((NotificationHistory.title != '') | (NotificationHistory.body != ''))
-    ).order_by(NotificationHistory.sent_at.desc()).limit(30).all()
+    )
+    if classroom:
+        history_query = history_query.filter(
+            (NotificationHistory.classroom_id == classroom.id) |
+            (NotificationHistory.classroom_id.is_(None))
+        )
+    history = history_query.order_by(NotificationHistory.sent_at.desc()).limit(30).all()
     
     return jsonify([{
         "id": h.id,
@@ -1688,9 +1823,10 @@ def get_notification_recipients():
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
 
-    if user.student and user.student.classroom_id:
+    classroom = _user_classroom(user)
+    if classroom:
         students = Student.query.filter_by(
-            classroom_id=user.student.classroom_id
+            classroom_id=classroom.id
         ).order_by(Student.full_name.asc()).all()
     else:
         students = Student.query.order_by(Student.full_name.asc()).all()
@@ -1723,6 +1859,8 @@ def get_notification_recipients():
     ).all()
     for extra_user in extra_users:
         if extra_user.id in seen_user_ids:
+            continue
+        if classroom and extra_user.classroom_id not in (classroom.id, None):
             continue
         recipients.append({
             "id": f"user:{extra_user.id}",
@@ -1762,8 +1900,16 @@ def api_send_notifications():
     if not body:
         body = title
     
+    classroom = _user_classroom(user)
+
     if target == 'all':
-        send_multichannel_notification(title, body, sender_id=user.id, allow_whatsapp=True)
+        send_multichannel_notification(
+            title,
+            body,
+            sender_id=user.id,
+            allow_whatsapp=True,
+            classroom_id=classroom.id if classroom else None,
+        )
     else:
         target_user_id = None
         if target.startswith('student:'):
@@ -1772,6 +1918,8 @@ def api_send_notifications():
                 return jsonify({"error": "Member tidak ditemukan"}), 404
             if not student.user:
                 return jsonify({"error": "Member ini belum memiliki akun aplikasi"}), 400
+            if classroom and student.classroom_id != classroom.id:
+                return jsonify({"error": "Not found"}), 404
             target_user_id = student.user.id
         elif target.startswith('user:'):
             target_user_id = int(target.split(':', 1)[1])
@@ -1781,10 +1929,19 @@ def api_send_notifications():
         target_user = User.query.get(target_user_id)
         if not target_user:
             return jsonify({"error": "User penerima tidak ditemukan"}), 404
+        if classroom and target_user.classroom_id not in (classroom.id, None):
+            if not (target_user.student and target_user.student.classroom_id == classroom.id):
+                return jsonify({"error": "Not found"}), 404
         if not target_user.fcm_token:
             return jsonify({"error": "Penerima belum memiliki token push aktif"}), 400
 
-        send_push(title, body, user_id=target_user_id, sender_id=user.id)
+        send_push(
+            title,
+            body,
+            user_id=target_user_id,
+            sender_id=user.id,
+            classroom_id=classroom.id if classroom else None,
+        )
         
     return jsonify({"status": "success"})
 
