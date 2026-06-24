@@ -1752,7 +1752,10 @@ def update_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
     preset = SchedulePreset.query.get_or_404(preset_id)
+    if class_fb and preset.classroom_id not in (class_fb.id, None):
+        return redirect(url_for('manage_schedule') + '#presets')
     name = (request.form.get('name') or '').strip()
     subject = (request.form.get('subject') or '').strip()
     if not name or not subject:
@@ -1774,7 +1777,10 @@ def delete_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
     preset = SchedulePreset.query.get_or_404(preset_id)
+    if class_fb and preset.classroom_id not in (class_fb.id, None):
+        return redirect(url_for('manage_schedule') + '#presets')
     name = preset.name
     db.session.delete(preset)
     db.session.commit()

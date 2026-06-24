@@ -743,6 +743,9 @@ def modify_schedule_preset(preset_id):
         return jsonify({"error": "Unauthorized"}), 403
 
     preset = SchedulePreset.query.get_or_404(preset_id)
+    classroom = _schedule_classroom_for_user(user)
+    if classroom and preset.classroom_id not in (classroom.id, None):
+        return jsonify({"error": "Not found"}), 404
 
     if request.method == 'DELETE':
         db.session.delete(preset)
