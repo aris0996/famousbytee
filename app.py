@@ -2586,7 +2586,25 @@ def manage_settings():
                 if setting: setting.value = val
                 else: db.session.add(SystemSetting(key=key, value=val))
         
-        # 2. Handle Branding File Uploads (Logo/Favicon) with Auto-Compression
+        # 2. Handle active classroom switch from web settings
+        classroom_id = request.form.get('active_classroom_id')
+        if classroom_id is not None and str(classroom_id).strip():
+            try:
+                classroom_id = int(classroom_id)
+                if current_user.role.can_manage_roles:
+                    allowed_classrooms = ClassRoom.query.all()
+                else:
+                    allowed_classrooms = [current_user.classroom or (current_user.student.classroom if current_user.student else None)]
+                    allowed_classrooms = [c for c in allowed_classrooms if c]
+                allowed_ids = {c.id for c in allowed_classrooms}
+                if classroom_id in allowed_ids:
+                    classroom = ClassRoom.query.get(classroom_id)
+                    if classroom:
+                        current_user.classroom_id = classroom.id
+            except Exception:
+                pass
+
+        # 3. Handle Branding File Uploads (Logo/Favicon) with Auto-Compression
         branding_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'branding')
         os.makedirs(branding_dir, exist_ok=True)
 
@@ -2626,7 +2644,43 @@ def manage_settings():
         return redirect(url_for('manage_settings'))
     
     settings = {s.key: s.value for s in SystemSetting.query.all()}
-    return render_template('settings.html', settings=settings)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    classrooms = []
+    if current_user.role.can_manage_roles:
+        classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    elif active_classroom:
+        classrooms = [active_classroom]
+    return render_template('settings.html', settings=settings, classrooms=classrooms, active_classroom=active_classroom)
+
+@app.route('/classes', methods=['GET', 'POST'])
+@login_required
+def manage_classes():
+    if not current_user.role.can_manage_roles:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        name = (request.form.get('name') or '').strip()
+        batch = (request.form.get('batch') or '').strip()
+        if not name:
+            flash('Nama kelas wajib diisi.')
+            return redirect(url_for('manage_classes'))
+
+        existing = ClassRoom.query.filter(db.func.lower(ClassRoom.name) == name.lower()).first()
+        if existing:
+            flash('Kelas dengan nama tersebut sudah ada.')
+            return redirect(url_for('manage_classes'))
+
+        classroom = ClassRoom(name=name, batch=batch)
+        db.session.add(classroom)
+        db.session.commit()
+        flash('Kelas baru berhasil ditambahkan.')
+        return redirect(url_for('manage_classes'))
+
+    classes = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('classes.html', classes=classes)
 
 @app.route('/roles', methods=['GET', 'POST'])
 @login_required

@@ -556,6 +556,12 @@
 
             {% if current_user.role.can_manage_roles %}
             <div class="nav-item">
+                <a href="{{ url_for('manage_classes') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'manage_classes' else '' }}">
+                    <i data-lucide="layers-3"></i> <span>Manajemen Kelas</span>
+                </a>
+            </div>
+            <div class="nav-item">
                 <a href="{{ url_for('manage_roles') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_roles' else '' }}">
                     <i data-lucide="shield"></i> <span>Manajemen Role</span>

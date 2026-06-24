@@ -16,9 +16,36 @@
     {% endif %}
 {% endwith %}
 
-<div class="card" style="max-width: 800px;">
+<div class="card" style="max-width: 980px;">
     <h3 style="margin-bottom: 2rem; font-size: 1.25rem;">Branding & Metadata</h3>
     <form method="POST" enctype="multipart/form-data">
+        <div style="padding: 1.25rem; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 16px; margin-bottom: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                <div>
+                    <h4 style="margin: 0 0 0.35rem 0; font-size: 1rem;">Kelas Aktif</h4>
+                    <p style="margin: 0; color: var(--text-muted); font-size: 0.85rem;">Panel web akan mengikuti kelas ini untuk konteks data dan tampilan.</p>
+                </div>
+                <div style="padding: 0.5rem 0.75rem; background: white; border-radius: 999px; border: 1px solid #e2e8f0; font-weight: 700; color: var(--primary);">
+                    {{ active_classroom.name if active_classroom else 'Belum dipilih' }}
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: end;">
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label>Pilih Kelas Aktif</label>
+                    <select name="active_classroom_id" class="form-control">
+                        {% for classroom in classrooms %}
+                        <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                            {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <a href="{{ url_for('manage_classes') }}" class="btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; height: 42px; {% if not current_user.role.can_manage_roles %}display:none;{% endif %}">
+                    Kelola Kelas
+                </a>
+            </div>
+        </div>
+
         <div class="form-group">
             <label>Judul Portal (Web Title)</label>
             <input type="text" name="web_title" class="form-control" value="{{ settings.get('web_title', '') }}" placeholder="Contoh: Famousbytee.b Portal">
@@ -147,6 +174,7 @@
         <li style="margin-bottom: 8px;">Gunakan icon seperti <b>'layers'</b>, <b>'shield'</b>, atau <b>'zap'</b> untuk tampilan lebih modern.</li>
         <li style="margin-bottom: 8px;">Gunakan judul web yang singkat namun padat di kolom Web Title.</li>
         <li>Pastikan file favicon sudah diupload di folder <code>static/</code> jika ingin menggantinya.</li>
+        <li>Gunakan panel kelas aktif di atas untuk berpindah konteks data tanpa mengubah data kelas lain.</li>
     </ul>
 </div>
 {% endblock %}

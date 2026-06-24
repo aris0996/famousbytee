@@ -20,6 +20,10 @@
                     <label style="display: block; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Username / NIM</label>
                     <span style="font-weight: 600;">{{ current_user.username }}</span>
                 </div>
+                <div style="margin-bottom: 1rem;">
+                    <label style="display: block; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Kelas Aktif</label>
+                    <span style="font-weight: 600;">{{ current_user.classroom.name if current_user.classroom else (current_user.student.classroom.name if current_user.student and current_user.student.classroom else '-') }}</span>
+                </div>
                 <div>
                     <label style="display: block; font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; font-weight: 800;">Status Akun</label>
                     <span style="color: #10b981; font-weight: 600;">{{ current_user.status }}</span>
