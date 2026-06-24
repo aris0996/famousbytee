@@ -1642,30 +1642,52 @@ def manage_members():
     if not current_user.role.can_manage_students:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
-    
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+
+    all_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     
     if request.method == 'POST':
+        classroom = active_classroom
+        if current_user.role.can_manage_roles:
+            classroom_id = request.form.get('classroom_id')
+            if classroom_id:
+                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
         new_m = Student(
             nim=request.form['nim'], 
             full_name=request.form['full_name'], 
             status=request.form['status'], 
-            classroom_id=class_fb.id
+            classroom_id=classroom.id if classroom else None
         )
         db.session.add(new_m)
         db.session.commit()
         log_activity("Tambah Member", f"NIM: {new_m.nim}, Nama: {new_m.full_name}")
         return redirect(url_for('manage_members'))
     
-    members = Student.query.filter_by(classroom_id=class_fb.id).all()
-    return render_template('members.html', students=members)
+    if current_user.role.can_manage_roles and request.args.get('classroom_id'):
+        classroom = ClassRoom.query.get(int(request.args.get('classroom_id')))
+        if classroom:
+            active_classroom = classroom
+
+    members_query = Student.query
+    if active_classroom:
+        members_query = members_query.filter_by(classroom_id=active_classroom.id)
+    members = members_query.order_by(Student.full_name.asc()).all()
+    return render_template('members.html', students=members, classrooms=all_classrooms, active_classroom=active_classroom)
 
 @app.route('/members/bulk', methods=['POST'])
 @login_required
 def bulk_add_members():
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
     data = request.form.get('bulk_data')
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     
     added_count = 0
     lines = data.strip().split('\n')
@@ -1696,6 +1718,12 @@ def edit_member(id):
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
     m = Student.query.get_or_404(id)
     old_name = m.full_name
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            classroom = ClassRoom.query.get(int(classroom_id))
+            if classroom:
+                m.classroom_id = classroom.id
     m.nim = request.form['nim']
     m.full_name = request.form['full_name']
     m.status = request.form['status']
@@ -1717,15 +1745,23 @@ def delete_member(id):
 @app.route('/schedule', methods=['GET', 'POST'])
 @login_required
 def manage_schedule():
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    all_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     if request.method == 'POST' and not current_user.role.can_manage_schedule:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
+        classroom = active_classroom
+        if current_user.role.can_manage_roles:
+            classroom_id = request.form.get('classroom_id')
+            if classroom_id:
+                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
         # Single Add logic (remains as is)
         sched = Schedule(
-            classroom_id=class_fb.id, 
+            classroom_id=classroom.id if classroom else None, 
             day=request.form['day'], 
             time_start=request.form['time_start'], 
             time_end=request.form['time_end'], 
@@ -1739,9 +1775,9 @@ def manage_schedule():
         return redirect(url_for('manage_schedule'))
     
     # 1. Get All Schedules
-    schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
+    schedules = Schedule.query.filter_by(classroom_id=active_classroom.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all() if active_classroom else []
     schedule_presets = SchedulePreset.query.filter(
-        (SchedulePreset.classroom_id == class_fb.id) | (SchedulePreset.classroom_id.is_(None))
+        (SchedulePreset.classroom_id == active_classroom.id) | (SchedulePreset.classroom_id.is_(None))
     ).order_by(SchedulePreset.name.asc()).all()
     
     # 2. Logic to Find 'Active' and 'Next' Subject
@@ -1769,7 +1805,9 @@ def manage_schedule():
                          next_subject=next_subject,
                          today_indo=today_indo,
                          schedule_presets=schedule_presets,
-                         assignments=Assignment.query.order_by(Assignment.deadline.asc()).all())
+                         assignments=Assignment.query.order_by(Assignment.deadline.asc()).all(),
+                         classrooms=all_classrooms,
+                         active_classroom=active_classroom)
 
 @app.route('/schedule/presets', methods=['POST'])
 @login_required
@@ -2020,16 +2058,25 @@ def delete_schedule_template(template_id):
 @app.route('/assignments', methods=['GET', 'POST'])
 @login_required
 def manage_assignments():
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     if request.method == 'POST' and not current_user.role.can_manage_assignments:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
+        classroom = active_classroom
+        if current_user.role.can_manage_roles:
+            classroom_id = request.form.get('classroom_id')
+            if classroom_id:
+                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
         a = Assignment(
             title=request.form['title'],
             subject=request.form['subject'],
             deadline=datetime.strptime(request.form['deadline'], '%Y-%m-%dT%H:%M'),
-            description=request.form.get('description', '')
+            description=request.form.get('description', ''),
+            classroom_id=classroom.id if classroom else None
         )
         db.session.add(a)
         db.session.commit()
@@ -2045,8 +2092,14 @@ def manage_assignments():
         flash('Tugas berhasil ditambahkan!')
         return redirect(url_for('manage_assignments'))
     
-    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
-    return render_template('assignments.html', assignments=assignments)
+    assignments_query = Assignment.query
+    if active_classroom:
+        assignments_query = assignments_query.filter(
+            (Assignment.classroom_id == active_classroom.id) | (Assignment.classroom_id.is_(None))
+        )
+    assignments = assignments_query.order_by(Assignment.deadline.asc()).all()
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('assignments.html', assignments=assignments, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/assignments/delete/<int:id>')
 @login_required
@@ -2064,7 +2117,13 @@ def delete_assignment(id):
 @login_required
 def schedule_batch():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     
     if 'file' not in request.files: return redirect(url_for('manage_schedule'))
     file = request.files['file']
@@ -2113,7 +2172,13 @@ def schedule_batch():
 def bulk_add_schedule():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     data = request.form.get('bulk_data')
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     
     added_count = 0
     lines = data.strip().split('\n')
@@ -2146,6 +2211,12 @@ def bulk_add_schedule():
 def edit_schedule(id):
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     s = Schedule.query.get_or_404(id)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            classroom = ClassRoom.query.get(int(classroom_id))
+            if classroom:
+                s.classroom_id = classroom.id
     s.day = request.form['day']
     s.time_start = request.form['time_start']
     s.time_end = request.form['time_end']

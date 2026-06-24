@@ -25,6 +25,18 @@
             <i data-lucide="plus-circle" style="color: var(--primary);"></i> Tambah Tugas
         </h3>
         <form action="{{ url_for('manage_assignments') }}" method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label>Mata Kuliah</label>
                 <input type="text" name="subject" class="form-control" placeholder="E.g. Pemrograman Mobile" required>

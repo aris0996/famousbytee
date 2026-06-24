@@ -15,6 +15,23 @@
             <i data-lucide="user-plus" style="color: var(--primary);"></i> Tambah Anggota
         </h3>
         <form method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% else %}
+            <div class="form-group">
+                <label>Kelas Aktif</label>
+                <input type="text" class="form-control" value="{{ active_classroom.name if active_classroom else '-' }}" readonly>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label>Nomor Induk Mahasiswa (NIM)</label>
                 <input type="text" name="nim" class="form-control" placeholder="Contoh: 2024001" required>
@@ -124,6 +141,18 @@
             Format: <strong>NIM ; Nama ; Status</strong> (Pisahkan dengan titik koma atau koma).
         </p>
         <form action="{{ url_for('bulk_add_members') }}" method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <textarea name="bulk_data" class="form-control" rows="10" placeholder="Contoh :&#10;2024001 ; Budi Santoso ; Aktif&#10;2024002 ; Siti Aminah ; Aktif" required></textarea>
             </div>
@@ -140,6 +169,18 @@
     <div class="card" style="width: 450px; max-width: 100%; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem;">Update Data Member</h2>
         <form id="form-edit-member" method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" id="edit-classroom" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label>NIM</label>
                 <input type="text" name="nim" id="edit-nim" class="form-control" required>

@@ -3,7 +3,7 @@
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem;">
     <div>
         <h1>Manajemen Jadwal Kuliah</h1>
-        <p style="color: var(--text-muted);">Atur waktu perkuliahan kelas Famousbytee.b secara visual dan efisien.</p>
+        <p style="color: var(--text-muted);">Atur waktu perkuliahan per kelas secara visual dan efisien.</p>
     </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         <button class="btn" style="background: white; border: 1px solid var(--primary); color: var(--primary);" onclick="showTab('schedule')">
@@ -17,11 +17,32 @@
         <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main);" onclick="showTab('assignments')">
             <i data-lucide="list-checks"></i> Daftar Tugas
         </button>
-        <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" target="_blank" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none;">
+        <a href="{{ url_for('public_view', class_name=active_classroom.name if active_classroom else 'Famousbytee.b') }}" target="_blank" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none;">
             <i data-lucide="external-link"></i> Live Page
         </a>
     </div>
 </header>
+
+<div class="card" style="padding: 1rem 1.25rem; display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; align-items: center; margin-bottom: 1.5rem;">
+    <div>
+        <div style="font-size: .78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800;">Kelas Aktif</div>
+        <div style="font-size: 1rem; font-weight: 800;">{{ active_classroom.name if active_classroom else '-' }}{% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}</div>
+    </div>
+    {% if current_user.role.can_manage_roles %}
+    <form method="GET" action="{{ url_for('manage_schedule') }}" style="display:flex; gap: .75rem; align-items: end; flex-wrap: wrap;">
+        <div class="form-group" style="margin: 0;">
+            <label>Pilih Kelas</label>
+            <select name="classroom_id" class="form-control" onchange="this.form.submit()">
+                {% for classroom in classrooms %}
+                <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                    {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </form>
+    {% endif %}
+</div>
 
 <div id="tab-assignments" style="display: none; margin-top: 2rem;">
     <div style="display: flex; flex-wrap: wrap; gap: 2rem;">
@@ -316,6 +337,18 @@
                 </button>
             </div>
             <form method="POST">
+                {% if current_user.role.can_manage_roles %}
+                <div class="form-group">
+                    <label>Pilih Kelas</label>
+                    <select name="classroom_id" class="form-control" required>
+                        {% for classroom in classrooms %}
+                        <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                            {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
                 <div class="form-group">
                     <label>Gunakan Preset</label>
                     <select id="schedule-preset-picker" class="form-control" onchange="applySchedulePreset(this.value, 'create')">
@@ -388,6 +421,18 @@
     <div class="card" style="width: 400px; padding: 2rem; text-align: center;">
         <h2 style="margin-bottom: 1rem;">Import CSV</h2>
         <form action="{{ url_for('schedule_batch') }}" method="POST" enctype="multipart/form-data">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group" style="margin-bottom: 1rem; text-align: left;">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <input type="file" name="file" class="form-control" accept=".csv" required style="margin-bottom: 1.5rem;">
             <div style="display: flex; gap: 10px;">
                 <button type="submit" class="btn" style="flex: 1;">Upload</button>
@@ -401,6 +446,18 @@
     <div class="card" style="width: 600px; padding: 2rem;">
         <h2 style="margin-bottom: 1rem;">Bulk Add</h2>
         <form action="{{ url_for('bulk_add_schedule') }}" method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <textarea name="bulk_data" class="form-control" rows="8" placeholder="Hari ; Mulai ; Selesai ; Matkul ; Dosen ; Ruang"></textarea>
             <div style="display: flex; gap: 10px; margin-top: 1rem;">
                 <button type="submit" class="btn" style="flex: 1;">Proses</button>
@@ -411,9 +468,21 @@
 </div>
 
 <div id="modal-edit-sched" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); align-items: center; justify-content: center; z-index: 2005;">
-    <div class="card" style="width: 450px; padding: 2rem;">
+        <div class="card" style="width: 450px; padding: 2rem;">
         <h2 style="margin-bottom: 1.5rem;">Edit Jadwal</h2>
         <form id="form-edit-sched" method="POST">
+            {% if current_user.role.can_manage_roles %}
+            <div class="form-group">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" id="edit-classroom" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div class="form-group">
                 <label>Gunakan Preset</label>
                 <select id="edit-preset-picker" class="form-control" onchange="applySchedulePreset(this.value, 'edit')">
