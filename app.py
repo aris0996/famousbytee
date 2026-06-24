@@ -812,7 +812,7 @@ def _resolve_notification_classroom_id(user_id=None, sender_id=None):
                 return sender.classroom_id or (sender.student.classroom_id if sender.student else None)
     except Exception:
         pass
-    default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     return default_class.id if default_class else None
 
 
@@ -1141,7 +1141,7 @@ with app.app_context():
         print(f"Database Patch Error (schedule preset/template): {e}")
 
     try:
-        default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+        default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
         if default_class:
             users = User.query.all()
             changed = False
@@ -1520,7 +1520,16 @@ def dashboard():
     serta statistik manajemen bagi Admin/Pengurus.
     """
     # 1. Data Dasar: Pengumuman Terbaru
-    recent_announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+    recent_announcements_query = Announcement.query
+    if active_classroom:
+        recent_announcements_query = recent_announcements_query.filter(
+            (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
+        )
+    recent_announcements = recent_announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
     
     # 2. Ambil Info Personal Member (jika User terhubung ke Student)
     member_info = None
@@ -1543,7 +1552,12 @@ def dashboard():
         }
 
     # 3. GALLERY SNEAK PEEK (Latest 4 Published)
-    gallery_preview = GalleryPhoto.query.filter_by(status='Published').order_by(GalleryPhoto.created_at.desc()).limit(4).all()
+    gallery_preview_query = GalleryPhoto.query.filter_by(status='Published')
+    if active_classroom:
+        gallery_preview_query = gallery_preview_query.filter(
+            (GalleryPhoto.classroom_id == active_classroom.id) | (GalleryPhoto.classroom_id.is_(None))
+        )
+    gallery_preview = gallery_preview_query.order_by(GalleryPhoto.created_at.desc()).limit(4).all()
 
     # 4. NEXT CLASS COUNTDOWN
     # Map Indonesian days to weekday numbers
@@ -1552,7 +1566,7 @@ def dashboard():
     curr_day_num = now.weekday()
     curr_time_str = now.strftime('%H:%M')
     
-    schedules = Schedule.query.all()
+    schedules = Schedule.query.filter_by(classroom_id=active_classroom.id).all() if active_classroom else []
     next_class = None
     min_diff = float('inf')
     
@@ -2259,7 +2273,9 @@ def delete_schedule(id):
 @login_required
 def download_schedule_template():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
     
     # Headers dengan ID untuk pendeteksian UPDATE
@@ -2290,7 +2306,11 @@ def manage_announcements():
         return redirect(url_for('dashboard'))
         
     if request.method == 'POST':
+        active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+        if not active_classroom:
+            active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
         ann = Announcement(
+            classroom_id=active_classroom.id if active_classroom else None,
             title=request.form['title'], 
             content=request.form['content'],
             category=request.form['category'],
@@ -2307,14 +2327,27 @@ def manage_announcements():
         log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
     
-    announcements = Announcement.query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
-    return render_template('announcements.html', announcements=announcements)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    announcements_query = Announcement.query
+    if active_classroom:
+        announcements_query = announcements_query.filter(
+            (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
+        )
+    announcements = announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('announcements.html', announcements=announcements, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/announcements/edit/<int:id>', methods=['POST'])
 @login_required
 def edit_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if active_classroom and ann.classroom_id not in (active_classroom.id, None):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_announcements'))
     ann.title = request.form['title']
     ann.content = request.form['content']
     ann.category = request.form['category']
@@ -2330,6 +2363,10 @@ def edit_announcement(id):
 def delete_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if active_classroom and ann.classroom_id not in (active_classroom.id, None):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_announcements'))
     log_activity("Hapus Pengumuman", f"Judul: {ann.title}")
     db.session.delete(ann)
     db.session.commit()
@@ -2338,7 +2375,9 @@ def delete_announcement(id):
 @app.route('/fund', methods=['GET', 'POST'])
 @login_required
 def manage_fund():
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     students = Student.query.filter_by(classroom_id=class_fb.id).all()
     
     if request.method == 'POST':
@@ -2733,11 +2772,21 @@ def manage_classes():
         return redirect(url_for('dashboard'))
 
     if request.method == 'POST':
+        class_id = request.form.get('class_id')
         name = (request.form.get('name') or '').strip()
         batch = (request.form.get('batch') or '').strip()
         if not name:
             flash('Nama kelas wajib diisi.')
             return redirect(url_for('manage_classes'))
+
+        if class_id:
+            classroom = ClassRoom.query.get(int(class_id))
+            if classroom:
+                classroom.name = name
+                classroom.batch = batch
+                db.session.commit()
+                flash('Kelas berhasil diperbarui.')
+                return redirect(url_for('manage_classes'))
 
         existing = ClassRoom.query.filter(db.func.lower(ClassRoom.name) == name.lower()).first()
         if existing:
@@ -2933,17 +2982,25 @@ def process_image_upload(file):
 @app.route('/gallery')
 @login_required
 def manage_gallery():
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     # Admin/Pengurus can see all (including pending), Members can only see Published
+    photos_query = GalleryPhoto.query
+    if active_classroom:
+        photos_query = photos_query.filter(
+            (GalleryPhoto.classroom_id == active_classroom.id) | (GalleryPhoto.classroom_id.is_(None))
+        )
     if current_user.role.name in ['Admin', 'Pengurus']:
-        photos = GalleryPhoto.query.order_by(GalleryPhoto.created_at.desc()).all()
+        photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
     else:
-        # Show Published ones, PLUS photos uploaded by user that are still Pending
-        photos = GalleryPhoto.query.filter(
+        photos = photos_query.filter(
             (GalleryPhoto.status == 'Published') | 
             ((GalleryPhoto.status == 'Pending') & (GalleryPhoto.uploaded_by == current_user.id))
         ).order_by(GalleryPhoto.created_at.desc()).all()
         
-    return render_template('gallery.html', photos=photos)
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('gallery.html', photos=photos, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/gallery/upload', methods=['POST'])
 @login_required
@@ -2953,6 +3010,9 @@ def upload_gallery():
         flash('Tidak ada file yang dipilih.')
         return redirect(url_for('manage_gallery'))
     
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     tags = request.form.get('tags', '')
     is_public = 'is_public' in request.form
     
@@ -2969,6 +3029,7 @@ def upload_gallery():
             filename = process_image_upload(file)
             if filename:
                 photo = GalleryPhoto(
+                    classroom_id=active_classroom.id if active_classroom else None,
                     filename=filename,
                     thumbnail=filename,
                     caption=request.form.get('caption', ''),
@@ -3071,7 +3132,7 @@ def toggle_gallery_visibility(id):
 def public_gallery():
     # ONLY FETCH PUBLISHED AND PUBLIC PHOTOS
     photos = GalleryPhoto.query.filter_by(is_public=True, status='Published').order_by(GalleryPhoto.created_at.desc()).all()
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     return render_template('gallery_public.html', photos=photos, classroom=class_fb)
 
 @app.route('/gallery/comment/<int:photo_id>', methods=['POST'])
@@ -3344,14 +3405,22 @@ from flask import jsonify
 @login_required
 def api_students():
     if not current_user.role.can_use_api: return jsonify({'error': 'Unauthorized'}), 403
-    students = Student.query.all()
+    classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    students_query = Student.query
+    if classroom:
+        students_query = students_query.filter_by(classroom_id=classroom.id)
+    students = students_query.all()
     return jsonify([{'id': s.id, 'nim': s.nim, 'name': s.full_name, 'status': s.status} for s in students])
 
 @app.route('/api/announcements')
 @login_required
 def api_announcements():
     if not current_user.role.can_use_api: return jsonify({'error': 'Unauthorized'}), 403
-    anns = Announcement.query.all()
+    classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    anns_query = Announcement.query
+    if classroom:
+        anns_query = anns_query.filter((Announcement.classroom_id == classroom.id) | (Announcement.classroom_id.is_(None)))
+    anns = anns_query.all()
     return jsonify([{'id': a.id, 'title': a.title, 'category': a.category, 'date': a.date_posted} for a in anns])
 
 @app.route('/notifications', methods=['GET', 'POST'])
@@ -3360,6 +3429,10 @@ def manage_notifications():
     if not (current_user.role.can_manage_notifications or current_user.role.can_manage_whatsapp):
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
+
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     
     if request.method == 'POST':
         if request.is_json:
@@ -3385,17 +3458,28 @@ def manage_notifications():
             return redirect(url_for('manage_notifications'))
 
         if target == 'all':
-            send_multichannel_notification(title, body, sender_id=current_user.id, allow_whatsapp=True)
+            send_multichannel_notification(title, body, sender_id=current_user.id, allow_whatsapp=True, classroom_id=active_classroom.id if active_classroom else None)
             flash('Notifikasi siaran berhasil dikirim!')
         else:
-            send_push(title, body, user_id=int(target), sender_id=current_user.id)
+            send_push(title, body, user_id=int(target), sender_id=current_user.id, classroom_id=active_classroom.id if active_classroom else None)
             flash('Notifikasi terkirim ke pengguna.')
             
         log_activity("Kirim Notifikasi", f"Judul: {title}, Target: {target}")
         return redirect(url_for('manage_notifications'))
 
-    history = NotificationHistory.query.order_by(NotificationHistory.sent_at.desc()).limit(80).all()
-    users = User.query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
+    history_query = NotificationHistory.query
+    if active_classroom:
+        history_query = history_query.filter(
+            (NotificationHistory.classroom_id == active_classroom.id) | (NotificationHistory.classroom_id.is_(None))
+        )
+    history = history_query.order_by(NotificationHistory.sent_at.desc()).limit(80).all()
+    users_query = User.query
+    if active_classroom:
+        users_query = users_query.filter(
+            (User.classroom_id == active_classroom.id) |
+            (User.student.has(Student.classroom_id == active_classroom.id))
+        )
+    users = users_query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
         'waha_enabled': get_setting_value('waha_enabled', 'false'),
         'waha_base_url': get_setting_value('waha_base_url', ''),
@@ -3417,7 +3501,8 @@ def manage_notifications():
         'schedule_notify_on_edit': get_setting_value('schedule_notify_on_edit', 'false'),
         'schedule_notify_on_delete': get_setting_value('schedule_notify_on_delete', 'true')
     }
-    return render_template('notifications.html', history=history, users=users, settings=settings)
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/notifications/waha/save-config', methods=['POST'])
 @login_required

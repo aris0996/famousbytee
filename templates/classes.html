@@ -32,7 +32,9 @@
                             <a href="{{ url_for('public_view', class_name=c.name) }}" target="_blank" style="color: var(--primary); text-decoration: none; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
                                 <i data-lucide="external-link" style="width: 14px;"></i> Live View
                             </a>
-                            <a href="#" style="color: var(--text-muted);"><i data-lucide="edit" style="width: 18px;"></i></a>
+                            <button type="button" class="icon-btn" onclick="openEditClass('{{ c.id }}', '{{ c.name|e }}', '{{ c.batch|e if c.batch else '' }}')">
+                                <i data-lucide="edit" style="width: 18px;"></i>
+                            </button>
                         </div>
                     </td>
                 </tr>
@@ -46,19 +48,39 @@
     </div>
 
     <!-- Add Class Form -->
-    <div class="card">
-        <h2 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem;">Tambah Kelas</h2>
-        <form action="{{ url_for('manage_classes') }}" method="POST">
+        <div class="card">
+            <h2 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem;">Tambah Kelas</h2>
+            {% with messages = get_flashed_messages() %}
+                {% if messages %}
+                    {% for message in messages %}
+                        <div style="background: #ecfdf5; color: #065f46; padding: .85rem 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid #d1fae5;">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+            <form id="form-classroom" action="{{ url_for('manage_classes') }}" method="POST">
+            <input type="hidden" name="class_id" id="class-id">
             <div class="form-group">
                 <label>Nama Kelas</label>
-                <input type="text" name="name" class="form-control" placeholder="Contoh: 2A" required>
+                <input type="text" name="name" id="class-name" class="form-control" placeholder="Contoh: 2A" required>
             </div>
             <div class="form-group">
                 <label>Angkatan / Tahun</label>
-                <input type="text" name="batch" class="form-control" placeholder="Contoh: TI 2024" required>
+                <input type="text" name="batch" id="class-batch" class="form-control" placeholder="Contoh: TI 2024" required>
             </div>
-            <button type="submit" class="btn" style="width: 100%;">Simpan Kelas</button>
+            <button type="submit" class="btn" id="class-submit" style="width: 100%;">Simpan Kelas</button>
         </form>
     </div>
 </div>
+
+<script>
+function openEditClass(id, name, batch) {
+    document.getElementById('class-id').value = id;
+    document.getElementById('class-name').value = name;
+    document.getElementById('class-batch').value = batch || '';
+    document.getElementById('class-submit').innerText = 'Perbarui Kelas';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+</script>
 {% endblock %}

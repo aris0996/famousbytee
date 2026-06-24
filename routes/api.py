@@ -718,10 +718,10 @@ def manage_schedules():
             
         data = request.get_json()
         from models import ClassRoom
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+        class_fb = _user_classroom(user)
         
         s = Schedule(
-            classroom_id=class_fb.id if class_fb else 1,
+            classroom_id=class_fb.id if class_fb else None,
             day=data.get('day'),
             time_start=data.get('time_start'),
             time_end=data.get('time_end'),
@@ -749,10 +749,11 @@ def manage_schedules():
         return jsonify({"status": "success", "id": s.id})
 
     # GET logic
-    if user.student and user.student.classroom_id:
-        schedules = Schedule.query.filter_by(classroom_id=user.student.classroom_id).all()
-    else:
-        schedules = Schedule.query.all()
+    classroom = _user_classroom(user)
+    schedules_query = Schedule.query
+    if classroom:
+        schedules_query = schedules_query.filter_by(classroom_id=classroom.id)
+    schedules = schedules_query.all()
         
     return jsonify([{
         "id": s.id,
