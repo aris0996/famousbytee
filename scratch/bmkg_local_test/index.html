@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BMKG Local Test</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f5f7fb;
+      --surface: #ffffff;
+      --text: #172033;
+      --muted: #667085;
+      --line: #dde3ee;
+      --brand: #0f766e;
+      --warn: #b45309;
+      --danger: #b42318;
+      --ok: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      padding: 20px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    main {
+      width: min(1080px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 6px;
+    }
+    h2 {
+      font-size: 16px;
+      margin: 0 0 12px;
+    }
+    p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-top: 14px;
+    }
+    select, button {
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      padding: 0 12px;
+      font-size: 14px;
+    }
+    button {
+      color: white;
+      border-color: var(--brand);
+      background: var(--brand);
+      cursor: pointer;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 14px;
+    }
+    .card {
+      grid-column: span 6;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-width: 0;
+    }
+    .card.full { grid-column: 1 / -1; }
+    .metric {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .metric div {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      min-height: 68px;
+    }
+    .label {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .value {
+      font-size: 18px;
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .list {
+      display: grid;
+      gap: 10px;
+    }
+    .item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fbfcff;
+    }
+    .item strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      background: #e8f5ef;
+      color: var(--ok);
+    }
+    .status.warn {
+      background: #fff4df;
+      color: var(--warn);
+    }
+    .status.danger {
+      background: #fff0ed;
+      color: var(--danger);
+    }
+    .source {
+      margin-top: 16px;
+      font-size: 12px;
+    }
+    @media (max-width: 760px) {
+      .card { grid-column: 1 / -1; }
+      .metric { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BMKG Local Test</h1>
+    <p>Demo lokal untuk cuaca, gempa, dan peringatan dini sebelum diintegrasikan ke Famousbytee.</p>
+    <div class="toolbar">
+      <select id="region"></select>
+      <select id="location"></select>
+      <button id="refresh" type="button">Muat Ulang</button>
+      <span id="status" class="status">Menyiapkan</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="grid">
+      <section class="card">
+        <h2>Cuaca Saat Ini</h2>
+        <p id="weather-location">-</p>
+        <div class="metric">
+          <div><span class="label">Cuaca</span><span class="value" id="weather-desc">-</span></div>
+          <div><span class="label">Suhu</span><span class="value" id="weather-temp">-</span></div>
+          <div><span class="label">Kelembapan</span><span class="value" id="weather-hu">-</span></div>
+          <div><span class="label">Angin</span><span class="value" id="weather-wind">-</span></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Gempa Terbaru BMKG</h2>
+        <p id="latest-quake">-</p>
+        <div class="metric">
+          <div><span class="label">Magnitudo</span><span class="value" id="quake-mag">-</span></div>
+          <div><span class="label">Kedalaman</span><span class="value" id="quake-depth">-</span></div>
+          <div><span class="label">Waktu</span><span class="value" id="quake-time">-</span></div>
+          <div><span class="label">Potensi</span><span class="value" id="quake-potency">-</span></div>
+        </div>
+      </section>
+
+      <section class="card full">
+        <h2>Gempa Dirasakan Relevan Sulteng</h2>
+        <div id="sulteng-quakes" class="list"></div>
+      </section>
+
+      <section class="card full">
+        <h2>Prakiraan Berikutnya</h2>
+        <div id="forecast-list" class="list"></div>
+      </section>
+
+      <section class="card full">
+        <h2>Peringatan Dini Cuaca Sulteng</h2>
+        <div id="alert-list" class="list"></div>
+      </section>
+    </div>
+    <p class="source" id="source">Sumber data: BMKG.</p>
+  </main>
+
+  <script>
+    const regionSelect = document.querySelector("#region");
+    const locationSelect = document.querySelector("#location");
+    const statusEl = document.querySelector("#status");
+
+    function text(id, value) {
+      document.querySelector(id).textContent = value || "-";
+    }
+
+    function setStatus(label, type) {
+      statusEl.textContent = label;
+      statusEl.className = "status" + (type ? " " + type : "");
+    }
+
+    function item(title, body) {
+      const el = document.createElement("div");
+      el.className = "item";
+      el.innerHTML = `<strong>${title}</strong><p>${body}</p>`;
+      return el;
+    }
+
+    async function loadRegions() {
+      const res = await fetch("/api/regions");
+      const data = await res.json();
+      regionSelect.innerHTML = "";
+      data.forEach((region) => {
+        const option = document.createElement("option");
+        option.value = region.adm3;
+        option.textContent = `${region.group} - ${region.name}`;
+        if (region.adm3 === "72.71.08") option.selected = true;
+        regionSelect.appendChild(option);
+      });
+    }
+
+    async function loadLocations() {
+      const adm3 = regionSelect.value || "72.71.08";
+      const res = await fetch(`/api/locations?adm3=${encodeURIComponent(adm3)}`);
+      const data = await res.json();
+      locationSelect.innerHTML = "";
+      data.forEach((location) => {
+        const option = document.createElement("option");
+        option.value = location.key;
+        option.textContent = location.village;
+        if (location.adm4 === "72.71.08.1002") option.selected = true;
+        locationSelect.appendChild(option);
+      });
+    }
+
+    async function loadInfo() {
+      setStatus("Memuat", "warn");
+      const key = locationSelect.value || "72.71.08.1002";
+      const adm3 = regionSelect.value || "72.71.08";
+      const res = await fetch(`/api/local-info?adm3=${encodeURIComponent(adm3)}&location=${encodeURIComponent(key)}`);
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.detail || data.error || "Gagal memuat data");
+      }
+
+      const location = data.location.bmkg_location || {};
+      const weather = data.weather_now || {};
+      const quake = data.latest_quake || {};
+
+      text("#weather-location", `${data.location.label} - ${location.kotkab || ""}`);
+      text("#weather-desc", weather.weather_desc);
+      text("#weather-temp", weather.t != null ? `${weather.t} C` : "-");
+      text("#weather-hu", weather.hu != null ? `${weather.hu}%` : "-");
+      text("#weather-wind", weather.ws != null ? `${weather.ws} km/jam` : "-");
+
+      text("#latest-quake", quake.Wilayah);
+      text("#quake-mag", quake.Magnitude);
+      text("#quake-depth", quake.Kedalaman);
+      text("#quake-time", `${quake.Tanggal || ""} ${quake.Jam || ""}`.trim());
+      text("#quake-potency", quake.Potensi || quake.Dirasakan);
+
+      const quakes = document.querySelector("#sulteng-quakes");
+      quakes.innerHTML = "";
+      if ((data.sulteng_felt_quakes || []).length === 0) {
+        quakes.appendChild(item("Tidak ada data relevan", "Belum ada gempa dirasakan yang cocok dengan filter Palu/Sigi/Sulteng pada daftar terbaru."));
+      } else {
+        data.sulteng_felt_quakes.forEach((q) => {
+          quakes.appendChild(item(`${q.Tanggal} ${q.Jam} - M${q.Magnitude}`, `${q.Wilayah}. Dirasakan: ${q.Dirasakan || "-"}`));
+        });
+      }
+
+      const forecast = document.querySelector("#forecast-list");
+      forecast.innerHTML = "";
+      (data.weather_next || []).forEach((w) => {
+        forecast.appendChild(item(w.local_datetime, `${w.weather_desc}, ${w.t} C, kelembapan ${w.hu}%, angin ${w.ws} km/jam dari ${w.wd}.`));
+      });
+
+      const alerts = document.querySelector("#alert-list");
+      alerts.innerHTML = "";
+      if ((data.sulteng_weather_alerts || []).length === 0) {
+        alerts.appendChild(item("Tidak ada peringatan aktif Sulteng", `RSS BMKG aktif berisi ${data.all_weather_alert_count} peringatan nasional, belum ada yang cocok dengan filter Sulteng.`));
+      } else {
+        data.sulteng_weather_alerts.forEach((alert) => {
+          alerts.appendChild(item(alert.title, alert.description));
+        });
+      }
+
+      text("#source", `Sumber data: ${data.source}. Diperbarui lokal: ${data.generated_at}.`);
+      setStatus("Data aktif", "");
+    }
+
+    document.querySelector("#refresh").addEventListener("click", () => {
+      loadInfo().catch((error) => setStatus(error.message, "danger"));
+    });
+    regionSelect.addEventListener("change", () => {
+      loadLocations()
+        .then(loadInfo)
+        .catch((error) => setStatus(error.message, "danger"));
+    });
+    locationSelect.addEventListener("change", () => {
+      loadInfo().catch((error) => setStatus(error.message, "danger"));
+    });
+
+    loadRegions()
+      .then(loadLocations)
+      .then(loadInfo)
+      .catch((error) => setStatus(error.message, "danger"));
+  </script>
+</body>
+</html>

@@ -113,6 +113,36 @@ class Schedule(db.Model):
     lecturer = db.Column(db.String(100))
     room = db.Column(db.String(50))
 
+class ScheduleTemplate(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text)
+    is_default = db.Column(db.Boolean, default=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref='schedule_templates', lazy=True)
+    creator = db.relationship('User', backref='schedule_templates', lazy=True)
+    items = db.relationship(
+        'ScheduleTemplateItem',
+        backref='template',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='ScheduleTemplateItem.sort_order'
+    )
+
+class ScheduleTemplateItem(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('schedule_template.id'), nullable=False)
+    day = db.Column(db.String(20), nullable=False)
+    time_start = db.Column(db.String(10))
+    time_end = db.Column(db.String(10))
+    subject = db.Column(db.String(100), nullable=False)
+    lecturer = db.Column(db.String(100))
+    room = db.Column(db.String(50))
+    sort_order = db.Column(db.Integer, default=0)
+
 class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(150), nullable=False)

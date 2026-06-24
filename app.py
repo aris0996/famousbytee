@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
+from models import db, User, Role, ClassRoom, Student, Schedule, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
 import json
 import re
@@ -944,6 +944,20 @@ def send_multichannel_notification(title, body, user_id=None, sender_id=None, al
 
     return results
 
+def cleanup_old_activity_logs(retention_days=None):
+    """Delete activity logs older than the configured retention window."""
+    with app.app_context():
+        try:
+            days = int(retention_days or get_setting_value('activity_log_retention_days', '30') or 30)
+        except ValueError:
+            days = 30
+
+        cutoff = datetime.now() - timedelta(days=max(days, 1))
+        deleted = ActivityLog.query.filter(ActivityLog.timestamp < cutoff).delete(synchronize_session=False)
+        if deleted:
+            db.session.commit()
+            app.logger.info('Activity log cleanup removed %s rows older than %s days.', deleted, days)
+
 def run_automated_reminders():
     """Background task to check and send reminders."""
     with app.app_context():
@@ -986,6 +1000,7 @@ try:
     if not getattr(app, '_scheduler_started', False):
         scheduler = BackgroundScheduler(daemon=True)
         scheduler.add_job(func=run_automated_reminders, trigger="interval", minutes=1)
+        scheduler.add_job(func=cleanup_old_activity_logs, trigger="cron", hour=3, minute=0)
         scheduler.start()
         app._scheduler_started = True
         app.logger.info('Background scheduler started successfully.')
@@ -1082,6 +1097,12 @@ with app.app_context():
         FundPeriod.__table__.create(bind=db.engine, checkfirst=True)
     except Exception as e:
         print(f"Database Patch Error (fund_period): {e}")
+
+    try:
+        ScheduleTemplate.__table__.create(bind=db.engine, checkfirst=True)
+        ScheduleTemplateItem.__table__.create(bind=db.engine, checkfirst=True)
+    except Exception as e:
+        print(f"Database Patch Error (schedule_template): {e}")
 
 
     
@@ -1665,7 +1686,10 @@ def manage_schedule():
         return redirect(url_for('manage_schedule'))
     
     # 1. Get All Schedules
-    schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
+    schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
+    schedule_templates = ScheduleTemplate.query.filter(
+        (ScheduleTemplate.classroom_id == class_fb.id) | (ScheduleTemplate.classroom_id.is_(None))
+    ).order_by(ScheduleTemplate.updated_at.desc(), ScheduleTemplate.name.asc()).all()
     
     # 2. Logic to Find 'Active' and 'Next' Subject
     now = datetime.now()
@@ -1691,7 +1715,185 @@ def manage_schedule():
                          active_subject=active_subject, 
                          next_subject=next_subject,
                          today_indo=today_indo,
+                         schedule_templates=schedule_templates,
                          assignments=Assignment.query.order_by(Assignment.deadline.asc()).all())
+
+def _create_schedule_from_template_item(classroom_id, item):
+    return Schedule(
+        classroom_id=classroom_id,
+        day=item.day,
+        time_start=item.time_start,
+        time_end=item.time_end,
+        subject=item.subject,
+        lecturer=item.lecturer or '-',
+        room=item.room or '-'
+    )
+
+def _next_template_sort_order(template_id):
+    last_item = ScheduleTemplateItem.query.filter_by(template_id=template_id).order_by(ScheduleTemplateItem.sort_order.desc()).first()
+    return (last_item.sort_order + 1) if last_item else 1
+
+@app.route('/schedule/templates', methods=['POST'])
+@login_required
+def create_schedule_template():
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    template = ScheduleTemplate(
+        classroom_id=class_fb.id,
+        name=(request.form.get('name') or 'Template Jadwal Baru').strip(),
+        description=(request.form.get('description') or '').strip(),
+        created_by=current_user.id
+    )
+    db.session.add(template)
+    db.session.commit()
+    log_activity("Tambah Template Jadwal", f"Template: {template.name}")
+    flash('Template jadwal berhasil dibuat.')
+    return redirect(url_for('manage_schedule') + '#templates')
+
+@app.route('/schedule/templates/from-current', methods=['POST'])
+@login_required
+def create_schedule_template_from_current():
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
+    if not schedules:
+        flash('Belum ada jadwal aktif untuk dijadikan template.')
+        return redirect(url_for('manage_schedule') + '#templates')
+
+    template = ScheduleTemplate(
+        classroom_id=class_fb.id,
+        name=(request.form.get('name') or f"Template dari Jadwal {datetime.now().strftime('%d %b %Y')}").strip(),
+        description=(request.form.get('description') or 'Dibuat dari jadwal aktif.').strip(),
+        created_by=current_user.id
+    )
+    db.session.add(template)
+    db.session.flush()
+
+    for index, schedule in enumerate(schedules, start=1):
+        db.session.add(ScheduleTemplateItem(
+            template_id=template.id,
+            day=schedule.day,
+            time_start=schedule.time_start,
+            time_end=schedule.time_end,
+            subject=schedule.subject,
+            lecturer=schedule.lecturer,
+            room=schedule.room,
+            sort_order=index
+        ))
+
+    db.session.commit()
+    log_activity("Buat Template Dari Jadwal", f"Template: {template.name}, Item: {len(schedules)}")
+    flash(f'Template dibuat dari {len(schedules)} jadwal aktif.')
+    return redirect(url_for('manage_schedule') + '#templates')
+
+@app.route('/schedule/templates/<int:template_id>/items', methods=['POST'])
+@login_required
+def add_schedule_template_item(template_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    item = ScheduleTemplateItem(
+        template_id=template.id,
+        day=request.form['day'],
+        time_start=request.form['time_start'],
+        time_end=request.form['time_end'],
+        subject=request.form['subject'],
+        lecturer=request.form.get('lecturer') or '-',
+        room=request.form.get('room') or '-',
+        sort_order=_next_template_sort_order(template.id)
+    )
+    db.session.add(item)
+    db.session.commit()
+    log_activity("Tambah Item Template Jadwal", f"Template: {template.name}, Matkul: {item.subject}")
+    flash('Item template berhasil ditambahkan.')
+    return redirect(url_for('manage_schedule') + '#templates')
+
+@app.route('/schedule/templates/items/<int:item_id>/delete', methods=['POST'])
+@login_required
+def delete_schedule_template_item(item_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    item = ScheduleTemplateItem.query.get_or_404(item_id)
+    template_name = item.template.name
+    db.session.delete(item)
+    db.session.commit()
+    log_activity("Hapus Item Template Jadwal", f"Template: {template_name}")
+    flash('Item template berhasil dihapus.')
+    return redirect(url_for('manage_schedule') + '#templates')
+
+@app.route('/schedule/templates/<int:template_id>/duplicate', methods=['POST'])
+@login_required
+def duplicate_schedule_template(template_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    original = ScheduleTemplate.query.get_or_404(template_id)
+    duplicate = ScheduleTemplate(
+        classroom_id=original.classroom_id,
+        name=(request.form.get('name') or f"Salinan {original.name}").strip(),
+        description=original.description,
+        created_by=current_user.id
+    )
+    db.session.add(duplicate)
+    db.session.flush()
+    for item in original.items:
+        db.session.add(ScheduleTemplateItem(
+            template_id=duplicate.id,
+            day=item.day,
+            time_start=item.time_start,
+            time_end=item.time_end,
+            subject=item.subject,
+            lecturer=item.lecturer,
+            room=item.room,
+            sort_order=item.sort_order
+        ))
+    db.session.commit()
+    log_activity("Duplikasi Template Jadwal", f"Dari: {original.name}, Ke: {duplicate.name}")
+    flash('Template berhasil diduplikasi.')
+    return redirect(url_for('manage_schedule') + '#templates')
+
+@app.route('/schedule/templates/<int:template_id>/apply', methods=['POST'])
+@login_required
+def apply_schedule_template(template_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    if not template.items:
+        flash('Template belum memiliki item jadwal.')
+        return redirect(url_for('manage_schedule') + '#templates')
+
+    if request.form.get('replace_existing') == 'on':
+        Schedule.query.filter_by(classroom_id=class_fb.id).delete(synchronize_session=False)
+
+    for item in template.items:
+        db.session.add(_create_schedule_from_template_item(class_fb.id, item))
+
+    db.session.commit()
+    log_activity("Terapkan Template Jadwal", f"Template: {template.name}, Item: {len(template.items)}")
+    flash(f'Template "{template.name}" berhasil diterapkan ke jadwal aktif.')
+    return redirect(url_for('manage_schedule'))
+
+@app.route('/schedule/templates/<int:template_id>/delete', methods=['POST'])
+@login_required
+def delete_schedule_template(template_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    name = template.name
+    db.session.delete(template)
+    db.session.commit()
+    log_activity("Hapus Template Jadwal", f"Template: {name}")
+    flash('Template jadwal berhasil dihapus.')
+    return redirect(url_for('manage_schedule') + '#templates')
 
 @app.route('/assignments', methods=['GET', 'POST'])
 @login_required
@@ -2822,6 +3024,7 @@ def init_db():
                     SystemSetting(key='social_ig', value='#', description='Link Instagram Kelas'),
                     SystemSetting(key='social_wa', value='#', description='Link WhatsApp Group'),
                     SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)'),
+                    SystemSetting(key='activity_log_retention_days', value='30', description='Masa simpan log aktivitas dalam hari'),
                     SystemSetting(key='waha_enabled', value='false', description='Aktifkan integrasi WAHA'),
                     SystemSetting(key='waha_base_url', value='', description='Base URL server WAHA'),
                     SystemSetting(key='waha_api_key', value='', description='API key WAHA'),
@@ -2844,6 +3047,14 @@ def init_db():
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
         except Exception as e:
             print(f"Peringatan: Gagal inisialisasi pengaturan: {e}")
+
+        try:
+            if not SystemSetting.query.filter_by(key='activity_log_retention_days').first():
+                db.session.add(SystemSetting(key='activity_log_retention_days', value='30', description='Masa simpan log aktivitas dalam hari'))
+                db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Peringatan: Gagal memastikan retensi log aktivitas: {e}")
 
 # ----------------API & SITEMAP----------------
 from flask import jsonify
