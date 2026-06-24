@@ -303,6 +303,7 @@ def get_profile():
         "role": user.role.name,
         "points": user.points or 0,
         "classroom_id": user.classroom_id or (user.student.classroom_id if user.student else None),
+        "classroom_name": _user_classroom(user).name if _user_classroom(user) else None,
         "permissions": {
             "can_manage_students": user.role.can_manage_students,
             "can_manage_schedule": user.role.can_manage_schedule,
@@ -315,6 +316,44 @@ def get_profile():
             "can_view_logs": user.role.can_view_logs,
         },
         "student": student_data
+    })
+
+@api_bp.route('/profile/classroom', methods=['PUT'])
+@jwt_required()
+def update_profile_classroom():
+    user_id = get_jwt_identity()
+    user = User.query.get(int(user_id))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json(silent=True) or {}
+    try:
+        classroom_id = int(data.get('classroom_id'))
+    except Exception:
+        return jsonify({"error": "classroom_id wajib diisi"}), 400
+
+    allowed_classrooms = []
+    if user.role and user.role.can_manage_roles:
+        allowed_classrooms = ClassRoom.query.all()
+    else:
+        current = _user_classroom(user)
+        if current:
+            allowed_classrooms = [current]
+
+    allowed_ids = {c.id for c in allowed_classrooms}
+    if classroom_id not in allowed_ids:
+        return jsonify({"error": "Kelas tidak diizinkan"}), 403
+
+    classroom = ClassRoom.query.get(classroom_id)
+    if not classroom:
+        return jsonify({"error": "Kelas tidak ditemukan"}), 404
+
+    user.classroom_id = classroom.id
+    db.session.commit()
+    return jsonify({
+        "status": "success",
+        "classroom_id": classroom.id,
+        "classroom_name": classroom.name,
     })
 
 @api_bp.route('/update-fcm-token', methods=['POST'])
