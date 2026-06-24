@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
+from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
 import os
 import json
 import re
@@ -1099,10 +1099,11 @@ with app.app_context():
         print(f"Database Patch Error (fund_period): {e}")
 
     try:
+        SchedulePreset.__table__.create(bind=db.engine, checkfirst=True)
         ScheduleTemplate.__table__.create(bind=db.engine, checkfirst=True)
         ScheduleTemplateItem.__table__.create(bind=db.engine, checkfirst=True)
     except Exception as e:
-        print(f"Database Patch Error (schedule_template): {e}")
+        print(f"Database Patch Error (schedule preset/template): {e}")
 
 
     
@@ -1687,9 +1688,9 @@ def manage_schedule():
     
     # 1. Get All Schedules
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
-    schedule_templates = ScheduleTemplate.query.filter(
-        (ScheduleTemplate.classroom_id == class_fb.id) | (ScheduleTemplate.classroom_id.is_(None))
-    ).order_by(ScheduleTemplate.updated_at.desc(), ScheduleTemplate.name.asc()).all()
+    schedule_presets = SchedulePreset.query.filter(
+        (SchedulePreset.classroom_id == class_fb.id) | (SchedulePreset.classroom_id.is_(None))
+    ).order_by(SchedulePreset.name.asc()).all()
     
     # 2. Logic to Find 'Active' and 'Next' Subject
     now = datetime.now()
@@ -1715,8 +1716,71 @@ def manage_schedule():
                          active_subject=active_subject, 
                          next_subject=next_subject,
                          today_indo=today_indo,
-                         schedule_templates=schedule_templates,
+                         schedule_presets=schedule_presets,
                          assignments=Assignment.query.order_by(Assignment.deadline.asc()).all())
+
+@app.route('/schedule/presets', methods=['POST'])
+@login_required
+def create_schedule_preset():
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    name = (request.form.get('name') or '').strip()
+    subject = (request.form.get('subject') or '').strip()
+    if not name or not subject:
+        flash('Nama preset dan mata kuliah wajib diisi.')
+        return redirect(url_for('manage_schedule') + '#presets')
+
+    preset = SchedulePreset(
+        classroom_id=class_fb.id if class_fb else None,
+        name=name,
+        subject=subject,
+        lecturer=(request.form.get('lecturer') or '').strip(),
+        room=(request.form.get('room') or '').strip(),
+        created_by=current_user.id
+    )
+    db.session.add(preset)
+    db.session.commit()
+    log_activity("Tambah Preset Jadwal", f"Preset: {preset.name}, Matkul: {preset.subject}")
+    flash('Preset jadwal berhasil dibuat.')
+    return redirect(url_for('manage_schedule') + '#presets')
+
+@app.route('/schedule/presets/<int:preset_id>', methods=['POST'])
+@login_required
+def update_schedule_preset(preset_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    preset = SchedulePreset.query.get_or_404(preset_id)
+    name = (request.form.get('name') or '').strip()
+    subject = (request.form.get('subject') or '').strip()
+    if not name or not subject:
+        flash('Nama preset dan mata kuliah wajib diisi.')
+        return redirect(url_for('manage_schedule') + '#presets')
+
+    preset.name = name
+    preset.subject = subject
+    preset.lecturer = (request.form.get('lecturer') or '').strip()
+    preset.room = (request.form.get('room') or '').strip()
+    db.session.commit()
+    log_activity("Edit Preset Jadwal", f"Preset: {preset.name}")
+    flash('Preset jadwal berhasil diperbarui.')
+    return redirect(url_for('manage_schedule') + '#presets')
+
+@app.route('/schedule/presets/<int:preset_id>/delete', methods=['POST'])
+@login_required
+def delete_schedule_preset(preset_id):
+    if not current_user.role.can_manage_schedule:
+        return redirect(url_for('dashboard'))
+
+    preset = SchedulePreset.query.get_or_404(preset_id)
+    name = preset.name
+    db.session.delete(preset)
+    db.session.commit()
+    log_activity("Hapus Preset Jadwal", f"Preset: {name}")
+    flash('Preset jadwal berhasil dihapus.')
+    return redirect(url_for('manage_schedule') + '#presets')
 
 def _create_schedule_from_template_item(classroom_id, item):
     return Schedule(

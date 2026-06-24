@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory
+from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory
 from datetime import datetime, timedelta
 import os
 from werkzeug.utils import secure_filename
@@ -684,6 +684,83 @@ def _schedule_classroom_for_user(user):
     if user.student and user.student.classroom_id:
         return user.student.classroom
     return ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+def _schedule_preset_payload(preset):
+    return {
+        "id": preset.id,
+        "name": preset.name,
+        "subject": preset.subject,
+        "lecturer": preset.lecturer or "",
+        "room": preset.room or "",
+        "classroom_id": preset.classroom_id,
+        "created_by": preset.created_by,
+        "created_at": preset.created_at.isoformat() if preset.created_at else None,
+        "updated_at": preset.updated_at.isoformat() if preset.updated_at else None,
+    }
+
+@api_bp.route('/schedules/presets', methods=['GET', 'POST'])
+@jwt_required()
+def schedule_presets():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    classroom = _schedule_classroom_for_user(user)
+
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        name = (data.get('name') or '').strip()
+        subject = (data.get('subject') or '').strip()
+        if not name or not subject:
+            return jsonify({"error": "Nama preset dan mata kuliah wajib diisi"}), 400
+
+        preset = SchedulePreset(
+            classroom_id=classroom.id if classroom else None,
+            name=name,
+            subject=subject,
+            lecturer=(data.get('lecturer') or '').strip(),
+            room=(data.get('room') or '').strip(),
+            created_by=user.id
+        )
+        db.session.add(preset)
+        db.session.commit()
+        return jsonify({"status": "success", "preset": _schedule_preset_payload(preset)}), 201
+
+    query = SchedulePreset.query
+    if classroom:
+        query = query.filter(
+            (SchedulePreset.classroom_id == classroom.id) |
+            (SchedulePreset.classroom_id.is_(None))
+        )
+    presets = query.order_by(SchedulePreset.name.asc()).all()
+    return jsonify([_schedule_preset_payload(preset) for preset in presets])
+
+@api_bp.route('/schedules/presets/<int:preset_id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def modify_schedule_preset(preset_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    preset = SchedulePreset.query.get_or_404(preset_id)
+
+    if request.method == 'DELETE':
+        db.session.delete(preset)
+        db.session.commit()
+        return jsonify({"status": "success"})
+
+    data = request.get_json() or {}
+    name = (data.get('name') or preset.name or '').strip()
+    subject = (data.get('subject') or preset.subject or '').strip()
+    if not name or not subject:
+        return jsonify({"error": "Nama preset dan mata kuliah wajib diisi"}), 400
+
+    preset.name = name
+    preset.subject = subject
+    preset.lecturer = (data.get('lecturer') or '').strip()
+    preset.room = (data.get('room') or '').strip()
+    db.session.commit()
+    return jsonify({"status": "success", "preset": _schedule_preset_payload(preset)})
 
 def _schedule_template_payload(template):
     return {

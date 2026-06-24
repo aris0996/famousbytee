@@ -10,8 +10,8 @@
             <i data-lucide="calendar"></i> Jadwal Kuliah
         </button>
         {% if current_user.role.can_manage_schedule %}
-        <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main);" onclick="showTab('templates')">
-            <i data-lucide="layout-template"></i> Template Jadwal
+        <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main);" onclick="showTab('presets')">
+            <i data-lucide="bookmark"></i> Preset Jadwal
         </button>
         {% endif %}
         <button class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main);" onclick="showTab('assignments')">
@@ -68,6 +68,76 @@
         </div>
     </div>
 </div>
+
+{% if current_user.role.can_manage_schedule %}
+<div id="tab-presets" style="display: none; margin-top: 2rem;">
+    <div style="display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 1.5rem; align-items: start;">
+        <div class="card">
+            <h3 style="margin-bottom: 1rem; font-weight: 800;">Tambah Preset Jadwal</h3>
+            <form action="{{ url_for('create_schedule_preset') }}" method="POST">
+                <div class="form-group">
+                    <label>Nama Preset</label>
+                    <input type="text" name="name" class="form-control" placeholder="Contoh: Basis Data - Lab" required>
+                </div>
+                <div class="form-group">
+                    <label>Mata Kuliah</label>
+                    <input type="text" name="subject" class="form-control" placeholder="Nama mata kuliah" required>
+                </div>
+                <div class="form-group">
+                    <label>Dosen</label>
+                    <input type="text" name="lecturer" class="form-control" placeholder="Nama dosen">
+                </div>
+                <div class="form-group">
+                    <label>Ruangan</label>
+                    <input type="text" name="room" class="form-control" placeholder="Contoh: L301">
+                </div>
+                <button type="submit" class="btn" style="width: 100%; font-weight: 700;">Simpan Preset</button>
+            </form>
+        </div>
+
+        <div style="display: grid; gap: 1rem;">
+            {% if schedule_presets %}
+                {% for preset in schedule_presets %}
+                <div class="card" style="padding: 1rem 1.25rem;">
+                    <form action="{{ url_for('update_schedule_preset', preset_id=preset.id) }}" method="POST" class="preset-form-grid">
+                        <div class="form-group">
+                            <label>Nama</label>
+                            <input type="text" name="name" class="form-control" value="{{ preset.name }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Mata Kuliah</label>
+                            <input type="text" name="subject" class="form-control" value="{{ preset.subject }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Dosen</label>
+                            <input type="text" name="lecturer" class="form-control" value="{{ preset.lecturer or '' }}">
+                        </div>
+                        <div class="form-group">
+                            <label>Ruangan</label>
+                            <input type="text" name="room" class="form-control" value="{{ preset.room or '' }}">
+                        </div>
+                        <button type="submit" class="btn" style="padding: 10px 14px; font-weight: 700; align-self: end;">
+                            <i data-lucide="save" style="width:14px;"></i> Simpan
+                        </button>
+                    </form>
+                    <form action="{{ url_for('delete_schedule_preset', preset_id=preset.id) }}" method="POST" onsubmit="return confirm('Hapus preset ini?')" style="margin-top: .75rem;">
+                        <button type="submit" class="btn" style="background:#fee2e2; color:#991b1b; padding: 10px 14px;">
+                            <i data-lucide="trash-2" style="width:14px;"></i> Hapus Preset
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            {% else %}
+            <div class="card" style="text-align: center; padding: 2rem;">
+                <i data-lucide="bookmark" style="width: 42px; height: 42px; color: #94a3b8;"></i>
+                <h3 style="margin-top: 1rem;">Belum ada preset jadwal</h3>
+                <p style="color: var(--text-muted);">Preset akan mempercepat isi mata kuliah, dosen, dan ruangan.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endif %}
 
 {% if current_user.role.can_manage_schedule %}
 <div id="tab-templates" style="display: none; margin-top: 2rem;">
@@ -247,6 +317,15 @@
             </div>
             <form method="POST">
                 <div class="form-group">
+                    <label>Gunakan Preset</label>
+                    <select id="schedule-preset-picker" class="form-control" onchange="applySchedulePreset(this.value, 'create')">
+                        <option value="">Isi manual</option>
+                        {% for preset in schedule_presets %}
+                        <option value="{{ preset.id }}" data-subject="{{ preset.subject|e }}" data-lecturer="{{ (preset.lecturer or '')|e }}" data-room="{{ (preset.room or '')|e }}">{{ preset.name }} - {{ preset.subject }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
                     <label>Pilih Hari</label>
                     <select name="day" class="form-control" required>
                         {% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}
@@ -258,9 +337,9 @@
                     <div class="form-group"><label>Mulai</label><input type="time" name="time_start" class="form-control" required></div>
                     <div class="form-group"><label>Selesai</label><input type="time" name="time_end" class="form-control" required></div>
                 </div>
-                <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" class="form-control" required></div>
-                <div class="form-group"><label>Dosen</label><input type="text" name="lecturer" class="form-control"></div>
-                <div class="form-group"><label>Ruangan</label><input type="text" name="room" class="form-control"></div>
+                <div class="form-group"><label>Mata Kuliah</label><input type="text" name="subject" id="schedule-subject" class="form-control" required></div>
+                <div class="form-group"><label>Dosen</label><input type="text" name="lecturer" id="schedule-lecturer" class="form-control"></div>
+                <div class="form-group"><label>Ruangan</label><input type="text" name="room" id="schedule-room" class="form-control"></div>
                 <button type="submit" class="btn" style="width: 100%; font-weight: 700;">Simpan Jadwal</button>
             </form>
         </div>
@@ -335,6 +414,15 @@
     <div class="card" style="width: 450px; padding: 2rem;">
         <h2 style="margin-bottom: 1.5rem;">Edit Jadwal</h2>
         <form id="form-edit-sched" method="POST">
+            <div class="form-group">
+                <label>Gunakan Preset</label>
+                <select id="edit-preset-picker" class="form-control" onchange="applySchedulePreset(this.value, 'edit')">
+                    <option value="">Tetap pakai data saat ini</option>
+                    {% for preset in schedule_presets %}
+                    <option value="{{ preset.id }}" data-subject="{{ preset.subject|e }}" data-lecturer="{{ (preset.lecturer or '')|e }}" data-room="{{ (preset.room or '')|e }}">{{ preset.name }} - {{ preset.subject }}</option>
+                    {% endfor %}
+                </select>
+            </div>
             <div class="form-group"><label>Hari</label><select name="day" id="edit-day" class="form-control">{% for d in ['Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'] %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 <div class="form-group"><label>Mulai</label><input type="time" name="time_start" id="edit-start" class="form-control"></div>
@@ -369,15 +457,24 @@
         border-radius: 12px;
         background: #f8fafc;
     }
+    .preset-form-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(120px, 1fr)) auto;
+        gap: .75rem;
+        align-items: end;
+    }
     @media (max-width: 1100px) {
+        #tab-presets > div,
         #tab-templates > div {
             grid-template-columns: 1fr !important;
         }
+        .preset-form-grid,
         .template-item-form {
             grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
     @media (max-width: 640px) {
+        .preset-form-grid,
         .template-item-form {
             grid-template-columns: 1fr;
         }
@@ -388,13 +485,27 @@
 function showTab(tabName) {
     document.getElementById('tab-schedule').style.display = tabName === 'schedule' ? 'block' : 'none';
     document.getElementById('tab-assignments').style.display = tabName === 'assignments' ? 'block' : 'none';
+    const presetsTab = document.getElementById('tab-presets');
+    if (presetsTab) {
+        presetsTab.style.display = tabName === 'presets' ? 'block' : 'none';
+    }
     const templatesTab = document.getElementById('tab-templates');
     if (templatesTab) {
-        templatesTab.style.display = tabName === 'templates' ? 'block' : 'none';
+        templatesTab.style.display = 'none';
     }
-    if (tabName === 'templates') {
-        history.replaceState(null, '', '#templates');
+    if (tabName === 'presets') {
+        history.replaceState(null, '', '#presets');
     }
+}
+function applySchedulePreset(value, mode) {
+    const select = document.getElementById(mode === 'edit' ? 'edit-preset-picker' : 'schedule-preset-picker');
+    const option = select ? select.options[select.selectedIndex] : null;
+    if (!option || !value) return;
+
+    const prefix = mode === 'edit' ? 'edit' : 'schedule';
+    document.getElementById(prefix + '-subject').value = option.dataset.subject || '';
+    document.getElementById(prefix + '-lecturer').value = option.dataset.lecturer || '';
+    document.getElementById(prefix + '-room').value = option.dataset.room || '';
 }
 function openEditSchedule(id, day, start, end, subject, lecturer, room) {
     document.getElementById('form-edit-sched').action = '/schedule/edit/' + id;
@@ -404,11 +515,13 @@ function openEditSchedule(id, day, start, end, subject, lecturer, room) {
     document.getElementById('edit-subject').value = subject;
     document.getElementById('edit-lecturer').value = lecturer;
     document.getElementById('edit-room').value = room;
+    const presetPicker = document.getElementById('edit-preset-picker');
+    if (presetPicker) presetPicker.value = '';
     document.getElementById('modal-edit-sched').style.display = 'flex';
 }
 document.addEventListener('DOMContentLoaded', function() {
-    if (window.location.hash === '#templates') {
-        showTab('templates');
+    if (window.location.hash === '#presets') {
+        showTab('presets');
     }
 });
 </script>

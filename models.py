@@ -113,6 +113,19 @@ class Schedule(db.Model):
     lecturer = db.Column(db.String(100))
     room = db.Column(db.String(50))
 
+class SchedulePreset(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    subject = db.Column(db.String(100), nullable=False)
+    lecturer = db.Column(db.String(100))
+    room = db.Column(db.String(50))
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref='schedule_presets', lazy=True)
+    creator = db.relationship('User', backref='schedule_presets', lazy=True)
+
 class ScheduleTemplate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
