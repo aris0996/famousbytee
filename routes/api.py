@@ -679,6 +679,219 @@ def modify_schedule(id):
         
         return jsonify({"status": "success"})
 
+def _schedule_classroom_for_user(user):
+    from models import ClassRoom
+    if user.student and user.student.classroom_id:
+        return user.student.classroom
+    return ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+def _schedule_template_payload(template):
+    return {
+        "id": template.id,
+        "name": template.name,
+        "description": template.description or "",
+        "classroom_id": template.classroom_id,
+        "items_count": len(template.items),
+        "items": [{
+            "id": item.id,
+            "day": item.day,
+            "time_start": item.time_start,
+            "time_end": item.time_end,
+            "subject": item.subject,
+            "lecturer": item.lecturer,
+            "room": item.room,
+            "sort_order": item.sort_order,
+        } for item in template.items]
+    }
+
+@api_bp.route('/schedules/templates', methods=['GET', 'POST'])
+@jwt_required()
+def schedule_templates():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate
+    classroom = _schedule_classroom_for_user(user)
+
+    if request.method == 'POST':
+        data = request.get_json() or {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return jsonify({"error": "Nama template wajib diisi"}), 400
+
+        template = ScheduleTemplate(
+            classroom_id=classroom.id if classroom else None,
+            name=name,
+            description=(data.get('description') or '').strip(),
+            created_by=user.id
+        )
+        db.session.add(template)
+        db.session.commit()
+        return jsonify({"status": "success", "template": _schedule_template_payload(template)}), 201
+
+    query = ScheduleTemplate.query
+    if classroom:
+        query = query.filter(
+            (ScheduleTemplate.classroom_id == classroom.id) |
+            (ScheduleTemplate.classroom_id.is_(None))
+        )
+    templates = query.order_by(ScheduleTemplate.updated_at.desc(), ScheduleTemplate.name.asc()).all()
+    return jsonify([_schedule_template_payload(template) for template in templates])
+
+@api_bp.route('/schedules/templates/from-current', methods=['POST'])
+@jwt_required()
+def schedule_template_from_current():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate, ScheduleTemplateItem
+    classroom = _schedule_classroom_for_user(user)
+    schedules = Schedule.query.filter_by(classroom_id=classroom.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all() if classroom else []
+    if not schedules:
+        return jsonify({"error": "Belum ada jadwal aktif untuk dijadikan template"}), 400
+
+    data = request.get_json() or {}
+    template = ScheduleTemplate(
+        classroom_id=classroom.id,
+        name=(data.get('name') or f"Template Jadwal").strip(),
+        description=(data.get('description') or 'Dibuat dari jadwal aktif.').strip(),
+        created_by=user.id
+    )
+    db.session.add(template)
+    db.session.flush()
+    for index, schedule in enumerate(schedules, start=1):
+        db.session.add(ScheduleTemplateItem(
+            template_id=template.id,
+            day=schedule.day,
+            time_start=schedule.time_start,
+            time_end=schedule.time_end,
+            subject=schedule.subject,
+            lecturer=schedule.lecturer,
+            room=schedule.room,
+            sort_order=index
+        ))
+    db.session.commit()
+    return jsonify({"status": "success", "template": _schedule_template_payload(template)}), 201
+
+@api_bp.route('/schedules/templates/<int:template_id>/items', methods=['POST'])
+@jwt_required()
+def add_schedule_template_item_api(template_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate, ScheduleTemplateItem
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    data = request.get_json() or {}
+    required = ['day', 'time_start', 'time_end', 'subject']
+    if any(not (data.get(key) or '').strip() for key in required):
+        return jsonify({"error": "Hari, jam, dan mata kuliah wajib diisi"}), 400
+
+    last_item = ScheduleTemplateItem.query.filter_by(template_id=template.id).order_by(ScheduleTemplateItem.sort_order.desc()).first()
+    item = ScheduleTemplateItem(
+        template_id=template.id,
+        day=data['day'],
+        time_start=data['time_start'],
+        time_end=data['time_end'],
+        subject=data['subject'],
+        lecturer=data.get('lecturer') or '-',
+        room=data.get('room') or '-',
+        sort_order=(last_item.sort_order + 1) if last_item else 1
+    )
+    db.session.add(item)
+    db.session.commit()
+    return jsonify({"status": "success", "template": _schedule_template_payload(template)})
+
+@api_bp.route('/schedules/templates/items/<int:item_id>', methods=['DELETE'])
+@jwt_required()
+def delete_schedule_template_item_api(item_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplateItem
+    item = ScheduleTemplateItem.query.get_or_404(item_id)
+    db.session.delete(item)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+@api_bp.route('/schedules/templates/<int:template_id>/apply', methods=['POST'])
+@jwt_required()
+def apply_schedule_template_api(template_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate
+    classroom = _schedule_classroom_for_user(user)
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    if not template.items:
+        return jsonify({"error": "Template belum memiliki item jadwal"}), 400
+
+    data = request.get_json() or {}
+    if data.get('replace_existing', True):
+        Schedule.query.filter_by(classroom_id=classroom.id).delete(synchronize_session=False)
+
+    for item in template.items:
+        db.session.add(Schedule(
+            classroom_id=classroom.id,
+            day=item.day,
+            time_start=item.time_start,
+            time_end=item.time_end,
+            subject=item.subject,
+            lecturer=item.lecturer or '-',
+            room=item.room or '-'
+        ))
+    db.session.commit()
+    return jsonify({"status": "success", "applied_items": len(template.items)})
+
+@api_bp.route('/schedules/templates/<int:template_id>/duplicate', methods=['POST'])
+@jwt_required()
+def duplicate_schedule_template_api(template_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate, ScheduleTemplateItem
+    original = ScheduleTemplate.query.get_or_404(template_id)
+    data = request.get_json() or {}
+    duplicate = ScheduleTemplate(
+        classroom_id=original.classroom_id,
+        name=(data.get('name') or f"Salinan {original.name}").strip(),
+        description=original.description,
+        created_by=user.id
+    )
+    db.session.add(duplicate)
+    db.session.flush()
+    for item in original.items:
+        db.session.add(ScheduleTemplateItem(
+            template_id=duplicate.id,
+            day=item.day,
+            time_start=item.time_start,
+            time_end=item.time_end,
+            subject=item.subject,
+            lecturer=item.lecturer,
+            room=item.room,
+            sort_order=item.sort_order
+        ))
+    db.session.commit()
+    return jsonify({"status": "success", "template": _schedule_template_payload(duplicate)}), 201
+
+@api_bp.route('/schedules/templates/<int:template_id>', methods=['DELETE'])
+@jwt_required()
+def delete_schedule_template_api(template_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user.role.can_manage_schedule:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from models import ScheduleTemplate
+    template = ScheduleTemplate.query.get_or_404(template_id)
+    db.session.delete(template)
+    db.session.commit()
+    return jsonify({"status": "success"})
+
 @api_bp.route('/notifications/preferences', methods=['GET'])
 @jwt_required()
 def get_notification_preferences():
