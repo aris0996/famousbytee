@@ -458,6 +458,18 @@
                 <i data-lucide="chevron-left" id="toggle-icon"></i>
             </div>
         </div>
+        {% if current_user.is_authenticated %}
+        {% set sidebar_classroom = active_classroom if active_classroom is defined and active_classroom else (current_user.classroom if current_user.classroom else (current_user.student.classroom if current_user.student and current_user.student.classroom else none)) %}
+        <div style="margin: 0 0.75rem 1.25rem; padding: 0.85rem 1rem; border-radius: 14px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.08);">
+            <div style="font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Kelas Aktif</div>
+            <div style="font-size: 0.95rem; font-weight: 700; color: #fff; line-height: 1.35;">
+                {{ sidebar_classroom.name if sidebar_classroom else 'Belum dipilih' }}
+                {% if sidebar_classroom and sidebar_classroom.batch %}
+                    <span style="display:block; font-size: 0.8rem; font-weight: 500; color: #cbd5e1;">{{ sidebar_classroom.batch }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
         <nav class="nav-list">
             <div class="nav-item">
                 <a href="{{ url_for('index') }}" class="nav-link">

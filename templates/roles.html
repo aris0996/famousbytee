@@ -2,7 +2,12 @@
 
 {% block content %}
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;">
-    <h1>Manajemen Akses & User</h1>
+    <div>
+        <h1>Manajemen Akses & User</h1>
+        <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 0.35rem;">
+            Fokus multi-kelas: hak akses, penempatan user, dan batas data antar kelas.
+        </p>
+    </div>
     <div style="display: flex; gap: 10px; flex-wrap: wrap;">
         {% if current_user.role.can_export_data %}
         <a href="{{ url_for('export_fund') }}" class="btn" style="background: #1e293b; color: white; text-decoration: none; display: flex; align-items: center; gap: 8px;">
@@ -42,6 +47,7 @@
                     <th style="padding: 1rem; text-align: left;">User / Profil</th>
                     <th style="padding: 1rem; text-align: left;">Role</th>
                     <th style="padding: 1rem; text-align: left;">Linked Identity</th>
+                    <th style="padding: 1rem; text-align: left;">Kelas</th>
                     <th style="padding: 1rem; text-align: left;">Status</th>
                     <th style="padding: 1rem; text-align: right;">Aksi</th>
                 </tr>
@@ -74,13 +80,18 @@
                         {% endif %}
                     </td>
                     <td style="padding: 1rem;">
+                        <span class="status-badge" style="background:#ede9fe; color:#6d28d9; font-size: 0.75rem;">
+                            {{ u.classroom.name if u.classroom else (u.student.classroom.name if u.student and u.student.classroom else '-') }}
+                        </span>
+                    </td>
+                    <td style="padding: 1rem;">
                         <span class="status-badge {{ 'status-aktif' if u.status == 'Active' else 'status-cuti' }}" style="font-size: 0.75rem;">
                             {{ u.status }}
                         </span>
                     </td>
                     <td style="padding: 1rem; text-align: right;">
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button onclick="openEditModal('{{ u.id }}', '{{ u.full_name|replace('\'','\\\'') or '' }}', '{{ u.email|replace('\'','\\\'') or '' }}', '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
+                            <button onclick="openEditModal('{{ u.id }}', '{{ u.full_name|replace('\'','\\\'') or '' }}', '{{ u.email|replace('\'','\\\'') or '' }}', '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}', '{{ u.classroom_id or (u.student.classroom_id if u.student else 'none') }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
                                 <i data-lucide="edit-3" style="width: 18px;"></i>
                             </button>
                             {% if u.id != current_user.id %}
@@ -140,6 +151,9 @@
                     {% if role.can_view_all_classrooms %}<span class="status-badge" style="background:#f1f5f9; color:#334155; font-size: 0.75rem;">Lihat Semua Kelas</span>{% endif %}
 
                 </div>
+            </div>
+            <div style="margin-top: 0.9rem; font-size: 0.78rem; color: var(--text-muted); line-height: 1.45;">
+                Pastikan role multi-kelas hanya diberikan ke operator yang memang perlu melihat atau mengelola data lintas kelas.
             </div>
             
             <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
@@ -241,7 +255,7 @@
                 <div class="form-group" style="flex: 1;"><label>Email</label><input type="email" name="email" id="edit-email" class="form-control"></div>
                 <div class="form-group" style="flex: 1;"><label>Password (Opsional)</label><input type="password" name="password" class="form-control" placeholder="Biarkan kosong"></div>
             </div>
-            <div style="display: flex; gap: 15px;">
+    <div style="display: flex; gap: 15px;">
                 <div class="form-group" style="flex: 1;"><label>Role</label><select name="role_id" id="edit-role-id" class="form-control">{% for r in roles %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></div>
                 <div class="form-group" style="flex: 1;"><label>Status</label><select name="status" id="edit-status" class="form-control"><option value="Active">Active</option><option value="Inactive">Banned</option></select></div>
             </div>
@@ -437,7 +451,7 @@ function openEditRoleModal(id, name, desc, p) {
 
     document.getElementById('modal-edit-role').style.display = 'flex';
 }
-function openEditModal(id, fullName, email, roleId, status, studentId) {
+    function openEditModal(id, fullName, email, roleId, status, studentId, classroomId) {
     document.getElementById('form-edit-user').action = '/roles/edit/user/' + id;
     document.getElementById('edit-full-name').value = fullName;
     document.getElementById('edit-email').value = email;
@@ -445,7 +459,7 @@ function openEditModal(id, fullName, email, roleId, status, studentId) {
     document.getElementById('edit-status').value = status;
     document.getElementById('edit-student-id').value = studentId;
     const classroomField = document.getElementById('edit-classroom-id');
-    if (classroomField) classroomField.value = 'none';
+    if (classroomField) classroomField.value = classroomId || 'none';
     document.getElementById('modal-edit-user').style.display = 'flex';
 }
 window.onclick = function(event) {

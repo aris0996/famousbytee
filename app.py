@@ -1550,8 +1550,17 @@ def view_announcements():
     if not current_user.role.can_manage_announcements:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
-    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
-    return render_template('logs.html', logs=logs)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not active_classroom:
+        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    anns_query = Announcement.query
+    if active_classroom:
+        anns_query = anns_query.filter(
+            (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
+        )
+    announcements = anns_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('announcements.html', announcements=announcements, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/logs')
 @login_required
@@ -1644,17 +1653,29 @@ def dashboard():
     admin_stats = None
     recent_students = []
     if current_user.role.can_manage_students or current_user.role.can_manage_fund or current_user.role.can_manage_announcements:
-        total_mhs = Student.query.count()
-        total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
-        total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
-        total_ann = Announcement.query.count()
+        total_mhs_query = Student.query
+        total_in_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk')
+        total_out_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar')
+        total_ann_query = Announcement.query
+        if active_classroom:
+            total_mhs_query = total_mhs_query.filter_by(classroom_id=active_classroom.id)
+            total_in_query = total_in_query.join(Student, BatchFund.student_id == Student.id).filter(Student.classroom_id == active_classroom.id)
+            total_out_query = total_out_query.join(Student, BatchFund.student_id == Student.id).filter(Student.classroom_id == active_classroom.id)
+            total_ann_query = total_ann_query.filter((Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None)))
+        total_mhs = total_mhs_query.count()
+        total_in = total_in_query.scalar() or 0
+        total_out = total_out_query.scalar() or 0
+        total_ann = total_ann_query.count()
         
         admin_stats = {
             'total_members': total_mhs,
             'balance': total_in - total_out,
             'total_announcements': total_ann
         }
-        recent_students = Student.query.order_by(Student.id.desc()).limit(5).all()
+        recent_students_query = Student.query
+        if active_classroom:
+            recent_students_query = recent_students_query.filter_by(classroom_id=active_classroom.id)
+        recent_students = recent_students_query.order_by(Student.id.desc()).limit(5).all()
 
     return render_template('dashboard.html', 
                          recent_announcements=recent_announcements,
@@ -1879,7 +1900,13 @@ def create_schedule_preset():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     name = (request.form.get('name') or '').strip()
     subject = (request.form.get('subject') or '').strip()
     if not name or not subject:
@@ -1906,7 +1933,9 @@ def update_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     preset = SchedulePreset.query.get_or_404(preset_id)
     if class_fb and preset.classroom_id not in (class_fb.id, None):
         return redirect(url_for('manage_schedule') + '#presets')
@@ -1931,7 +1960,9 @@ def delete_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     preset = SchedulePreset.query.get_or_404(preset_id)
     if class_fb and preset.classroom_id not in (class_fb.id, None):
         return redirect(url_for('manage_schedule') + '#presets')
@@ -1963,7 +1994,13 @@ def create_schedule_template():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     template = ScheduleTemplate(
         classroom_id=class_fb.id,
         name=(request.form.get('name') or 'Template Jadwal Baru').strip(),
@@ -1982,7 +2019,13 @@ def create_schedule_template_from_current():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first()
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if current_user.role.can_manage_roles:
+        classroom_id = request.form.get('classroom_id')
+        if classroom_id:
+            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
     if not schedules:
         flash('Belum ada jadwal aktif untuk dijadikan template.')
@@ -3225,6 +3268,10 @@ def public_gallery():
 @login_required
 def add_photo_comment(photo_id):
     photo = GalleryPhoto.query.get_or_404(photo_id)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if active_classroom and photo.classroom_id not in (active_classroom.id, None):
+        flash('Akses ditolak.')
+        return redirect(request.referrer or url_for('manage_gallery'))
     body = request.form.get('body', '').strip()
     if body:
         comment = PhotoComment(photo_id=photo.id, user_id=current_user.id, body=body)
@@ -3254,6 +3301,10 @@ def add_photo_comment(photo_id):
 @login_required
 def delete_photo_comment(id):
     comment = PhotoComment.query.get_or_404(id)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if active_classroom and comment.photo.classroom_id not in (active_classroom.id, None):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_gallery'))
     # Allow deletion if Admin/Pengurus or if the user owns the comment
     can_delete = False
     if current_user.role.name in ['Admin', 'Pengurus']:
