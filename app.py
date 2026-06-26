@@ -1115,6 +1115,35 @@ with app.app_context():
         except Exception as e:
             print(f"Database Patch Error: {e}")
 
+    # Multi-class permission columns for older production databases
+    multi_class_role_cols = [
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_manage_classrooms',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+        'can_manage_students_multi_class',
+        'can_manage_schedule_multi_class',
+        'can_manage_announcements_multi_class',
+        'can_manage_assignments_multi_class',
+        'can_manage_gallery_multi_class',
+        'can_manage_notifications_multi_class',
+        'can_view_classroom_reports',
+        'can_export_classroom_data',
+    ]
+    for col in multi_class_role_cols:
+        try:
+            db.session.execute(text(f"SELECT {col} FROM role LIMIT 1"))
+        except Exception:
+            db.session.rollback()
+            try:
+                print(f"Database Patch: Adding missing role permission {col}...")
+                db.session.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT FALSE"))
+                db.session.commit()
+            except Exception as e:
+                print(f"Database Patch Error ({col}): {e}")
+
     try:
         from sqlalchemy import text
         db.session.execute(text("SELECT channel FROM notification_history LIMIT 1"))
