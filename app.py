@@ -2794,7 +2794,7 @@ def manage_settings():
         if classroom_id is not None and str(classroom_id).strip():
             try:
                 classroom_id = int(classroom_id)
-                if current_user.role.can_manage_roles:
+                if current_user.role.can_manage_roles or getattr(current_user.role, 'can_access_multi_classroom', False) or getattr(current_user.role, 'can_switch_classroom_context', False):
                     allowed_classrooms = ClassRoom.query.all()
                 else:
                     allowed_classrooms = [current_user.classroom or (current_user.student.classroom if current_user.student else None)]
@@ -2851,7 +2851,7 @@ def manage_settings():
     if not active_classroom:
         active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     classrooms = []
-    if current_user.role.can_manage_roles:
+    if current_user.role.can_manage_roles or getattr(current_user.role, 'can_access_multi_classroom', False) or getattr(current_user.role, 'can_switch_classroom_context', False):
         classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
     elif active_classroom:
         classrooms = [active_classroom]
@@ -2860,7 +2860,7 @@ def manage_settings():
 @app.route('/classes', methods=['GET', 'POST'])
 @login_required
 def manage_classes():
-    if not current_user.role.can_manage_roles:
+    if not (current_user.role.can_manage_roles or getattr(current_user.role, 'can_manage_classrooms', False)):
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
 

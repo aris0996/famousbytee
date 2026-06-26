@@ -4,9 +4,17 @@
 <header>
     <div>
         <h1>Manajemen Kelas</h1>
-        <p style="color: var(--text-muted);">Daftar kelas dan angkatan yang aktif.</p>
+        <p style="color: var(--text-muted);">Daftar kelas aktif, angkatan, dan pusat pengaturan struktur multi-kelas.</p>
     </div>
 </header>
+
+<div class="card" style="padding: 1rem 1.15rem; margin-bottom: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Catatan Operator</div>
+    <div style="font-size: 0.95rem; color: #334155; line-height: 1.6;">
+        Edit kelas dipakai untuk merapikan nama atau batch tanpa mengubah data member yang sudah terhubung.
+        Hapus kelas sebaiknya hanya dilakukan bila benar-benar kosong.
+    </div>
+</div>
 
 <div style="display: grid; grid-template-columns: 1fr 300px; gap: 2rem;">
     <!-- Class Table -->

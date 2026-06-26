@@ -2,7 +2,12 @@
 {% block content %}
 <header>
     <div>
-        <h1>Database Member Famousbytee.b</h1>
+        <h1>Database Member</h1>
+        <p style="margin: 0.35rem 0 0; color: var(--text-muted);">
+            Fokus data saat ini:
+            <strong>{{ active_classroom.name if active_classroom else '-' }}</strong>
+            {% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+        </p>
         <p style="color: var(--text-muted);">Kelola data anggota kelas dalam satu halaman tanpa ribet.</p>
     </div>
 </header>

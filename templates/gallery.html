@@ -3,7 +3,11 @@
 <header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 2rem;">
     <div>
         <h1>Galeri & Dokumentasi</h1>
-        <p style="color: var(--text-muted);">Kenangan dan arsip visual kelas Famousbytee.b</p>
+        <p style="color: var(--text-muted);">
+            Kenangan dan arsip visual untuk
+            <strong>{{ active_classroom.name if active_classroom else '-' }}</strong>
+            {% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+        </p>
     </div>
     <div style="display: flex; gap: 10px;">
         <a href="{{ url_for('public_gallery') }}" target="_blank" class="btn" style="background: white; border: 1px solid #e2e8f0; color: var(--text-main); text-decoration: none; padding: 10px 15px; border-radius: 12px; display: inline-flex; align-items: center; gap: 8px; font-weight: 700;">
@@ -14,6 +18,16 @@
         </button>
     </div>
 </header>
+
+<div class="card" style="margin-bottom: 1.25rem; padding: 1rem 1.15rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Ruang Kerja Aktif</div>
+    <div style="font-size: 1rem; font-weight: 800; color: #0f172a;">
+        {{ active_classroom.name if active_classroom else '-' }}{% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+    </div>
+    <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.35rem;">
+        Upload, moderasi, dan tampilan galeri mengikuti kelas aktif agar operator tidak tertukar antar kelas.
+    </div>
+</div>
 
 <div class="masonry-grid" id="gallery-container">
     {% for photo in photos %}

@@ -1,7 +1,14 @@
 {% extends 'base.html' %}
 {% block content %}
 <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-    <h1>Pengumuman Class Famousbytee.b</h1>
+    <div>
+        <h1 style="margin-bottom: 0.35rem;">Pengumuman Kelas</h1>
+        <p style="margin: 0; color: var(--text-muted);">
+            Fokus data saat ini:
+            <strong>{{ active_classroom.name if active_classroom else '-' }}</strong>
+            {% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+        </p>
+    </div>
     <div style="display: flex; gap: 10px; align-items: center;">
         <div style="position: relative;">
             <i data-lucide="search" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 14px; color: #94a3b8;"></i>
@@ -14,6 +21,16 @@
         {% endif %}
     </div>
 </header>
+
+<div class="card" style="margin-bottom: 1rem; padding: 1rem 1.15rem; background: #f8fafc; border: 1px solid #e2e8f0;">
+    <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Kelas Aktif</div>
+    <div style="font-size: 1rem; font-weight: 800; color: #0f172a;">
+        {{ active_classroom.name if active_classroom else '-' }}{% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+    </div>
+    <div style="font-size: 0.85rem; color: #64748b; margin-top: 0.35rem;">
+        Pengumuman publik tetap bisa muncul lintas kelas bila memang ditandai publik.
+    </div>
+</div>
 
 <div class="announcement-container" id="ann-list">
     <!-- Desktop Table (Hidden on Mobile) -->

@@ -44,6 +44,86 @@ def _user_classroom(user):
         return user.student.classroom
     return _default_classroom()
 
+
+def _permission_payload(role):
+    return {
+        "can_manage_students": role.can_manage_students,
+        "can_manage_schedule": role.can_manage_schedule,
+        "can_manage_fund": role.can_manage_fund,
+        "can_manage_announcements": role.can_manage_announcements,
+        "can_manage_notifications": role.can_manage_notifications,
+        "can_manage_whatsapp": role.can_manage_whatsapp,
+        "can_manage_gallery": role.can_manage_gallery,
+        "can_manage_assignments": role.can_manage_assignments,
+        "can_view_logs": role.can_view_logs,
+        "can_access_multi_classroom": getattr(role, 'can_access_multi_classroom', False),
+        "can_switch_classroom_context": getattr(role, 'can_switch_classroom_context', False),
+        "can_manage_classrooms": getattr(role, 'can_manage_classrooms', False),
+        "can_view_all_classrooms": getattr(role, 'can_view_all_classrooms', False),
+        "can_assign_users_to_classroom": getattr(role, 'can_assign_users_to_classroom', False),
+        "can_move_users_between_classrooms": getattr(role, 'can_move_users_between_classrooms', False),
+        "can_manage_students_multi_class": getattr(role, 'can_manage_students_multi_class', False),
+        "can_manage_schedule_multi_class": getattr(role, 'can_manage_schedule_multi_class', False),
+        "can_manage_announcements_multi_class": getattr(role, 'can_manage_announcements_multi_class', False),
+        "can_manage_assignments_multi_class": getattr(role, 'can_manage_assignments_multi_class', False),
+        "can_manage_gallery_multi_class": getattr(role, 'can_manage_gallery_multi_class', False),
+        "can_manage_notifications_multi_class": getattr(role, 'can_manage_notifications_multi_class', False),
+        "can_view_classroom_reports": getattr(role, 'can_view_classroom_reports', False),
+        "can_export_classroom_data": getattr(role, 'can_export_classroom_data', False),
+    }
+
+
+def _can_access_multi_class_data(role):
+    return bool(
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, 'can_access_multi_classroom', False) or
+        getattr(role, 'can_view_all_classrooms', False) or
+        getattr(role, 'can_switch_classroom_context', False)
+    )
+
+
+def _allowed_classrooms_for_user(user):
+    current = _user_classroom(user)
+    if user.role and _can_access_multi_class_data(user.role):
+        return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return [current] if current else []
+
+
+def _can_manage_students_across_classes(role):
+    return bool(
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, 'can_manage_students_multi_class', False) or
+        getattr(role, 'can_assign_users_to_classroom', False) or
+        getattr(role, 'can_move_users_between_classrooms', False) or
+        getattr(role, 'can_view_all_classrooms', False)
+    )
+
+
+def _allowed_classroom_ids_for_student_management(user):
+    if user.role and _can_manage_students_across_classes(user.role):
+        return {item.id for item in ClassRoom.query.with_entities(ClassRoom.id).all()}
+    classroom = _user_classroom(user)
+    return {classroom.id} if classroom else set()
+
+
+def _classroom_from_request(data, fallback_classroom, allowed_ids):
+    raw_classroom_id = data.get('classroom_id')
+    if raw_classroom_id in (None, ''):
+        return fallback_classroom
+
+    try:
+        classroom_id = int(raw_classroom_id)
+    except Exception:
+        raise ValueError('Format classroom_id tidak valid')
+
+    if classroom_id not in allowed_ids:
+        raise PermissionError('Kelas tidak diizinkan')
+
+    classroom = ClassRoom.query.get(classroom_id)
+    if not classroom:
+        raise LookupError('Kelas tidak ditemukan')
+    return classroom
+
 @api_bp.route('/app/releases/windows/latest', methods=['GET'])
 def latest_windows_release():
     manifest_path = os.path.join(
@@ -156,6 +236,7 @@ def login():
     
     # Check if user exists and password matches
     if user:
+        classroom = _user_classroom(user)
         stored_password = user.password or ''
         if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
             is_valid = check_password_hash(stored_password, password)
@@ -203,17 +284,9 @@ def login():
                 "role": user.role.name,
                 "points": user.points or 0,
                 "classroom_id": user.classroom_id or (user.student.classroom_id if user.student else None),
-                "permissions": {
-                    "can_manage_students": user.role.can_manage_students,
-                    "can_manage_schedule": user.role.can_manage_schedule,
-                    "can_manage_fund": user.role.can_manage_fund,
-                    "can_manage_announcements": user.role.can_manage_announcements,
-                    "can_manage_notifications": user.role.can_manage_notifications,
-                    "can_manage_whatsapp": user.role.can_manage_whatsapp,
-                    "can_manage_gallery": user.role.can_manage_gallery,
-                    "can_manage_assignments": user.role.can_manage_assignments,
-                    "can_view_logs": user.role.can_view_logs,
-                },
+                "classroom_name": classroom.name if classroom else None,
+                "classroom_batch": classroom.batch if classroom else None,
+                "permissions": _permission_payload(user.role),
                 "student": student_data
             }
         }), 200
@@ -228,14 +301,9 @@ def list_classrooms():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
-    classroom = _user_classroom(user)
-    if not classroom:
+    classrooms = _allowed_classrooms_for_user(user)
+    if not classrooms:
         return jsonify([])
-
-    if user.role and user.role.can_manage_roles:
-        classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
-    else:
-        classrooms = [classroom]
 
     return jsonify([
         {
@@ -275,7 +343,8 @@ def get_profile():
     
     if not user:
         return jsonify({"msg": "User not found"}), 404
-        
+    
+    classroom = _user_classroom(user)
     student_data = None
     if user.student:
         target = get_fund_target()
@@ -303,18 +372,9 @@ def get_profile():
         "role": user.role.name,
         "points": user.points or 0,
         "classroom_id": user.classroom_id or (user.student.classroom_id if user.student else None),
-        "classroom_name": _user_classroom(user).name if _user_classroom(user) else None,
-        "permissions": {
-            "can_manage_students": user.role.can_manage_students,
-            "can_manage_schedule": user.role.can_manage_schedule,
-            "can_manage_fund": user.role.can_manage_fund,
-            "can_manage_announcements": user.role.can_manage_announcements,
-            "can_manage_notifications": user.role.can_manage_notifications,
-            "can_manage_whatsapp": user.role.can_manage_whatsapp,
-            "can_manage_gallery": user.role.can_manage_gallery,
-            "can_manage_assignments": user.role.can_manage_assignments,
-            "can_view_logs": user.role.can_view_logs,
-        },
+        "classroom_name": classroom.name if classroom else None,
+        "classroom_batch": classroom.batch if classroom else None,
+        "permissions": _permission_payload(user.role),
         "student": student_data
     })
 
@@ -332,13 +392,7 @@ def update_profile_classroom():
     except Exception:
         return jsonify({"error": "classroom_id wajib diisi"}), 400
 
-    allowed_classrooms = []
-    if user.role and user.role.can_manage_roles:
-        allowed_classrooms = ClassRoom.query.all()
-    else:
-        current = _user_classroom(user)
-        if current:
-            allowed_classrooms = [current]
+    allowed_classrooms = _allowed_classrooms_for_user(user)
 
     allowed_ids = {c.id for c in allowed_classrooms}
     if classroom_id not in allowed_ids:
@@ -354,6 +408,84 @@ def update_profile_classroom():
         "status": "success",
         "classroom_id": classroom.id,
         "classroom_name": classroom.name,
+        "classroom_batch": classroom.batch,
+    })
+
+
+@api_bp.route('/classrooms', methods=['POST'])
+@jwt_required()
+def create_classroom_api():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not (user.role.can_manage_roles or getattr(user.role, 'can_manage_classrooms', False)):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or request.form or {}
+    name = (data.get('name') or '').strip()
+    batch = (data.get('batch') or '').strip()
+    if not name:
+        return jsonify({"error": "Nama kelas wajib diisi"}), 400
+
+    existing = ClassRoom.query.filter(db.func.lower(ClassRoom.name) == name.lower()).first()
+    if existing:
+        return jsonify({"error": "Nama kelas sudah digunakan"}), 400
+
+    classroom = ClassRoom(name=name, batch=batch or None)
+    db.session.add(classroom)
+    db.session.commit()
+
+    from app import log_activity
+    log_activity("Tambah Kelas (Mobile)", f"{classroom.name}")
+    return jsonify({
+        "status": "success",
+        "id": classroom.id,
+        "name": classroom.name,
+        "batch": classroom.batch,
+    }), 201
+
+
+@api_bp.route('/classrooms/<int:classroom_id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def update_classroom_api(classroom_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not (user.role.can_manage_roles or getattr(user.role, 'can_manage_classrooms', False)):
+        return jsonify({"error": "Unauthorized"}), 403
+
+    classroom = ClassRoom.query.get_or_404(classroom_id)
+
+    if request.method == 'DELETE':
+        if Student.query.filter_by(classroom_id=classroom.id).count() > 0:
+            return jsonify({"error": "Kelas masih dipakai member dan tidak bisa dihapus"}), 400
+        if Schedule.query.filter_by(classroom_id=classroom.id).count() > 0:
+            return jsonify({"error": "Kelas masih dipakai jadwal dan tidak bisa dihapus"}), 400
+        db.session.delete(classroom)
+        db.session.commit()
+        from app import log_activity
+        log_activity("Hapus Kelas (Mobile)", classroom.name)
+        return jsonify({"status": "success"})
+
+    data = request.get_json(silent=True) or request.form or {}
+    name = (data.get('name') or classroom.name).strip()
+    batch = (data.get('batch') or '').strip()
+    if not name:
+        return jsonify({"error": "Nama kelas wajib diisi"}), 400
+
+    duplicate = ClassRoom.query.filter(
+        db.func.lower(ClassRoom.name) == name.lower(),
+        ClassRoom.id != classroom.id,
+    ).first()
+    if duplicate:
+        return jsonify({"error": "Nama kelas sudah digunakan"}), 400
+
+    classroom.name = name
+    classroom.batch = batch or None
+    db.session.commit()
+    from app import log_activity
+    log_activity("Edit Kelas (Mobile)", classroom.name)
+    return jsonify({
+        "status": "success",
+        "id": classroom.id,
+        "name": classroom.name,
+        "batch": classroom.batch,
     })
 
 @api_bp.route('/update-fcm-token', methods=['POST'])
@@ -1401,27 +1533,43 @@ def get_funds_audit():
 def get_members():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
-    
+
+    students_query = Student.query
     classroom = _user_classroom(user)
-    if classroom:
-        students = Student.query.filter_by(classroom_id=classroom.id).order_by(Student.full_name).all()
-    else:
-        students = Student.query.order_by(Student.full_name).all()
-        
+    requested_classroom_id = request.args.get('classroom_id')
+    if requested_classroom_id not in (None, ''):
+        try:
+            requested_classroom_id = int(requested_classroom_id)
+        except Exception:
+            return jsonify({"error": "Format classroom_id tidak valid"}), 400
+
+        allowed_ids = _allowed_classroom_ids_for_student_management(user)
+        if requested_classroom_id not in allowed_ids:
+            return jsonify({"error": "Kelas tidak diizinkan"}), 403
+        students_query = students_query.filter_by(classroom_id=requested_classroom_id)
+    elif classroom:
+        students_query = students_query.filter_by(classroom_id=classroom.id)
+
+    students = students_query.order_by(Student.full_name).all()
+
     return jsonify([{
         "id": s.id,
         "nim": s.nim,
         "full_name": s.full_name,
-        "status": s.status
+        "status": s.status,
+        "classroom_id": s.classroom_id,
+        "classroom_name": s.classroom.name if s.classroom else None,
+        "classroom_batch": s.classroom.batch if s.classroom else None,
+        "has_linked_account": bool(s.user),
     } for s in students])
 
 
 def _get_member_detail_for_requester(request_user, member_id):
     member = Student.query.get_or_404(member_id)
 
-    classroom = _user_classroom(request_user)
-    if classroom:
-        if member.classroom_id != classroom.id:
+    allowed_ids = _allowed_classroom_ids_for_student_management(request_user)
+    if allowed_ids:
+        if member.classroom_id not in allowed_ids:
             return None
     elif request_user.role.name not in ['Admin', 'Pengurus', 'Staff']:
         return None
@@ -1439,6 +1587,9 @@ def _get_member_detail_for_requester(request_user, member_id):
         "full_name": member.full_name,
         "nim": member.nim,
         "status": member.status or 'Aktif',
+        "classroom_id": member.classroom_id,
+        "classroom_name": member.classroom.name if member.classroom else None,
+        "classroom_batch": member.classroom.batch if member.classroom else None,
         "whatsapp": linked_user.whatsapp if linked_user and linked_user.whatsapp else None,
         "financial": {
             "paid": total_paid,
@@ -1450,6 +1601,7 @@ def _get_member_detail_for_requester(request_user, member_id):
 
 
 @api_bp.route('/members/<int:member_id>', methods=['GET'])
+@api_bp.route('/students/<int:member_id>', methods=['GET'])
 @jwt_required()
 def get_member_detail(member_id):
     user_id = get_jwt_identity()
@@ -1460,6 +1612,130 @@ def get_member_detail(member_id):
         return jsonify({"error": "Member tidak ditemukan atau tidak dapat diakses"}), 404
 
     return jsonify(payload)
+
+
+@api_bp.route('/students', methods=['POST'])
+@jwt_required()
+def create_member_api():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_students:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    data = request.get_json(silent=True) or request.form or {}
+    nim = (data.get('nim') or '').strip()
+    full_name = (data.get('full_name') or '').strip()
+    status = (data.get('status') or 'Aktif').strip() or 'Aktif'
+    if not nim or not full_name:
+        return jsonify({"error": "NIM dan nama lengkap wajib diisi"}), 400
+
+    if Student.query.filter(db.func.lower(Student.nim) == nim.lower()).first():
+        return jsonify({"error": "NIM sudah digunakan"}), 400
+
+    allowed_ids = _allowed_classroom_ids_for_student_management(user)
+    fallback_classroom = _user_classroom(user)
+    try:
+        classroom = _classroom_from_request(data, fallback_classroom, allowed_ids)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    if not classroom:
+        return jsonify({"error": "Kelas tujuan tidak tersedia"}), 400
+
+    member = Student(
+        nim=nim,
+        full_name=full_name,
+        status=status,
+        classroom_id=classroom.id,
+    )
+    db.session.add(member)
+    db.session.commit()
+
+    from app import log_activity
+    log_activity("Tambah Member (Mobile)", f"{member.full_name} - {classroom.name}")
+
+    return jsonify({
+        "status": "success",
+        "id": member.id,
+        "nim": member.nim,
+        "full_name": member.full_name,
+        "status_label": member.status,
+        "classroom_id": member.classroom_id,
+        "classroom_name": classroom.name,
+        "classroom_batch": classroom.batch,
+    }), 201
+
+
+@api_bp.route('/students/<int:member_id>', methods=['PUT', 'DELETE'])
+@jwt_required()
+def update_member_api(member_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_students:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    member = Student.query.get_or_404(member_id)
+    allowed_ids = _allowed_classroom_ids_for_student_management(user)
+    if allowed_ids and member.classroom_id not in allowed_ids:
+        return jsonify({"error": "Member tidak dapat diakses"}), 403
+
+    if request.method == 'DELETE':
+        if member.user:
+            return jsonify({"error": "Member masih terhubung ke akun login dan tidak bisa dihapus"}), 400
+        db.session.delete(member)
+        db.session.commit()
+        from app import log_activity
+        log_activity("Hapus Member (Mobile)", member.full_name)
+        return jsonify({"status": "success"})
+
+    data = request.get_json(silent=True) or request.form or {}
+    nim = (data.get('nim') or member.nim).strip()
+    full_name = (data.get('full_name') or member.full_name).strip()
+    status = (data.get('status') or member.status or 'Aktif').strip() or 'Aktif'
+    if not nim or not full_name:
+        return jsonify({"error": "NIM dan nama lengkap wajib diisi"}), 400
+
+    duplicate = Student.query.filter(
+        db.func.lower(Student.nim) == nim.lower(),
+        Student.id != member.id,
+    ).first()
+    if duplicate:
+        return jsonify({"error": "NIM sudah digunakan"}), 400
+
+    fallback_classroom = member.classroom or _user_classroom(user)
+    try:
+        classroom = _classroom_from_request(data, fallback_classroom, allowed_ids)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    member.nim = nim
+    member.full_name = full_name
+    member.status = status
+    if classroom:
+        member.classroom_id = classroom.id
+        if member.user and getattr(user.role, 'can_move_users_between_classrooms', False):
+            member.user.classroom_id = classroom.id
+    db.session.commit()
+
+    from app import log_activity
+    log_activity("Edit Member (Mobile)", f"{member.full_name} - {classroom.name if classroom else '-'}")
+
+    return jsonify({
+        "status": "success",
+        "id": member.id,
+        "nim": member.nim,
+        "full_name": member.full_name,
+        "status_label": member.status,
+        "classroom_id": member.classroom_id,
+        "classroom_name": member.classroom.name if member.classroom else None,
+        "classroom_batch": member.classroom.batch if member.classroom else None,
+    })
 
 
 @api_bp.route('/fund-periods', methods=['GET'])
