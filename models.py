@@ -49,6 +49,20 @@ class Role(db.Model):
     can_manage_whatsapp = db.Column(db.Boolean, default=False)
     can_manage_assignments = db.Column(db.Boolean, default=False)
     can_use_api = db.Column(db.Boolean, default=False) # New: API Access Control
+    can_access_multi_classroom = db.Column(db.Boolean, default=False)
+    can_switch_classroom_context = db.Column(db.Boolean, default=False)
+    can_manage_classrooms = db.Column(db.Boolean, default=False)
+    can_assign_users_to_classroom = db.Column(db.Boolean, default=False)
+    can_move_users_between_classrooms = db.Column(db.Boolean, default=False)
+    can_view_all_classrooms = db.Column(db.Boolean, default=False)
+    can_manage_students_multi_class = db.Column(db.Boolean, default=False)
+    can_manage_schedule_multi_class = db.Column(db.Boolean, default=False)
+    can_manage_announcements_multi_class = db.Column(db.Boolean, default=False)
+    can_manage_assignments_multi_class = db.Column(db.Boolean, default=False)
+    can_manage_gallery_multi_class = db.Column(db.Boolean, default=False)
+    can_manage_notifications_multi_class = db.Column(db.Boolean, default=False)
+    can_view_classroom_reports = db.Column(db.Boolean, default=False)
+    can_export_classroom_data = db.Column(db.Boolean, default=False)
 
 
 class GalleryAlbum(db.Model):

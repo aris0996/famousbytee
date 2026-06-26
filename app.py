@@ -1171,7 +1171,14 @@ with app.app_context():
                     'can_manage_roles': True, 'can_view_logs': True,
                     'can_export_data': True, 'can_edit_settings': True,
                     'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
-                    'can_manage_assignments': True, 'can_use_api': True
+                    'can_manage_assignments': True, 'can_use_api': True,
+                    'can_access_multi_classroom': True, 'can_switch_classroom_context': True,
+                    'can_manage_classrooms': True, 'can_assign_users_to_classroom': True,
+                    'can_move_users_between_classrooms': True, 'can_view_all_classrooms': True,
+                    'can_manage_students_multi_class': True, 'can_manage_schedule_multi_class': True,
+                    'can_manage_announcements_multi_class': True, 'can_manage_assignments_multi_class': True,
+                    'can_manage_gallery_multi_class': True, 'can_manage_notifications_multi_class': True,
+                    'can_view_classroom_reports': True, 'can_export_classroom_data': True
                 }
             },
             'Pengurus': {
@@ -1182,7 +1189,14 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': True, 'can_edit_settings': False,
                     'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
-                    'can_manage_assignments': True, 'can_use_api': True
+                    'can_manage_assignments': True, 'can_use_api': True,
+                    'can_access_multi_classroom': True, 'can_switch_classroom_context': True,
+                    'can_manage_classrooms': False, 'can_assign_users_to_classroom': True,
+                    'can_move_users_between_classrooms': True, 'can_view_all_classrooms': True,
+                    'can_manage_students_multi_class': True, 'can_manage_schedule_multi_class': True,
+                    'can_manage_announcements_multi_class': True, 'can_manage_assignments_multi_class': True,
+                    'can_manage_gallery_multi_class': True, 'can_manage_notifications_multi_class': True,
+                    'can_view_classroom_reports': True, 'can_export_classroom_data': True
                 }
             },
             'Member': {
@@ -1193,7 +1207,14 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': False, 'can_edit_settings': False,
                     'can_manage_gallery': False, 'can_manage_notifications': False, 'can_manage_whatsapp': False,
-                    'can_manage_assignments': False, 'can_use_api': True
+                    'can_manage_assignments': False, 'can_use_api': True,
+                    'can_access_multi_classroom': False, 'can_switch_classroom_context': False,
+                    'can_manage_classrooms': False, 'can_assign_users_to_classroom': False,
+                    'can_move_users_between_classrooms': False, 'can_view_all_classrooms': False,
+                    'can_manage_students_multi_class': False, 'can_manage_schedule_multi_class': False,
+                    'can_manage_announcements_multi_class': False, 'can_manage_assignments_multi_class': False,
+                    'can_manage_gallery_multi_class': False, 'can_manage_notifications_multi_class': False,
+                    'can_view_classroom_reports': False, 'can_export_classroom_data': False
                 }
             }
 
@@ -2827,7 +2848,21 @@ def manage_roles():
                 can_manage_notifications='can_manage_notifications' in request.form,
                 can_manage_whatsapp='can_manage_whatsapp' in request.form,
                 can_manage_assignments='can_manage_assignments' in request.form,
-                can_use_api='can_use_api' in request.form
+                can_use_api='can_use_api' in request.form,
+                can_access_multi_classroom='can_access_multi_classroom' in request.form,
+                can_switch_classroom_context='can_switch_classroom_context' in request.form,
+                can_manage_classrooms='can_manage_classrooms' in request.form,
+                can_assign_users_to_classroom='can_assign_users_to_classroom' in request.form,
+                can_move_users_between_classrooms='can_move_users_between_classrooms' in request.form,
+                can_view_all_classrooms='can_view_all_classrooms' in request.form,
+                can_manage_students_multi_class='can_manage_students_multi_class' in request.form,
+                can_manage_schedule_multi_class='can_manage_schedule_multi_class' in request.form,
+                can_manage_announcements_multi_class='can_manage_announcements_multi_class' in request.form,
+                can_manage_assignments_multi_class='can_manage_assignments_multi_class' in request.form,
+                can_manage_gallery_multi_class='can_manage_gallery_multi_class' in request.form,
+                can_manage_notifications_multi_class='can_manage_notifications_multi_class' in request.form,
+                can_view_classroom_reports='can_view_classroom_reports' in request.form,
+                can_export_classroom_data='can_export_classroom_data' in request.form
             )
             db.session.add(new_role)
             db.session.commit()
@@ -2837,6 +2872,8 @@ def manage_roles():
         # 2. Buat User Baru (Manual)
         elif 'username' in request.form and 'password' in request.form:
             s_id = request.form.get('student_id')
+            classroom_id = request.form.get('classroom_id')
+            classroom = ClassRoom.query.get(int(classroom_id)) if classroom_id and classroom_id != 'none' else None
             new_user = User(
                 username=request.form['username'], 
                 password=request.form['password'], 
@@ -2844,6 +2881,7 @@ def manage_roles():
                 full_name=request.form['full_name'], 
                 email=request.form['email'],
                 student_id=int(s_id) if s_id and s_id != 'none' else None,
+                classroom_id=classroom.id if classroom else None,
                 status='Active'
             )
             try:
@@ -2861,7 +2899,8 @@ def manage_roles():
     roles = Role.query.all()
     users = User.query.all()
     students = Student.query.order_by(Student.full_name).all()
-    return render_template('roles.html', roles=roles, users=users, students=students)
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return render_template('roles.html', roles=roles, users=users, students=students, classrooms=classrooms)
 
 @app.route('/roles/edit/user/<int:id>', methods=['POST'])
 @login_required
@@ -2875,6 +2914,10 @@ def edit_user(id):
     
     s_id = request.form.get('student_id')
     user.student_id = int(s_id) if s_id and s_id != 'none' else None
+    classroom_id = request.form.get('classroom_id')
+    if classroom_id and classroom_id != 'none':
+        classroom = ClassRoom.query.get(int(classroom_id))
+        user.classroom_id = classroom.id if classroom else user.classroom_id
     
     if request.form.get('password'):
         user.password = request.form['password']
@@ -2922,6 +2965,20 @@ def edit_role(id):
     role.can_manage_whatsapp = 'can_manage_whatsapp' in request.form
     role.can_manage_assignments = 'can_manage_assignments' in request.form
     role.can_use_api = 'can_use_api' in request.form
+    role.can_access_multi_classroom = 'can_access_multi_classroom' in request.form
+    role.can_switch_classroom_context = 'can_switch_classroom_context' in request.form
+    role.can_manage_classrooms = 'can_manage_classrooms' in request.form
+    role.can_assign_users_to_classroom = 'can_assign_users_to_classroom' in request.form
+    role.can_move_users_between_classrooms = 'can_move_users_between_classrooms' in request.form
+    role.can_view_all_classrooms = 'can_view_all_classrooms' in request.form
+    role.can_manage_students_multi_class = 'can_manage_students_multi_class' in request.form
+    role.can_manage_schedule_multi_class = 'can_manage_schedule_multi_class' in request.form
+    role.can_manage_announcements_multi_class = 'can_manage_announcements_multi_class' in request.form
+    role.can_manage_assignments_multi_class = 'can_manage_assignments_multi_class' in request.form
+    role.can_manage_gallery_multi_class = 'can_manage_gallery_multi_class' in request.form
+    role.can_manage_notifications_multi_class = 'can_manage_notifications_multi_class' in request.form
+    role.can_view_classroom_reports = 'can_view_classroom_reports' in request.form
+    role.can_export_classroom_data = 'can_export_classroom_data' in request.form
     db.session.commit()
     log_activity("Edit Role", f"Nama: {role.name}")
     return redirect(url_for('manage_roles'))

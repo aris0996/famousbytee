@@ -135,6 +135,9 @@
                     {% if role.can_manage_whatsapp %}<span class="status-badge" style="background:#dcfce7; color:#166534; font-size: 0.75rem;">Integrasi WhatsApp</span>{% endif %}
                     {% if role.can_manage_assignments %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Manajemen Tugas</span>{% endif %}
                     {% if role.can_use_api %}<span class="status-badge" style="background:#fef3c7; color:#92400e; font-size: 0.75rem;">Akses API</span>{% endif %}
+                    {% if role.can_access_multi_classroom %}<span class="status-badge" style="background:#ede9fe; color:#6d28d9; font-size: 0.75rem;">Multi Kelas</span>{% endif %}
+                    {% if role.can_manage_classrooms %}<span class="status-badge" style="background:#e0f2fe; color:#0369a1; font-size: 0.75rem;">Kelola Kelas</span>{% endif %}
+                    {% if role.can_view_all_classrooms %}<span class="status-badge" style="background:#f1f5f9; color:#334155; font-size: 0.75rem;">Lihat Semua Kelas</span>{% endif %}
 
                 </div>
             </div>
@@ -159,7 +162,21 @@
                         mW: {{ 'true' if role.can_manage_whatsapp else 'false' }},
                         mG: {{ 'true' if role.can_manage_gallery else 'false' }},
                         mAs: {{ 'true' if role.can_manage_assignments else 'false' }},
-                        api: {{ 'true' if role.can_use_api else 'false' }}
+                        api: {{ 'true' if role.can_use_api else 'false' }},
+                        aMC: {{ 'true' if role.can_access_multi_classroom else 'false' }},
+                        sCC: {{ 'true' if role.can_switch_classroom_context else 'false' }},
+                        mC: {{ 'true' if role.can_manage_classrooms else 'false' }},
+                        aU: {{ 'true' if role.can_assign_users_to_classroom else 'false' }},
+                        mM: {{ 'true' if role.can_move_users_between_classrooms else 'false' }},
+                        vA: {{ 'true' if role.can_view_all_classrooms else 'false' }},
+                        mSM: {{ 'true' if role.can_manage_students_multi_class else 'false' }},
+                        mScM: {{ 'true' if role.can_manage_schedule_multi_class else 'false' }},
+                        mAM: {{ 'true' if role.can_manage_announcements_multi_class else 'false' }},
+                        mAsM: {{ 'true' if role.can_manage_assignments_multi_class else 'false' }},
+                        mGM: {{ 'true' if role.can_manage_gallery_multi_class else 'false' }},
+                        mNM: {{ 'true' if role.can_manage_notifications_multi_class else 'false' }},
+                        vR: {{ 'true' if role.can_view_classroom_reports else 'false' }},
+                        eR: {{ 'true' if role.can_export_classroom_data else 'false' }}
 
                     })" 
                     style="background: none; border: none; cursor: pointer; color: var(--primary); font-size: 0.8rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
@@ -195,6 +212,17 @@
                     </select>
                 </div>
             </div>
+            {% if current_user.role.can_assign_users_to_classroom or current_user.role.can_manage_classrooms %}
+            <div class="form-group">
+                <label>Set Kelas User</label>
+                <select name="classroom_id" class="form-control">
+                    <option value="none">-- Ikuti Kelas Member / Kosong --</option>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}">{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Buat Akun</button>
                 <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-user').style.display='none'">Batal</button>
@@ -226,6 +254,17 @@
                     {% endfor %}
                 </select>
             </div>
+            {% if current_user.role.can_assign_users_to_classroom or current_user.role.can_manage_classrooms %}
+            <div class="form-group">
+                <label>Set Kelas User</label>
+                <select name="classroom_id" id="edit-classroom-id" class="form-control">
+                    <option value="none">-- Ikuti Kelas Member / Kosong --</option>
+                    {% for classroom in classrooms %}
+                        <option value="{{ classroom.id }}">{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div style="display: flex; gap: 12px; margin-top: 1.5rem;">
                 <button type="submit" class="btn" style="flex: 1;">Simpan</button>
                 <button type="button" class="btn" style="background: #e2e8f0; color: #475569; flex: 1;" onclick="document.getElementById('modal-edit-user').style.display='none'">Batal</button>
@@ -251,6 +290,21 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles"> Akses Admin/Roles</label>
+                <hr style="border:0; border-top:1px solid #e2e8f0; margin: .5rem 0;">
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem; font-weight:700; color:#6d28d9;"><input type="checkbox" name="can_access_multi_classroom"> Akses Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_switch_classroom_context"> Ganti Kelas Aktif</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_classrooms"> Kelola Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_all_classrooms"> Lihat Semua Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_assign_users_to_classroom"> Tetapkan User ke Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_move_users_between_classrooms"> Pindah User Antar Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_students_multi_class"> Kelola Member Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_schedule_multi_class"> Kelola Jadwal Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements_multi_class"> Kelola Pengumuman Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments_multi_class"> Kelola Tugas Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery_multi_class"> Kelola Galeri Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications_multi_class"> Kelola Notifikasi Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_classroom_reports"> Lihat Laporan Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_classroom_data"> Export Data per Kelas</label>
 
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data"> Export Data CSV</label>
@@ -281,6 +335,21 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp" id="edit-can-m-whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments" id="edit-can-m-assignments"> Manajemen Tugas</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_roles" id="edit-can-m-roles"> Akses Admin/Roles</label>
+                <hr style="border:0; border-top:1px solid #e2e8f0; margin: .5rem 0;">
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem; font-weight:700; color:#6d28d9;"><input type="checkbox" name="can_access_multi_classroom" id="edit-can-access-mc"> Akses Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_switch_classroom_context" id="edit-can-switch-ctx"> Ganti Kelas Aktif</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_classrooms" id="edit-can-manage-classes"> Kelola Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_all_classrooms" id="edit-can-view-all-classes"> Lihat Semua Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_assign_users_to_classroom" id="edit-can-assign-users"> Tetapkan User ke Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_move_users_between_classrooms" id="edit-can-move-users"> Pindah User Antar Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_students_multi_class" id="edit-can-m-students-mc"> Kelola Member Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_schedule_multi_class" id="edit-can-m-sched-mc"> Kelola Jadwal Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements_multi_class" id="edit-can-m-ann-mc"> Kelola Pengumuman Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments_multi_class" id="edit-can-m-assign-mc"> Kelola Tugas Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery_multi_class" id="edit-can-m-gallery-mc"> Kelola Galeri Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications_multi_class" id="edit-can-m-notif-mc"> Kelola Notifikasi Multi Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_classroom_reports" id="edit-can-view-reports"> Lihat Laporan Kelas</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_classroom_data" id="edit-can-export-class"> Export Data per Kelas</label>
 
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_view_logs" id="edit-can-v-logs"> Lihat Log Sistem</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_export_data" id="edit-can-e-data"> Export Data CSV</label>
@@ -375,6 +444,8 @@ function openEditModal(id, fullName, email, roleId, status, studentId) {
     document.getElementById('edit-role-id').value = roleId;
     document.getElementById('edit-status').value = status;
     document.getElementById('edit-student-id').value = studentId;
+    const classroomField = document.getElementById('edit-classroom-id');
+    if (classroomField) classroomField.value = 'none';
     document.getElementById('modal-edit-user').style.display = 'flex';
 }
 window.onclick = function(event) {
