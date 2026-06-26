@@ -222,6 +222,47 @@ class SystemSetting(db.Model):
     value = db.Column(db.Text)
     description = db.Column(db.String(255))
 
+class ClassroomNotificationConfig(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=False, unique=True)
+    push_enabled = db.Column(db.Boolean, default=True)
+    whatsapp_enabled = db.Column(db.Boolean, default=False)
+    default_channel = db.Column(db.String(20), default='push')
+    announcement_enabled = db.Column(db.Boolean, default=True)
+    assignment_enabled = db.Column(db.Boolean, default=True)
+    schedule_enabled = db.Column(db.Boolean, default=True)
+    finance_enabled = db.Column(db.Boolean, default=True)
+    emergency_enabled = db.Column(db.Boolean, default=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref=db.backref('notification_config', uselist=False), lazy=True)
+    updater = db.relationship('User', backref='updated_classroom_notification_configs', lazy=True)
+
+class WhatsAppBot(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True)
+    provider = db.Column(db.String(30), default='waha')
+    session_name = db.Column(db.String(120), nullable=False)
+    base_url = db.Column(db.String(255))
+    status = db.Column(db.String(30), default='unknown')
+    is_active = db.Column(db.Boolean, default=True)
+    last_seen_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+class ClassroomWhatsAppBinding(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=False, unique=True)
+    bot_id = db.Column(db.Integer, db.ForeignKey('whats_app_bot.id'), nullable=False)
+    chat_id = db.Column(db.String(255), nullable=False)
+    chat_label = db.Column(db.String(120))
+    is_default = db.Column(db.Boolean, default=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref=db.backref('whatsapp_binding', uselist=False), lazy=True)
+    bot = db.relationship('WhatsAppBot', backref=db.backref('classroom_bindings', lazy=True), lazy=True)
+    updater = db.relationship('User', backref='updated_classroom_whatsapp_bindings', lazy=True)
+
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
@@ -244,12 +285,17 @@ class AnnouncementRead(db.Model):
 class NotificationHistory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
+    bot_id = db.Column(db.Integer, db.ForeignKey('whats_app_bot.id'), nullable=True)
     title = db.Column(db.String(150), nullable=False)
     body = db.Column(db.Text, nullable=False)
     channel = db.Column(db.String(20), default='push') # push, whatsapp, multi
+    category = db.Column(db.String(50), nullable=True)
+    delivery_mode = db.Column(db.String(30), nullable=True)
+    chat_id = db.Column(db.String(255), nullable=True)
     target = db.Column(db.String(50)) # "All" or a specific user_id
     sent_by = db.Column(db.Integer, db.ForeignKey('user.id'))
     user = db.relationship('User', backref='notifications_sent', lazy=True)
     sent_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     status = db.Column(db.String(100)) # Success, Failed, Error Details
     classroom = db.relationship('ClassRoom', backref=db.backref('notification_histories', lazy=True), lazy=True)
+    bot = db.relationship('WhatsAppBot', backref=db.backref('notification_histories', lazy=True), lazy=True)

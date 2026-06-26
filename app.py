@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory
+from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding
 import os
 import json
 import re
@@ -204,21 +204,21 @@ def _count_weekdays_between(start_date, end_date):
         current += timedelta(days=1)
     return total
 
-def _waha_headers():
-    api_key = get_setting_value('waha_api_key', '').strip()
+def _waha_headers(api_key_override=None):
+    api_key = (api_key_override if api_key_override is not None else get_setting_value('waha_api_key', '')).strip()
     headers = {'Content-Type': 'application/json'}
     if api_key:
         headers['X-Api-Key'] = api_key
     return headers
 
-def _waha_request(method, path, payload=None):
-    base_url = get_setting_value('waha_base_url', '').strip().rstrip('/')
+def _waha_request(method, path, payload=None, base_url_override=None, api_key_override=None):
+    base_url = (base_url_override if base_url_override is not None else get_setting_value('waha_base_url', '')).strip().rstrip('/')
     if not base_url:
         return {'ok': False, 'error': 'WAHA base URL belum diatur'}
 
     url = f"{base_url}{path}"
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
-    req = urllib_request.Request(url, data=data, headers=_waha_headers(), method=method)
+    req = urllib_request.Request(url, data=data, headers=_waha_headers(api_key_override), method=method)
 
     try:
         with urllib_request.urlopen(req, timeout=15) as resp:
@@ -261,6 +261,42 @@ def get_notification_channel_mode():
         return 'push'
     return mode
 
+def get_classroom_notification_policy(classroom_id):
+    if not classroom_id:
+        return None
+    return ClassroomNotificationConfig.query.filter_by(classroom_id=classroom_id).first()
+
+def get_classroom_whatsapp_binding(classroom_id):
+    if not classroom_id:
+        return None
+    return ClassroomWhatsAppBinding.query.filter_by(classroom_id=classroom_id).first()
+
+def resolve_whatsapp_bot_for_classroom(classroom_id):
+    binding = get_classroom_whatsapp_binding(classroom_id)
+    if not binding or not binding.bot or not binding.bot.is_active:
+        return None, binding
+    return binding.bot, binding
+
+def get_classroom_notification_channel_mode(classroom_id):
+    policy = get_classroom_notification_policy(classroom_id)
+    mode = (policy.default_channel if policy else 'push') or 'push'
+    mode = mode.strip().lower()
+    if mode not in {'push', 'whatsapp', 'both'}:
+        return 'push'
+    return mode
+
+def _is_notification_category_enabled(policy, category):
+    if not policy:
+        return category != 'whatsapp_binding'
+    mapping = {
+        'announcement': policy.announcement_enabled,
+        'assignment': policy.assignment_enabled,
+        'schedule': policy.schedule_enabled,
+        'finance': policy.finance_enabled,
+        'emergency': policy.emergency_enabled,
+    }
+    return mapping.get(category, True)
+
 def _get_indo_day_name(date_value):
     return {
         'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu',
@@ -298,13 +334,20 @@ def _normalize_multiline_text(text):
         previous_blank = is_blank
     return '\n'.join(normalized).strip()
 
-def _build_schedule_summary_message(target_date=None):
+def _build_schedule_summary_message(target_date=None, classroom_id=None):
     target_date = target_date or (datetime.now().date() + timedelta(days=1))
     day_name = _get_indo_day_name(target_date)
     date_long = _format_indo_date(target_date)
 
-    schedules = Schedule.query.filter_by(day=day_name).order_by(Schedule.time_start.asc()).all()
-    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
+    schedules_query = Schedule.query.filter_by(day=day_name)
+    assignments_query = Assignment.query.order_by(Assignment.deadline.asc())
+    if classroom_id:
+        schedules_query = schedules_query.filter_by(classroom_id=classroom_id)
+        assignments_query = assignments_query.filter(
+            (Assignment.classroom_id == classroom_id) | (Assignment.classroom_id.is_(None))
+        )
+    schedules = schedules_query.order_by(Schedule.time_start.asc()).all()
+    assignments = assignments_query.all()
     due_items = [a for a in assignments if a.deadline.date() == target_date]
 
     if not schedules and not due_items:
@@ -376,8 +419,8 @@ def _build_schedule_summary_message(target_date=None):
     })
     return _normalize_multiline_text(message)
 
-def _build_tomorrow_summary_message():
-    return _build_schedule_summary_message(datetime.now().date() + timedelta(days=1))
+def _build_tomorrow_summary_message(classroom_id=None):
+    return _build_schedule_summary_message(datetime.now().date() + timedelta(days=1), classroom_id=classroom_id)
 
 def _normalize_phone_number(raw_value):
     digits = re.sub(r'\D', '', str(raw_value or ''))
@@ -816,7 +859,7 @@ def _resolve_notification_classroom_id(user_id=None, sender_id=None):
     return default_class.id if default_class else None
 
 
-def _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=None):
+def _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=None, category=None, delivery_mode=None, bot_id=None, chat_id=None):
     """Helper to log notification history."""
     try:
         title = (title or '').strip()
@@ -830,6 +873,10 @@ def _log_notification_history(title, body, user_id, sender_id, status, channel='
             title=title,
             body=body,
             channel=channel,
+            category=category,
+            delivery_mode=delivery_mode,
+            bot_id=bot_id,
+            chat_id=chat_id,
             target=str(user_id) if user_id else "All",
             sent_by=sender_id,
             classroom_id=classroom_id or _resolve_notification_classroom_id(user_id=user_id, sender_id=sender_id),
@@ -841,12 +888,12 @@ def _log_notification_history(title, body, user_id, sender_id, status, channel='
         db.session.rollback()
         print(f"History Log Error: {e}")
 
-def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classroom_id=None):
+def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classroom_id=None, category=None, delivery_mode='policy_push'):
     """Sends push notification to a specific user or everyone."""
     title = (title or '').strip()
     body = (body or '').strip()
     if not title and not body:
-        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)", channel='push', classroom_id=classroom_id)
+        _log_notification_history("Notifikasi dibatalkan", "Judul dan isi kosong.", user_id, sender_id, "Skipped (Empty)", channel='push', classroom_id=classroom_id, category=category, delivery_mode=delivery_mode)
         return
     if not title:
         title = "Notifikasi"
@@ -854,7 +901,7 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classr
         body = title
 
     if not _initialize_firebase():
-        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)", channel='push', classroom_id=classroom_id)
+        _log_notification_history(title, body, user_id, sender_id, "Failed (Config)", channel='push', classroom_id=classroom_id, category=category, delivery_mode=delivery_mode)
         return
 
     payload_data = {'title': title, 'body': body}
@@ -927,42 +974,61 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classr
         print(f"Push Notification General Error: {e}")
         status = f"System Error: {str(e)[:80]}"
     
-    _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=classroom_id)
+    _log_notification_history(title, body, user_id, sender_id, status, channel='push', classroom_id=classroom_id, category=category, delivery_mode=delivery_mode)
 
-def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, classroom_id=None):
+def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, classroom_id=None, category=None, delivery_mode='policy_whatsapp'):
     text = (text or '').strip()
     if not text:
-        _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp', classroom_id=classroom_id)
+        _log_notification_history(title or "WhatsApp dibatalkan", "Pesan WhatsApp kosong.", None, sender_id, "Skipped (Empty)", channel='whatsapp', classroom_id=classroom_id, category=category, delivery_mode=delivery_mode, chat_id=chat_id)
         return {'ok': False, 'error': 'Pesan WhatsApp kosong'}
     text = _apply_whatsapp_admin_header(text, title=title)
 
-    if not force and get_setting_value('waha_enabled', 'false').lower() != 'true':
-        _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp', classroom_id=classroom_id)
-        return {'ok': False, 'error': 'WhatsApp nonaktif'}
+    target_classroom_id = classroom_id or _resolve_notification_classroom_id(sender_id=sender_id)
+    policy = get_classroom_notification_policy(target_classroom_id)
+    if not force:
+        if not policy or not policy.whatsapp_enabled:
+            _log_notification_history(title or "WhatsApp nonaktif", text, None, sender_id, "Disabled", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, chat_id=chat_id)
+            return {'ok': False, 'error': 'WhatsApp untuk kelas ini belum aktif'}
+        if category and not _is_notification_category_enabled(policy, category):
+            _log_notification_history(title or "WhatsApp diblokir", text, None, sender_id, "Blocked by policy", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, chat_id=chat_id)
+            return {'ok': False, 'error': 'Kategori notifikasi WhatsApp tidak aktif'}
 
-    session_name = get_setting_value('waha_session', '').strip()
-    target_chat = (chat_id or get_setting_value('waha_group_chat_id', '')).strip()
+    bot = None
+    binding = None
+    session_name = ''
+    target_chat = (chat_id or '').strip()
+    if force and target_chat:
+        session_name = get_setting_value('waha_session', '').strip()
+    else:
+        bot, binding = resolve_whatsapp_bot_for_classroom(target_classroom_id)
+        session_name = bot.session_name.strip() if bot and bot.session_name else ''
+        if not target_chat and binding:
+            target_chat = (binding.chat_id or '').strip()
+
     if not session_name or not target_chat:
-        _log_notification_history(title or "WhatsApp gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp', classroom_id=classroom_id)
-        return {'ok': False, 'error': 'Session atau group chat WAHA belum diatur'}
+        _log_notification_history(title or "WhatsApp gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat or chat_id)
+        return {'ok': False, 'error': 'Bot atau target chat kelas belum diatur'}
 
     payload = {'session': session_name, 'chatId': target_chat, 'text': text}
-    result = _waha_request('POST', '/api/sendText', payload)
+    result = _waha_request('POST', '/api/sendText', payload, base_url_override=bot.base_url if bot and bot.base_url else None)
     status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
-    _log_notification_history(title or "WhatsApp", text, None, sender_id, status, channel='whatsapp', classroom_id=classroom_id)
+    _log_notification_history(title or "WhatsApp", text, None, sender_id, status, channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat)
     return result
 
-def send_multichannel_notification(title, body, user_id=None, sender_id=None, allow_whatsapp=False, whatsapp_text=None, extra_data=None, classroom_id=None):
-    mode = get_notification_channel_mode()
+def send_multichannel_notification(title, body, user_id=None, sender_id=None, allow_whatsapp=False, whatsapp_text=None, extra_data=None, classroom_id=None, category=None):
+    mode = get_classroom_notification_channel_mode(classroom_id)
     results = {}
+    policy = get_classroom_notification_policy(classroom_id)
+    if policy and category and not _is_notification_category_enabled(policy, category):
+        return {'blocked': True, 'reason': 'category-disabled'}
 
-    if mode in {'push', 'both'}:
-        send_push(title, body, user_id=user_id, sender_id=sender_id, extra_data=extra_data, classroom_id=classroom_id)
+    if mode in {'push', 'both'} and (not policy or policy.push_enabled):
+        send_push(title, body, user_id=user_id, sender_id=sender_id, extra_data=extra_data, classroom_id=classroom_id, category=category, delivery_mode=f'policy_{mode}')
         results['push'] = True
 
     if allow_whatsapp and mode in {'whatsapp', 'both'}:
         wa_text = whatsapp_text or f"{title}\n{body}".strip()
-        results['whatsapp'] = send_whatsapp(wa_text, sender_id=sender_id, title=title, classroom_id=classroom_id)
+        results['whatsapp'] = send_whatsapp(wa_text, sender_id=sender_id, title=title, classroom_id=classroom_id, category=category, delivery_mode=f'policy_{mode}')
 
     return results
 
@@ -990,7 +1056,7 @@ def run_automated_reminders():
         # 1. Class Reminder (H-15 Menit)
         upcoming_class = Schedule.query.filter_by(day=current_day_indo, time_start=current_time_plus_15).all()
         for c in upcoming_class:
-            send_push("Pengingat Kuliah", f"Kelas {c.subject} akan dimulai dalam 15 menit di {c.room}.")
+            send_push("Pengingat Kuliah", f"Kelas {c.subject} akan dimulai dalam 15 menit di {c.room}.", classroom_id=c.classroom_id, category='schedule')
 
         # 2. Assignment Deadline (H-1) - check once an hour at minute 0
         if now.minute == 0:
@@ -998,22 +1064,28 @@ def run_automated_reminders():
             assignments = Assignment.query.all()
             for a in assignments:
                 if a.deadline.date() == tomorrow:
-                    send_push("Deadline Tugas Besok!", f"Jangan lupa tugas {a.subject}: {a.title} dikumpulkan besok.")
+                    send_push("Deadline Tugas Besok!", f"Jangan lupa tugas {a.subject}: {a.title} dikumpulkan besok.", classroom_id=a.classroom_id, category='assignment')
 
         # 3. Weekly Fund Reminder (Every Monday at 08:00)
         if now.strftime('%A') == 'Monday' and now.hour == 8 and now.minute == 0:
-            send_push("Tagihan Kas Mingguan", "Selamat pagi! Jangan lupa bayar kas minggu ini ya teman-teman.")
+            for classroom in ClassRoom.query.order_by(ClassRoom.id.asc()).all():
+                send_push("Tagihan Kas Mingguan", "Selamat pagi! Jangan lupa bayar kas minggu ini ya teman-teman.", classroom_id=classroom.id, category='finance')
 
         # 4. Daily WhatsApp Summary
         summary_time = get_setting_value('waha_daily_time', '18:00')
         last_sent_date = get_setting_value('waha_last_daily_summary_date', '')
         if now.strftime('%H:%M') == summary_time and last_sent_date != now.strftime('%Y-%m-%d'):
-            summary_text = _build_tomorrow_summary_message()
-            if summary_text:
-                result = send_whatsapp(summary_text, title="Ringkasan Besok")
+            sent_any = False
+            for policy in ClassroomNotificationConfig.query.filter_by(whatsapp_enabled=True).all():
+                summary_text = _build_tomorrow_summary_message(classroom_id=policy.classroom_id)
+                if not summary_text:
+                    continue
+                result = send_whatsapp(summary_text, title="Ringkasan Besok", classroom_id=policy.classroom_id, category='schedule')
                 if result.get('ok'):
-                    set_setting_value('waha_last_daily_summary_date', now.strftime('%Y-%m-%d'))
-                    db.session.commit()
+                    sent_any = True
+            if sent_any:
+                set_setting_value('waha_last_daily_summary_date', now.strftime('%Y-%m-%d'))
+                db.session.commit()
 
 # Initialize Scheduler (WSGI-safe: only start once, not on reload)
 scheduler = None
@@ -2193,7 +2265,9 @@ def manage_assignments():
             f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
             sender_id=current_user.id,
             allow_whatsapp=True,
-            whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+            whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}",
+            classroom_id=a.classroom_id,
+            category='assignment',
         )
         log_activity("Tambah Tugas", f"Judul: {a.title}")
         flash('Tugas berhasil ditambahkan!')
@@ -2339,6 +2413,8 @@ def edit_schedule(id):
         f"Jadwal {s.subject} telah diperbarui oleh pengurus.",
         sender_id=current_user.id,
         allow_whatsapp=False,  # Don't send per-subject WhatsApp
+        classroom_id=s.classroom_id,
+        category='schedule',
     )
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
     return redirect(url_for('manage_schedule'))
@@ -2358,6 +2434,8 @@ def delete_schedule(id):
         f"Jadwal {subject_name} telah dihapus dari sistem.",
         sender_id=current_user.id,
         allow_whatsapp=False,  # Don't send per-subject WhatsApp
+        classroom_id=s.classroom_id,
+        category='schedule',
     )
     return redirect(url_for('manage_schedule'))
 
@@ -2415,7 +2493,7 @@ def manage_announcements():
         
         # Always notify for all announcements
         title_prefix = "Pengumuman Baru!" if ann.category != 'Penting' else "PENTING: Pengumuman!"
-        send_push(title_prefix, ann.title, sender_id=current_user.id)
+        send_push(title_prefix, ann.title, sender_id=current_user.id, classroom_id=ann.classroom_id or active_classroom.id if active_classroom else None, category='announcement')
 
         log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
@@ -3409,6 +3487,67 @@ def init_db():
                 notification_cols = [c['name'] for c in inspector.get_columns('notification_history')]
                 if 'classroom_id' not in notification_cols:
                     conn.execute(text("ALTER TABLE notification_history ADD COLUMN classroom_id INTEGER NULL"))
+                if 'bot_id' not in notification_cols:
+                    conn.execute(text("ALTER TABLE notification_history ADD COLUMN bot_id INTEGER NULL"))
+                if 'chat_id' not in notification_cols:
+                    conn.execute(text("ALTER TABLE notification_history ADD COLUMN chat_id VARCHAR(255) NULL"))
+                if 'category' not in notification_cols:
+                    conn.execute(text("ALTER TABLE notification_history ADD COLUMN category VARCHAR(50) NULL"))
+                if 'delivery_mode' not in notification_cols:
+                    conn.execute(text("ALTER TABLE notification_history ADD COLUMN delivery_mode VARCHAR(30) NULL"))
+
+                # I. Sinkronisasi tabel notifikasi multi-kelas
+                try:
+                    inspector.get_columns('classroom_notification_config')
+                except Exception:
+                    conn.execute(text("""
+                        CREATE TABLE classroom_notification_config (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            classroom_id INTEGER NOT NULL UNIQUE,
+                            push_enabled BOOLEAN DEFAULT 1,
+                            whatsapp_enabled BOOLEAN DEFAULT 0,
+                            default_channel VARCHAR(20) DEFAULT 'push',
+                            announcement_enabled BOOLEAN DEFAULT 1,
+                            assignment_enabled BOOLEAN DEFAULT 1,
+                            schedule_enabled BOOLEAN DEFAULT 1,
+                            finance_enabled BOOLEAN DEFAULT 1,
+                            emergency_enabled BOOLEAN DEFAULT 1,
+                            updated_by INTEGER NULL,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                try:
+                    inspector.get_columns('whats_app_bot')
+                except Exception:
+                    conn.execute(text("""
+                        CREATE TABLE whats_app_bot (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name VARCHAR(120) NOT NULL UNIQUE,
+                            provider VARCHAR(30) DEFAULT 'waha',
+                            session_name VARCHAR(120) NOT NULL,
+                            base_url VARCHAR(255) NULL,
+                            status VARCHAR(30) DEFAULT 'unknown',
+                            is_active BOOLEAN DEFAULT 1,
+                            last_seen_at DATETIME NULL,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                try:
+                    inspector.get_columns('classroom_whats_app_binding')
+                except Exception:
+                    conn.execute(text("""
+                        CREATE TABLE classroom_whats_app_binding (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            classroom_id INTEGER NOT NULL UNIQUE,
+                            bot_id INTEGER NOT NULL,
+                            chat_id VARCHAR(255) NOT NULL,
+                            chat_label VARCHAR(120) NULL,
+                            is_default BOOLEAN DEFAULT 1,
+                            updated_by INTEGER NULL,
+                            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
                 try:
                     # Check if table exists
                     inspector.get_columns('announcement_read')
@@ -3520,7 +3659,8 @@ def init_db():
                     SystemSetting(key='waha_admin_header_text', value='*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n', description='Template header admin untuk pesan WA'),
                     SystemSetting(key='schedule_notify_on_create', value='true', description='Kirim notifikasi WhatsApp saat jadwal baru dibuat'),
                     SystemSetting(key='schedule_notify_on_edit', value='false', description='Kirim notifikasi WhatsApp saat jadwal diedit (default: false untuk hindari spam)'),
-                    SystemSetting(key='schedule_notify_on_delete', value='true', description='Kirim notifikasi WhatsApp saat jadwal dihapus')
+                    SystemSetting(key='schedule_notify_on_delete', value='true', description='Kirim notifikasi WhatsApp saat jadwal dihapus'),
+                    SystemSetting(key='notifications_legacy_migrated', value='false', description='Penanda migrasi konfigurasi notifikasi legacy ke model multi-kelas')
                 ])
                 db.session.commit()
                 print("Status: Pengaturan sistem berhasil diinisialisasi.")
@@ -3534,6 +3674,67 @@ def init_db():
         except Exception as e:
             db.session.rollback()
             print(f"Peringatan: Gagal memastikan retensi log aktivitas: {e}")
+
+        try:
+            migrated = get_setting_value('notifications_legacy_migrated', 'false').lower() == 'true'
+            default_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+            if default_classroom and not migrated:
+                policy = ClassroomNotificationConfig.query.filter_by(classroom_id=default_classroom.id).first()
+                if not policy:
+                    policy = ClassroomNotificationConfig(
+                        classroom_id=default_classroom.id,
+                        push_enabled=True,
+                        whatsapp_enabled=get_setting_value('waha_enabled', 'false').lower() == 'true',
+                        default_channel=get_notification_channel_mode(),
+                        announcement_enabled=True,
+                        assignment_enabled=True,
+                        schedule_enabled=True,
+                        finance_enabled=True,
+                        emergency_enabled=True,
+                    )
+                    db.session.add(policy)
+                    db.session.flush()
+
+                session_name = get_setting_value('waha_session', '').strip()
+                group_chat_id = get_setting_value('waha_group_chat_id', '').strip()
+                if session_name:
+                    bot = WhatsAppBot.query.filter_by(name='Legacy Default Bot').first()
+                    if not bot:
+                        bot = WhatsAppBot(
+                            name='Legacy Default Bot',
+                            provider='waha',
+                            session_name=session_name,
+                            base_url=get_setting_value('waha_base_url', '').strip() or None,
+                            status='legacy-imported',
+                            is_active=get_setting_value('waha_enabled', 'false').lower() == 'true',
+                        )
+                        db.session.add(bot)
+                        db.session.flush()
+                    else:
+                        bot.session_name = session_name
+                        bot.base_url = get_setting_value('waha_base_url', '').strip() or bot.base_url
+
+                    if group_chat_id:
+                        binding = ClassroomWhatsAppBinding.query.filter_by(classroom_id=default_classroom.id).first()
+                        if not binding:
+                            binding = ClassroomWhatsAppBinding(
+                                classroom_id=default_classroom.id,
+                                bot_id=bot.id,
+                                chat_id=group_chat_id,
+                                chat_label='Legacy Default Group',
+                                is_default=True,
+                            )
+                            db.session.add(binding)
+                        else:
+                            binding.bot_id = bot.id
+                            binding.chat_id = group_chat_id
+                            binding.chat_label = binding.chat_label or 'Legacy Default Group'
+
+                set_setting_value('notifications_legacy_migrated', 'true', 'Penanda migrasi konfigurasi notifikasi legacy ke model multi-kelas')
+                db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            print(f"Peringatan: Gagal migrasi konfigurasi notifikasi legacy: {e}")
 
 # ----------------API & SITEMAP----------------
 from flask import jsonify
@@ -3595,14 +3796,23 @@ def manage_notifications():
             return redirect(url_for('manage_notifications'))
 
         if target == 'all':
-            send_multichannel_notification(title, body, sender_id=current_user.id, allow_whatsapp=True, classroom_id=active_classroom.id if active_classroom else None)
+            send_multichannel_notification(title, body, sender_id=current_user.id, allow_whatsapp=True, classroom_id=active_classroom.id if active_classroom else None, category='emergency')
             flash('Notifikasi siaran berhasil dikirim!')
         else:
-            send_push(title, body, user_id=int(target), sender_id=current_user.id, classroom_id=active_classroom.id if active_classroom else None)
+            send_push(title, body, user_id=int(target), sender_id=current_user.id, classroom_id=active_classroom.id if active_classroom else None, category='emergency')
             flash('Notifikasi terkirim ke pengguna.')
             
         log_activity("Kirim Notifikasi", f"Judul: {title}, Target: {target}")
         return redirect(url_for('manage_notifications'))
+
+    can_manage_multi = (
+        current_user.role.can_manage_roles or
+        getattr(current_user.role, 'can_manage_notifications_multi_class', False) or
+        getattr(current_user.role, 'can_access_multi_classroom', False) or
+        getattr(current_user.role, 'can_view_all_classrooms', False) or
+        getattr(current_user.role, 'can_switch_classroom_context', False)
+    )
+    allowed_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all() if can_manage_multi else ([active_classroom] if active_classroom else [])
 
     history_query = NotificationHistory.query
     if active_classroom:
@@ -3618,13 +3828,9 @@ def manage_notifications():
         )
     users = users_query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
-        'waha_enabled': get_setting_value('waha_enabled', 'false'),
         'waha_base_url': get_setting_value('waha_base_url', ''),
         'waha_api_key_masked': ('*' * max(0, len(get_setting_value('waha_api_key', '')) - 4)) + get_setting_value('waha_api_key', '')[-4:],
-        'waha_session': get_setting_value('waha_session', ''),
-        'waha_group_chat_id': get_setting_value('waha_group_chat_id', ''),
         'waha_daily_time': get_setting_value('waha_daily_time', '18:00'),
-        'notification_channel_default': get_setting_value('notification_channel_default', 'push'),
         'waha_schedule_template': get_setting_value(
             'waha_schedule_template',
             'Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih'
@@ -3634,12 +3840,12 @@ def manage_notifications():
         'waha_schedule_extra_info': get_setting_value('waha_schedule_extra_info', ''),
         'waha_admin_header_enabled': get_setting_value('waha_admin_header_enabled', 'true'),
         'waha_admin_header_text': get_setting_value('waha_admin_header_text', '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n'),
-        'schedule_notify_on_create': get_setting_value('schedule_notify_on_create', 'true'),
-        'schedule_notify_on_edit': get_setting_value('schedule_notify_on_edit', 'false'),
-        'schedule_notify_on_delete': get_setting_value('schedule_notify_on_delete', 'true')
+        'legacy_migrated': get_setting_value('notifications_legacy_migrated', 'false'),
     }
-    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
-    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=classrooms, active_classroom=active_classroom)
+    policies = {item.classroom_id: item for item in ClassroomNotificationConfig.query.all()}
+    bindings = {item.classroom_id: item for item in ClassroomWhatsAppBinding.query.all()}
+    bots = WhatsAppBot.query.order_by(WhatsAppBot.name.asc()).all()
+    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=allowed_classrooms, active_classroom=active_classroom, policies=policies, bindings=bindings, bots=bots, can_manage_multi_notifications=can_manage_multi)
 
 @app.route('/notifications/waha/save-config', methods=['POST'])
 @login_required
@@ -3648,26 +3854,19 @@ def save_waha_config():
         flash('Akses ditolak.')
         return redirect(url_for('manage_notifications'))
 
-    set_setting_value('waha_enabled', 'true' if request.form.get('waha_enabled') == 'on' else 'false')
     set_setting_value('waha_base_url', (request.form.get('waha_base_url') or '').strip(), 'Base URL server WAHA')
     new_api_key = (request.form.get('waha_api_key') or '').strip()
     if new_api_key:
         set_setting_value('waha_api_key', new_api_key, 'API key WAHA')
-    set_setting_value('waha_session', (request.form.get('waha_session') or '').strip(), 'Nama session WAHA')
-    set_setting_value('waha_group_chat_id', (request.form.get('waha_group_chat_id') or '').strip(), 'Chat ID grup WAHA')
     set_setting_value('waha_daily_time', (request.form.get('waha_daily_time') or '18:00').strip(), 'Jam ringkasan harian WAHA')
-    set_setting_value('notification_channel_default', (request.form.get('notification_channel_default') or 'push').strip(), 'Channel default notifikasi')
     set_setting_value('waha_schedule_template', request.form.get('waha_schedule_template') or '', 'Template ringkasan jadwal WAHA')
     set_setting_value('waha_schedule_item_template', request.form.get('waha_schedule_item_template') or '', 'Template item jadwal WAHA')
     set_setting_value('waha_schedule_deadline_item_template', request.form.get('waha_schedule_deadline_item_template') or '', 'Template item deadline WAHA')
     set_setting_value('waha_schedule_extra_info', request.form.get('waha_schedule_extra_info') or '', 'Info tambahan tetap di ringkasan WAHA')
     set_setting_value('waha_admin_header_enabled', 'true' if request.form.get('waha_admin_header_enabled') == 'on' else 'false', 'Aktifkan header/pengenal admin di pesan WA')
     set_setting_value('waha_admin_header_text', request.form.get('waha_admin_header_text') or '', 'Template header admin untuk pesan WA')
-    set_setting_value('schedule_notify_on_create', 'true' if request.form.get('schedule_notify_on_create') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal baru dibuat')
-    set_setting_value('schedule_notify_on_edit', 'true' if request.form.get('schedule_notify_on_edit') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal diedit')
-    set_setting_value('schedule_notify_on_delete', 'true' if request.form.get('schedule_notify_on_delete') == 'on' else 'false', 'Kirim notifikasi WhatsApp saat jadwal dihapus')
     db.session.commit()
-    flash('Konfigurasi WAHA berhasil disimpan.')
+    flash('Konfigurasi mesin WAHA berhasil disimpan.')
     return redirect(url_for('manage_notifications'))
 
 @app.route('/notifications/waha/sessions')
@@ -3758,7 +3957,8 @@ def get_waha_chats():
 def test_push_notification():
     if not current_user.role.can_manage_notifications:
         return jsonify({'error': 'Unauthorized'}), 403
-    send_push('Test Push Famousbytee', 'Ini adalah notifikasi uji dari backend.', user_id=current_user.id, sender_id=current_user.id, extra_data={'source': 'test_push'})
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    send_push('Test Push Famousbytee', 'Ini adalah notifikasi uji dari backend.', user_id=current_user.id, sender_id=current_user.id, extra_data={'source': 'test_push'}, classroom_id=active_classroom.id if active_classroom else None, category='emergency')
     return jsonify({'ok': True, 'message': 'Permintaan test push diproses'})
 
 @app.route('/notifications/test-whatsapp', methods=['POST'])
@@ -3769,7 +3969,8 @@ def test_whatsapp_notification():
     payload = request.get_json(silent=True) or request.form or {}
     custom_chat_id = (payload.get('chat_id') or '').strip()
     custom_message = (payload.get('message') or 'Test pesan WAHA dari panel backend Famousbytee.').strip()
-    result = send_whatsapp(custom_message, sender_id=current_user.id, title='Test WhatsApp', chat_id=custom_chat_id or None)
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    result = send_whatsapp(custom_message, sender_id=current_user.id, title='Test WhatsApp', chat_id=custom_chat_id or None, classroom_id=active_classroom.id if active_classroom else None, category='emergency', force=bool(custom_chat_id))
     return jsonify(result), (200 if result.get('ok') else 400)
 
 @app.route('/webhooks/waha', methods=['POST'])

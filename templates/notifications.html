@@ -2,425 +2,315 @@
 
 {% block content %}
 <style>
-    .notifications-page { display: grid; gap: 1.25rem; }
-    .notify-hero, .notify-panel, .notify-card {
+    .notify-shell { display: grid; gap: 1rem; }
+    .notify-card, .notify-panel {
         background: #fff;
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
+        border-radius: 14px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.05);
     }
-    .notify-hero {
-        padding: 1.4rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 1rem;
-        flex-wrap: wrap;
-    }
-    .notify-hero h1, .notify-panel h2, .notify-card h3 { margin: 0; color: #0f172a; }
-    .notify-muted { color: #64748b; margin: .35rem 0 0; }
-    .notify-actions { display: flex; gap: .65rem; flex-wrap: wrap; }
-    .notify-status-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-        gap: .9rem;
-    }
-    .notify-card { padding: 1rem; }
-    .notify-status {
-        display: flex;
-        gap: .8rem;
-        align-items: flex-start;
-    }
-    .notify-status-icon {
-        width: 42px;
-        height: 42px;
-        border-radius: 10px;
-        display: grid;
-        place-items: center;
-        flex-shrink: 0;
-    }
-    .notify-badge {
-        display: inline-flex;
-        align-items: center;
-        border-radius: 999px;
-        padding: .25rem .55rem;
-        font-size: .72rem;
-        font-weight: 800;
-    }
-    .notify-badge.ok { background: #dcfce7; color: #166534; }
-    .notify-badge.off { background: #f1f5f9; color: #475569; }
-    .notify-badge.warn { background: #fef3c7; color: #92400e; }
-    .notify-tabs {
-        display: flex;
-        gap: .5rem;
-        flex-wrap: wrap;
-        padding: .75rem;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-    }
+    .notify-card { padding: 1rem 1.1rem; }
+    .notify-panel { padding: 1.25rem; }
+    .notify-muted { color: #64748b; }
+    .notify-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 1rem; }
+    .notify-tabs { display: flex; gap: .6rem; flex-wrap: wrap; }
     .notify-tab-btn {
-        border: 1px solid transparent;
-        background: transparent;
+        border: 1px solid #dbe4ff;
+        background: #f8fafc;
         color: #475569;
         border-radius: 10px;
-        padding: .65rem .9rem;
+        padding: .75rem 1rem;
         font-weight: 800;
         cursor: pointer;
-        display: inline-flex;
-        gap: .5rem;
-        align-items: center;
     }
-    .notify-tab-btn.active {
-        background: #fff;
-        color: var(--primary);
-        border-color: #dbe4ff;
-        box-shadow: 0 8px 20px rgba(67, 97, 238, .08);
-    }
+    .notify-tab-btn.active { background: #eef2ff; color: #4338ca; }
     .notify-tab { display: none; }
     .notify-tab.active { display: block; }
-    .notify-panel { padding: 1.25rem; }
-    .notify-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-        gap: 1rem;
-    }
-    .notify-two {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 1rem;
-    }
-    .notify-subcard {
+    .notify-status { font-size: .76rem; font-weight: 800; border-radius: 999px; padding: .28rem .6rem; display: inline-flex; }
+    .notify-status.ok { background: #dcfce7; color: #166534; }
+    .notify-status.off { background: #f1f5f9; color: #475569; }
+    .notify-status.warn { background: #fef3c7; color: #92400e; }
+    .notify-section-title { margin: 0 0 .25rem; color: #0f172a; }
+    .notify-actions { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; }
+    .notify-split { display: grid; grid-template-columns: 1.1fr .9fr; gap: 1rem; }
+    .notify-list { display: grid; gap: .8rem; }
+    .notify-row {
         border: 1px solid #e2e8f0;
-        background: #f8fafc;
         border-radius: 12px;
-        padding: 1rem;
+        background: #f8fafc;
+        padding: .95rem;
     }
-    .notify-switch {
-        display: flex;
-        gap: .65rem;
-        align-items: flex-start;
-        font-weight: 700;
-        padding: .75rem;
-        border: 1px solid #e2e8f0;
-        border-radius: 10px;
-        background: #fff;
-    }
+    .notify-kv { display: grid; gap: .3rem; font-size: .9rem; color: #334155; }
+    .notify-kv strong { color: #0f172a; }
+    .notify-mini { font-size: .82rem; color: #64748b; }
     .notify-output {
-        min-height: 140px;
-        max-height: 340px;
-        overflow: auto;
         border: 1px solid #e2e8f0;
         border-radius: 10px;
         background: #fff;
         padding: .75rem;
-        color: #334155;
+        min-height: 100px;
     }
     .notify-history table td { vertical-align: top; }
-    .notify-alert {
-        padding: .9rem 1rem;
-        border-radius: 10px;
-        border: 1px solid #bbf7d0;
-        background: #f0fdf4;
-        color: #166534;
-        font-weight: 700;
-    }
-    .notify-modal {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(15, 23, 42, .58);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-        padding: 1rem;
-    }
-    .notify-modal-card {
-        width: min(560px, 100%);
-        background: #fff;
-        border-radius: 12px;
-        padding: 1.25rem;
-        position: relative;
-    }
-    .notify-modal-close {
-        position: absolute;
-        right: 1rem;
-        top: 1rem;
-        border: none;
-        background: #f1f5f9;
-        color: #64748b;
-        width: 36px;
-        height: 36px;
-        border-radius: 999px;
-        cursor: pointer;
-    }
-    @media (max-width: 800px) {
-        .notify-two { grid-template-columns: 1fr; }
+    @media (max-width: 920px) {
+        .notify-split { grid-template-columns: 1fr; }
     }
 </style>
 
-<div class="container notifications-page">
-    <section class="notify-hero">
-        <div>
-            <h1>Manajemen Notifikasi</h1>
-            <p class="notify-muted">Pengaturan dibuat bertahap: aktifkan channel, pilih target, atur template, lalu tes.</p>
-        </div>
-        <div class="notify-actions">
-            {% if current_user.role.can_manage_notifications %}
-            <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
-                <i data-lucide="plus"></i> Buat Notifikasi
-            </button>
-            <button class="btn" style="background:#1e293b;" onclick="runNotificationAction('{{ url_for('test_push_notification') }}', 'Test push dikirim ke akun Anda.')">
-                <i data-lucide="smartphone"></i> Test Push
-            </button>
-            {% endif %}
-            {% if current_user.role.can_manage_whatsapp %}
-            <button class="btn" style="background:#16a34a;" onclick="runNotificationAction('{{ url_for('test_whatsapp_notification') }}', 'Test WhatsApp diproses.')">
-                <i data-lucide="message-circle"></i> Test WhatsApp
-            </button>
-            {% endif %}
+<div class="container notify-shell">
+    <section class="notify-panel">
+        <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
+            <div>
+                <h1 class="notify-section-title">Manajemen Notifikasi Multi Kelas</h1>
+                <p class="notify-muted" style="margin:0;">Policy notifikasi kelas, binding target WhatsApp, dan mesin bot dipisahkan agar tidak saling tercampur.</p>
+            </div>
+            <div class="notify-actions">
+                {% if current_user.role.can_manage_notifications %}
+                <button class="btn" onclick="document.getElementById('notif-modal').style.display='flex'">
+                    <i data-lucide="plus"></i> Buat Notifikasi
+                </button>
+                <button class="btn" style="background:#1e293b;" onclick="runNotificationAction('{{ url_for('test_push_notification') }}')">
+                    <i data-lucide="smartphone"></i> Test Push
+                </button>
+                {% endif %}
+                {% if current_user.role.can_manage_whatsapp %}
+                <button class="btn" style="background:#16a34a;" onclick="runClassroomWhatsAppTest()">
+                    <i data-lucide="message-circle"></i> Test WhatsApp Kelas
+                </button>
+                {% endif %}
+            </div>
         </div>
     </section>
 
-    {% with messages = get_flashed_messages() %}
-    {% if messages %}
-        {% for message in messages %}
-        <div class="notify-alert">{{ message }}</div>
+    <section class="notify-grid">
+        {% for classroom in classrooms %}
+        {% set policy = policies.get(classroom.id) %}
+        {% set binding = bindings.get(classroom.id) %}
+        <div class="notify-card">
+            <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
+                <div>
+                    <h3 style="margin:0; color:#0f172a;">{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</h3>
+                    <p class="notify-mini" style="margin:.35rem 0 0;">Kebijakan dan target notifikasi kelas.</p>
+                </div>
+                <span class="notify-status {{ 'ok' if binding else 'off' }}">{{ 'Terhubung' if binding else 'Belum terhubung' }}</span>
+            </div>
+            <div class="notify-kv" style="margin-top:.85rem;">
+                <div><strong>Channel:</strong> {{ policy.default_channel if policy else 'push' }}</div>
+                <div><strong>Push:</strong> {{ 'Aktif' if not policy or policy.push_enabled else 'Nonaktif' }}</div>
+                <div><strong>WhatsApp:</strong> {{ 'Aktif' if policy and policy.whatsapp_enabled else 'Nonaktif' }}</div>
+                <div><strong>Bot:</strong> {{ binding.bot.name if binding and binding.bot else '-' }}</div>
+                <div><strong>Target:</strong> {{ binding.chat_label if binding and binding.chat_label else (binding.chat_id if binding else '-') }}</div>
+            </div>
+        </div>
         {% endfor %}
-    {% endif %}
-    {% endwith %}
-
-    <section class="notify-status-grid">
-        <div class="notify-card notify-status">
-            <div class="notify-status-icon" style="background:#eef2ff; color:var(--primary);"><i data-lucide="smartphone"></i></div>
-            <div>
-                <h3>Push Mobile</h3>
-                <span class="notify-badge ok">Aktif</span>
-                <p class="notify-muted">{{ users|length }} user terdaftar di sistem.</p>
-            </div>
-        </div>
-        <div class="notify-card notify-status">
-            <div class="notify-status-icon" style="background:#dcfce7; color:#166534;"><i data-lucide="message-circle"></i></div>
-            <div>
-                <h3>WhatsApp WAHA</h3>
-                <span class="notify-badge {{ 'ok' if settings.waha_enabled == 'true' else 'off' }}">{{ 'Aktif' if settings.waha_enabled == 'true' else 'Nonaktif' }}</span>
-                <p class="notify-muted">{{ settings.waha_session or 'Session belum diisi' }}</p>
-            </div>
-        </div>
-        <div class="notify-card notify-status">
-            <div class="notify-status-icon" style="background:#fef3c7; color:#92400e;"><i data-lucide="calendar-clock"></i></div>
-            <div>
-                <h3>Ringkasan Harian</h3>
-                <span class="notify-badge warn">{{ settings.waha_daily_time }}</span>
-                <p class="notify-muted">Jadwal WhatsApp otomatis.</p>
-            </div>
-        </div>
-        <div class="notify-card notify-status">
-            <div class="notify-status-icon" style="background:#f1f5f9; color:#334155;"><i data-lucide="history"></i></div>
-            <div>
-                <h3>Riwayat</h3>
-                <span class="notify-badge off">{{ history|length }} item</span>
-                <p class="notify-muted">Tampilan dibatasi 80 riwayat terbaru.</p>
-            </div>
-        </div>
     </section>
 
     <nav class="notify-tabs">
-        <button class="notify-tab-btn active" type="button" data-tab="basic" onclick="showNotifyTab('basic')"><i data-lucide="sliders-horizontal"></i> Dasar</button>
+        <button class="notify-tab-btn active" data-tab="policy" onclick="showNotifyTab('policy')">Kebijakan Notifikasi</button>
+        <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Binding WhatsApp per Kelas</button>
         {% if current_user.role.can_manage_whatsapp %}
-        <button class="notify-tab-btn" type="button" data-tab="whatsapp" onclick="showNotifyTab('whatsapp')"><i data-lucide="message-circle"></i> WhatsApp</button>
-        <button class="notify-tab-btn" type="button" data-tab="templates" onclick="showNotifyTab('templates')"><i data-lucide="file-text"></i> Template Pesan</button>
+        <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Bot WhatsApp</button>
         {% endif %}
-        <button class="notify-tab-btn" type="button" data-tab="test" onclick="showNotifyTab('test')"><i data-lucide="send"></i> Tes & Riwayat</button>
+        <button class="notify-tab-btn" data-tab="history" onclick="showNotifyTab('history')">Riwayat</button>
     </nav>
 
+    <section id="notify-tab-policy" class="notify-tab active">
+        <div class="notify-panel notify-split">
+            <div>
+                <h2 class="notify-section-title">Kebijakan Notifikasi Kelas</h2>
+                <p class="notify-muted">Anda sedang mengatur aturan kelas: channel aktif dan kategori notifikasi.</p>
+                <div class="form-group" style="margin-top:1rem;">
+                    <label>Pilih Kelas</label>
+                    <select id="policy-classroom" class="form-control" onchange="loadPolicy()">
+                        {% for classroom in classrooms %}
+                        <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="notify-grid">
+                    <label class="notify-row"><input type="checkbox" id="policy-push"> Push aktif</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-whatsapp"> WhatsApp aktif</label>
+                </div>
+                <div class="form-group" style="margin-top:1rem;">
+                    <label>Channel Default</label>
+                    <select id="policy-channel" class="form-control">
+                        <option value="push">Push saja</option>
+                        <option value="whatsapp">WhatsApp saja</option>
+                        <option value="both">Push + WhatsApp</option>
+                    </select>
+                </div>
+                <div class="notify-grid" style="margin-top:1rem;">
+                    <label class="notify-row"><input type="checkbox" id="policy-announcement"> Pengumuman</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-assignment"> Tugas</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-schedule"> Jadwal</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-finance"> Keuangan</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-emergency"> Peringatan penting</label>
+                </div>
+                <div class="notify-actions" style="margin-top:1rem;">
+                    <button class="btn" type="button" onclick="savePolicy()">Simpan Kebijakan</button>
+                    <span id="policy-status" class="notify-mini"></span>
+                </div>
+            </div>
+            <div class="notify-card">
+                <h3 style="margin:0;">Ringkasan</h3>
+                <p class="notify-muted" style="margin:.4rem 0 0;">Bagian ini hanya mengatur perilaku kelas, bukan session bot.</p>
+                <div id="policy-summary" class="notify-output" style="margin-top:1rem;">Memuat...</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="notify-tab-binding" class="notify-tab">
+        <div class="notify-panel notify-split">
+            <div>
+                <h2 class="notify-section-title">Binding Target WhatsApp Kelas</h2>
+                <p class="notify-muted">Anda sedang mengatur target WA kelas: bot mana dan chat mana yang dipakai oleh kelas aktif.</p>
+                <div class="form-group" style="margin-top:1rem;">
+                    <label>Pilih Kelas</label>
+                    <select id="binding-classroom" class="form-control" onchange="loadBinding()">
+                        {% for classroom in classrooms %}
+                        <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Pilih Bot</label>
+                    <select id="binding-bot" class="form-control">
+                        <option value="">Pilih bot</option>
+                        {% for bot in bots %}
+                        <option value="{{ bot.id }}">{{ bot.name }} - {{ bot.session_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Chat ID</label>
+                    <input type="text" id="binding-chat-id" class="form-control" placeholder="1203xxxx@g.us">
+                </div>
+                <div class="form-group">
+                    <label>Label Target</label>
+                    <input type="text" id="binding-chat-label" class="form-control" placeholder="Grup Kelas A">
+                </div>
+                <div class="notify-actions">
+                    <button class="btn" type="button" onclick="saveBinding()">Simpan Binding</button>
+                    <button class="btn" type="button" style="background:#1e293b;" onclick="openBotHealth()">Cek Status Bot</button>
+                    <span id="binding-status" class="notify-mini"></span>
+                </div>
+            </div>
+            <div class="notify-card">
+                <h3 style="margin:0;">Status Binding</h3>
+                <div id="binding-summary" class="notify-output" style="margin-top:1rem;">Memuat...</div>
+            </div>
+        </div>
+    </section>
+
     {% if current_user.role.can_manage_whatsapp %}
-    <form method="POST" action="{{ url_for('save_waha_config') }}">
-    {% endif %}
-        <section id="notify-tab-basic" class="notify-tab active">
-            <div class="notify-panel">
-                <h2>Pengaturan Dasar</h2>
-                <p class="notify-muted">Mulai dari pilihan yang paling sering dipakai admin.</p>
-                {% if current_user.role.can_manage_whatsapp %}
-                <div class="notify-grid" style="margin-top:1rem;">
-                    <label class="notify-switch">
-                        <input type="checkbox" name="waha_enabled" {{ 'checked' if settings.waha_enabled == 'true' else '' }}>
-                        <span>Aktifkan WhatsApp WAHA<br><small style="color:#64748b;">Matikan jika hanya ingin pakai push mobile.</small></span>
-                    </label>
-                    <div class="form-group">
-                        <label>Channel Default</label>
-                        <select name="notification_channel_default" class="form-control">
-                            <option value="push" {{ 'selected' if settings.notification_channel_default == 'push' else '' }}>Push saja</option>
-                            <option value="whatsapp" {{ 'selected' if settings.notification_channel_default == 'whatsapp' else '' }}>WhatsApp saja</option>
-                            <option value="both" {{ 'selected' if settings.notification_channel_default == 'both' else '' }}>Push + WhatsApp</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Jam Ringkasan Harian</label>
-                        <input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}">
-                    </div>
-                </div>
-                <div class="notify-subcard">
-                    <h3>Notifikasi Perubahan Jadwal</h3>
-                    <p class="notify-muted">Default edit dibuat nonaktif agar grup tidak terlalu ramai.</p>
-                    <div class="notify-grid" style="margin-top:1rem;">
-                        <label class="notify-switch"><input type="checkbox" name="schedule_notify_on_create" {{ 'checked' if settings.schedule_notify_on_create == 'true' else '' }}> Jadwal baru</label>
-                        <label class="notify-switch"><input type="checkbox" name="schedule_notify_on_edit" {{ 'checked' if settings.schedule_notify_on_edit == 'true' else '' }}> Jadwal diedit</label>
-                        <label class="notify-switch"><input type="checkbox" name="schedule_notify_on_delete" {{ 'checked' if settings.schedule_notify_on_delete == 'true' else '' }}> Jadwal dihapus</label>
-                    </div>
-                </div>
-                {% else %}
-                <p class="notify-muted">Anda tidak memiliki izin mengatur WhatsApp. Gunakan tombol buat notifikasi untuk push mobile.</p>
-                {% endif %}
-            </div>
-        </section>
-
-        {% if current_user.role.can_manage_whatsapp %}
-        <section id="notify-tab-whatsapp" class="notify-tab">
-            <div class="notify-panel">
-                <h2>Koneksi WhatsApp</h2>
-                <p class="notify-muted">Isi koneksi utama, lalu gunakan tombol discovery untuk mencari session, grup, dan chat personal.</p>
-                <div class="notify-grid" style="margin-top:1rem;">
-                    <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="http://server-waha:3000"></div>
-                    <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" value="" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
-                    <div class="form-group"><label>Session WAHA</label><input type="text" name="waha_session" class="form-control" value="{{ settings.waha_session }}"></div>
-                    <div class="form-group"><label>Group Chat ID</label><input type="text" name="waha_group_chat_id" class="form-control" value="{{ settings.waha_group_chat_id }}"></div>
-                </div>
-
-                <div class="notify-two" style="margin-top:1rem;">
-                    <div class="notify-subcard">
-                        <div class="notify-actions" style="justify-content:space-between; align-items:center;">
-                            <h3>Session</h3>
-                            <button type="button" class="btn" style="background:#1e293b;" onclick="fetchWahaData('{{ url_for('get_waha_sessions') }}', 'sessions-output', 'sessions')">Cek Session</button>
-                        </div>
-                        <div id="sessions-output" class="notify-output" style="margin-top:.75rem;">Belum dicek.</div>
-                    </div>
-                    <div class="notify-subcard">
-                        <div class="notify-actions" style="justify-content:space-between; align-items:center;">
-                            <h3>Grup WhatsApp</h3>
-                            <button type="button" class="btn" style="background:#16a34a;" onclick="fetchWahaData('{{ url_for('get_waha_groups') }}', 'groups-output', 'groups')">Ambil Grup</button>
-                        </div>
-                        <div id="groups-output" class="notify-output" style="margin-top:.75rem;">Belum dicek.</div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <section id="notify-tab-templates" class="notify-tab">
-            <div class="notify-panel">
-                <h2>Template Pesan</h2>
-                <p class="notify-muted">Bagian ini hanya untuk format pesan. Koneksi WhatsApp ada di tab WhatsApp.</p>
-                <div class="notify-subcard" style="margin-top:1rem;">
-                    <h3>Header Pesan Admin</h3>
-                    <label class="notify-switch" style="margin-top:.75rem;"><input type="checkbox" name="waha_admin_header_enabled" {{ 'checked' if settings.waha_admin_header_enabled == 'true' else '' }}> Aktifkan header admin otomatis</label>
-                    <div class="form-group" style="margin-top:1rem;">
-                        <label>Template Header</label>
-                        <textarea name="waha_admin_header_text" class="form-control" rows="4">{{ settings.waha_admin_header_text }}</textarea>
-                    </div>
-                </div>
-                <div class="notify-subcard">
-                    <h3>Ringkasan Jadwal WhatsApp</h3>
-                    <p class="notify-muted">Placeholder: <code>{day_name}</code>, <code>{date_long}</code>, <code>{schedule_lines}</code>, <code>{deadline_section}</code>, <code>{extra_info_section}</code>.</p>
-                    <div class="form-group" style="margin-top:1rem;">
-                        <label>Template Pesan Utama</label>
-                        <textarea name="waha_schedule_template" class="form-control" rows="8">{{ settings.waha_schedule_template }}</textarea>
-                    </div>
+    <section id="notify-tab-bots" class="notify-tab">
+        <div class="notify-panel notify-split">
+            <div>
+                <h2 class="notify-section-title">Mesin Bot WhatsApp</h2>
+                <p class="notify-muted">Bagian ini khusus koneksi teknis bot. Jangan dipakai untuk mengatur policy kelas.</p>
+                <form method="POST" action="{{ url_for('save_waha_config') }}" class="notify-card" style="margin-top:1rem;">
+                    <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}"></div>
+                    <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
+                    <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
+                    <div class="notify-actions"><button type="submit" class="btn">Simpan Mesin WAHA</button></div>
+                </form>
+                <div class="notify-card" style="margin-top:1rem;">
+                    <h3 style="margin-top:0;">Tambah / Edit Bot</h3>
                     <div class="notify-grid">
-                        <div class="form-group"><label>Template Item Jadwal</label><input type="text" name="waha_schedule_item_template" class="form-control" value="{{ settings.waha_schedule_item_template }}"></div>
-                        <div class="form-group"><label>Template Item Deadline</label><input type="text" name="waha_schedule_deadline_item_template" class="form-control" value="{{ settings.waha_schedule_deadline_item_template }}"></div>
-                    </div>
-                    <div class="form-group">
-                        <label>Info Tambahan Tetap</label>
-                        <textarea name="waha_schedule_extra_info" class="form-control" rows="3">{{ settings.waha_schedule_extra_info }}</textarea>
-                    </div>
-                </div>
-            </div>
-        </section>
-        {% endif %}
-
-        <section id="notify-tab-test" class="notify-tab">
-            <div class="notify-panel">
-                <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
-                    <div>
-                        <h2>Tes & Riwayat</h2>
-                        <p class="notify-muted">Kirim test, lihat hasil terbaru, atau bersihkan riwayat.</p>
-                    </div>
-                    {% if history %}
-                    <a href="{{ url_for('clear_notification_history') }}" class="btn" style="background:#fee2e2; color:#991b1b;" onclick="return confirm('Hapus seluruh riwayat notifikasi?')">
-                        <i data-lucide="trash-2"></i> Bersihkan Riwayat
-                    </a>
-                    {% endif %}
-                </div>
-
-                {% if current_user.role.can_manage_whatsapp %}
-                <div class="notify-subcard" style="margin-top:1rem;">
-                    <h3>Test WhatsApp ke Target Tertentu</h3>
-                    <div class="notify-grid" style="margin-top:1rem;">
-                        <div class="form-group"><label>Target Chat ID</label><input type="text" id="waha_test_chat_id" class="form-control" placeholder="Kosongkan untuk group default"></div>
-                        <div class="form-group"><label>Pesan Test</label><input type="text" id="waha_test_message" class="form-control" value="Test pesan WAHA dari panel backend Famousbytee."></div>
+                        <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
+                        <div class="form-group"><label>Session Name</label><input type="text" id="bot-session" class="form-control" placeholder="session-kelas-a"></div>
+                        <div class="form-group"><label>Base URL Override</label><input type="text" id="bot-base-url" class="form-control" placeholder="Opsional"></div>
+                        <div class="form-group"><label>Status</label><input type="text" id="bot-status" class="form-control" value="configured"></div>
                     </div>
                     <div class="notify-actions">
-                        <button type="button" class="btn" style="background:#0369a1;" onclick="fetchWahaData('{{ url_for('get_waha_chats') }}', 'chats-output', 'chats')">Ambil Chat Personal</button>
-                        <button type="button" class="btn" style="background:#16a34a;" onclick="runWahaTest()">Kirim Test</button>
+                        <button class="btn" type="button" onclick="saveBot()">Simpan Bot</button>
+                        <span id="bot-status-text" class="notify-mini"></span>
                     </div>
-                    <div id="chats-output" class="notify-output" style="margin-top:.75rem;">Chat personal belum dicek.</div>
-                </div>
-                {% endif %}
-
-                <div class="notify-history" style="overflow-x:auto; margin-top:1rem;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Waktu</th>
-                                <th>Pesan</th>
-                                <th>Channel</th>
-                                <th>Target</th>
-                                <th>Pengirim</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for h in history %}
-                            <tr>
-                                <td style="white-space:nowrap;">{{ h.sent_at.strftime('%d %b %Y, %H:%M') }}</td>
-                                <td><strong>{{ h.title }}</strong><br><span style="color:#64748b; font-size:.85rem;">{{ h.body }}</span></td>
-                                <td><span class="status-badge">{{ h.channel or 'push' }}</span></td>
-                                <td>{{ 'Semua' if h.target == 'All' else h.target }}</td>
-                                <td>{{ h.user.username if h.user else 'System' }}</td>
-                                <td>{{ h.status }}</td>
-                            </tr>
-                            {% endfor %}
-                            {% if not history %}
-                            <tr><td colspan="6" style="text-align:center; padding:2rem; color:#64748b;">Belum ada riwayat notifikasi.</td></tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
                 </div>
             </div>
-        </section>
-
-    {% if current_user.role.can_manage_whatsapp %}
-        <div style="display:flex; justify-content:flex-end;">
-            <button type="submit" class="btn" style="min-width:220px;">Simpan Konfigurasi</button>
+            <div class="notify-card">
+                <h3 style="margin:0;">Daftar Bot</h3>
+                <div class="notify-list" style="margin-top:1rem;">
+                    {% for bot in bots %}
+                    <div class="notify-row">
+                        <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
+                            <div>
+                                <strong>{{ bot.name }}</strong>
+                                <div class="notify-mini">{{ bot.session_name }}</div>
+                            </div>
+                            <span class="notify-status {{ 'ok' if bot.is_active else 'off' }}">{{ 'Aktif' if bot.is_active else 'Nonaktif' }}</span>
+                        </div>
+                        <div class="notify-mini" style="margin-top:.5rem;">Status: {{ bot.status or 'unknown' }}</div>
+                        <div class="notify-actions" style="margin-top:.75rem;">
+                            <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm('{{ bot.id }}', '{{ bot.name|replace('\'', '\\\'') }}', '{{ bot.session_name|replace('\'', '\\\'') }}', '{{ (bot.base_url or '')|replace('\'', '\\\'') }}', '{{ (bot.status or 'configured')|replace('\'', '\\\'') }}', '{{ 'true' if bot.is_active else 'false' }}')">Edit</button>
+                            <button class="btn" type="button" style="background:#1e293b; padding:8px 12px;" onclick="checkBotHealth('{{ bot.id }}')">Cek Health</button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="notify-output">Belum ada bot.</div>
+                    {% endfor %}
+                </div>
+            </div>
         </div>
-    </form>
+    </section>
     {% endif %}
+
+    <section id="notify-tab-history" class="notify-tab">
+        <div class="notify-panel">
+            <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
+                <div>
+                    <h2 class="notify-section-title">Riwayat Pengiriman</h2>
+                    <p class="notify-muted">Log kini mencatat kelas, channel, dan jejak target WA jika tersedia.</p>
+                </div>
+                {% if history %}
+                <a href="{{ url_for('clear_notification_history') }}" class="btn" style="background:#fee2e2; color:#991b1b;" onclick="return confirm('Hapus seluruh riwayat notifikasi?')">Bersihkan Riwayat</a>
+                {% endif %}
+            </div>
+            <div class="notify-history" style="overflow-x:auto; margin-top:1rem;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Waktu</th>
+                            <th>Kelas</th>
+                            <th>Pesan</th>
+                            <th>Channel</th>
+                            <th>Bot/Chat</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in history %}
+                        <tr>
+                            <td style="white-space:nowrap;">{{ h.sent_at.strftime('%d %b %Y, %H:%M') }}</td>
+                            <td>{{ h.classroom.name if h.classroom else '-' }}</td>
+                            <td><strong>{{ h.title }}</strong><br><span class="notify-mini">{{ h.body }}</span></td>
+                            <td><span class="status-badge">{{ h.channel or 'push' }}</span>{% if h.category %}<br><span class="notify-mini">{{ h.category }}</span>{% endif %}</td>
+                            <td>{{ h.bot.name if h.bot else '-' }}<br><span class="notify-mini">{{ h.chat_id or '-' }}</span></td>
+                            <td>{{ h.status }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align:center; padding:2rem; color:#64748b;">Belum ada riwayat notifikasi.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
 </div>
 
 {% if current_user.role.can_manage_notifications %}
-<div id="notif-modal" class="notify-modal">
-    <div class="notify-modal-card">
-        <button onclick="document.getElementById('notif-modal').style.display='none'" class="notify-modal-close"><i data-lucide="x"></i></button>
-        <h2 style="margin-bottom:1rem;">Kirim Notifikasi Baru</h2>
+<div id="notif-modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.58); z-index:1000; align-items:center; justify-content:center; padding:1rem;">
+    <div class="notify-panel" style="width:min(560px,100%); position:relative;">
+        <button onclick="document.getElementById('notif-modal').style.display='none'" style="position:absolute; right:1rem; top:1rem; border:none; background:#f1f5f9; width:36px; height:36px; border-radius:999px;"><i data-lucide="x"></i></button>
+        <h2 style="margin-top:0;">Kirim Notifikasi Baru</h2>
         <form method="POST" action="{{ url_for('manage_notifications') }}">
             <div class="form-group"><label>Judul</label><input type="text" name="title" class="form-control" required></div>
             <div class="form-group"><label>Pesan</label><textarea name="body" class="form-control" rows="3" required></textarea></div>
             <div class="form-group">
                 <label>Target</label>
                 <select name="target" class="form-control">
-                    <option value="all">Semua siswa</option>
+                    <option value="all">Semua siswa di kelas aktif</option>
                     {% for u in users %}
-                    <option value="{{ u.id }}">{{ u.username }} - {{ u.full_name or u.username }} {{ ' | Push siap' if u.fcm_token else ' | Token kosong' }}</option>
+                    <option value="{{ u.id }}">{{ u.username }} - {{ u.full_name or u.username }}</option>
                     {% endfor %}
                 </select>
             </div>
@@ -434,6 +324,8 @@
 {% endif %}
 
 <script>
+let currentBotId = null;
+
 function showNotifyTab(name) {
     document.querySelectorAll('.notify-tab').forEach(tab => tab.classList.remove('active'));
     document.querySelectorAll('.notify-tab-btn').forEach(btn => btn.classList.remove('active'));
@@ -443,90 +335,160 @@ function showNotifyTab(name) {
     if (btn) btn.classList.add('active');
 }
 
-async function runNotificationAction(url, successMessage) {
-    try {
-        const response = await fetch(url, { method: 'POST' });
-        const data = await response.json();
-        alert(data.message || data.error || successMessage);
-    } catch (error) {
-        alert('Aksi gagal dijalankan.');
+async function apiFetch(url, options = {}) {
+    const response = await fetch(url, {
+        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        ...options,
+    });
+    const data = await response.json();
+    if (!response.ok) {
+        throw new Error(data.error || data.msg || 'Permintaan gagal');
     }
+    return data;
 }
 
-async function fetchWahaData(url, outputId, type) {
-    const target = document.getElementById(outputId);
-    target.innerHTML = 'Memuat...';
-    try {
-        const response = await fetch(url);
-        const data = await response.json();
-        if (!response.ok || data.ok === false) {
-            target.innerHTML = `<div style="color:#991b1b;">${escapeHtml(data.error || 'Gagal mengambil data.')}</div>`;
-            return;
-        }
-        const items = Array.isArray(data.items) ? data.items : [];
-        if (!items.length) {
-            target.innerHTML = 'Tidak ada data ditemukan.';
-            return;
-        }
-        target.innerHTML = items.slice(0, 20).map(item => renderWahaItem(item, type)).join('');
-    } catch (error) {
-        target.innerHTML = '<div style="color:#991b1b;">Gagal mengambil data.</div>';
-    }
-}
-
-function renderWahaItem(item, type) {
-    const title = item.name || item.chat_id || item.id || '-';
-    const subtitle = item.chat_id || item.status || item.me || '-';
-    const button = type === 'sessions'
-        ? `<button type="button" class="btn" style="padding:6px 10px; font-size:.75rem;" onclick="applyWahaValue('waha_session', '${escapeAttr(item.name || '')}')">Pakai</button>`
-        : type === 'groups'
-            ? `<button type="button" class="btn" style="padding:6px 10px; font-size:.75rem; background:#16a34a;" onclick="applyWahaValue('waha_group_chat_id', '${escapeAttr(item.chat_id || '')}')">Pakai</button>`
-            : `<button type="button" class="btn" style="padding:6px 10px; font-size:.75rem; background:#0369a1;" onclick="applyTestChatId('${escapeAttr(item.chat_id || '')}')">Pakai Test</button>`;
-    return `
-        <div style="display:flex; justify-content:space-between; gap:.75rem; padding:.75rem; border-bottom:1px solid #e2e8f0;">
-            <div><strong>${escapeHtml(title)}</strong><br><span style="font-size:.82rem; color:#64748b;">${escapeHtml(subtitle)}</span></div>
-            ${button}
-        </div>
+async function loadPolicy() {
+    const classroomId = document.getElementById('policy-classroom').value;
+    const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/policy`);
+    document.getElementById('policy-push').checked = !!data.push_enabled;
+    document.getElementById('policy-whatsapp').checked = !!data.whatsapp_enabled;
+    document.getElementById('policy-channel').value = data.default_channel || 'push';
+    document.getElementById('policy-announcement').checked = !!data.announcement_enabled;
+    document.getElementById('policy-assignment').checked = !!data.assignment_enabled;
+    document.getElementById('policy-schedule').checked = !!data.schedule_enabled;
+    document.getElementById('policy-finance').checked = !!data.finance_enabled;
+    document.getElementById('policy-emergency').checked = !!data.emergency_enabled;
+    document.getElementById('policy-summary').innerHTML = `
+        <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
+        <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
+        <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | WhatsApp: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
     `;
 }
 
-function applyWahaValue(fieldName, value) {
-    const input = document.querySelector(`[name="${fieldName}"]`);
-    if (input) input.value = value;
-}
-
-function applyTestChatId(value) {
-    const input = document.getElementById('waha_test_chat_id');
-    if (input) input.value = value;
-}
-
-async function runWahaTest() {
-    const chatId = document.getElementById('waha_test_chat_id').value.trim();
-    const message = document.getElementById('waha_test_message').value.trim();
+async function savePolicy() {
+    const classroomId = document.getElementById('policy-classroom').value;
+    const payload = {
+        push_enabled: document.getElementById('policy-push').checked,
+        whatsapp_enabled: document.getElementById('policy-whatsapp').checked,
+        default_channel: document.getElementById('policy-channel').value,
+        announcement_enabled: document.getElementById('policy-announcement').checked,
+        assignment_enabled: document.getElementById('policy-assignment').checked,
+        schedule_enabled: document.getElementById('policy-schedule').checked,
+        finance_enabled: document.getElementById('policy-finance').checked,
+        emergency_enabled: document.getElementById('policy-emergency').checked,
+    };
     try {
-        const response = await fetch('{{ url_for('test_whatsapp_notification') }}', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ chat_id: chatId, message })
-        });
-        const data = await response.json();
-        alert(data.message || data.error || 'Permintaan test WhatsApp diproses.');
+        await apiFetch(`/api/notifications/classrooms/${classroomId}/policy`, { method: 'PUT', body: JSON.stringify(payload) });
+        document.getElementById('policy-status').innerText = 'Kebijakan kelas berhasil disimpan.';
+        loadPolicy();
     } catch (error) {
-        alert('Gagal mengirim test WhatsApp.');
+        document.getElementById('policy-status').innerText = error.message;
     }
 }
 
-function escapeHtml(value) {
-    return String(value)
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;')
-        .replaceAll("'", '&#39;');
+async function loadBinding() {
+    const classroomId = document.getElementById('binding-classroom').value;
+    const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/whatsapp-binding`);
+    document.getElementById('binding-bot').value = data.bot_id || '';
+    document.getElementById('binding-chat-id').value = data.chat_id || '';
+    document.getElementById('binding-chat-label').value = data.chat_label || '';
+    document.getElementById('binding-summary').innerHTML = `
+        <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
+        <span class="notify-mini">Bot ID: ${data.bot_id || '-'}</span><br>
+        <span class="notify-mini">Chat: ${data.chat_label || data.chat_id || '-'}</span>
+    `;
 }
 
-function escapeAttr(value) {
-    return String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+async function saveBinding() {
+    const classroomId = document.getElementById('binding-classroom').value;
+    try {
+        await apiFetch(`/api/notifications/classrooms/${classroomId}/whatsapp-binding`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                bot_id: document.getElementById('binding-bot').value,
+                chat_id: document.getElementById('binding-chat-id').value,
+                chat_label: document.getElementById('binding-chat-label').value,
+            }),
+        });
+        document.getElementById('binding-status').innerText = 'Binding kelas berhasil disimpan.';
+        loadBinding();
+    } catch (error) {
+        document.getElementById('binding-status').innerText = error.message;
+    }
 }
+
+function fillBotForm(id, name, sessionName, baseUrl, status) {
+    currentBotId = id;
+    document.getElementById('bot-name').value = name;
+    document.getElementById('bot-session').value = sessionName;
+    document.getElementById('bot-base-url').value = baseUrl;
+    document.getElementById('bot-status').value = status;
+}
+
+async function saveBot() {
+    const payload = {
+        name: document.getElementById('bot-name').value,
+        session_name: document.getElementById('bot-session').value,
+        base_url: document.getElementById('bot-base-url').value,
+        status: document.getElementById('bot-status').value,
+        is_active: true,
+    };
+    try {
+        if (currentBotId) {
+            await apiFetch(`/api/notifications/bots/${currentBotId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        } else {
+            await apiFetch('/api/notifications/bots', { method: 'POST', body: JSON.stringify(payload) });
+        }
+        document.getElementById('bot-status-text').innerText = 'Data bot berhasil disimpan. Muat ulang halaman untuk melihat daftar terbaru.';
+    } catch (error) {
+        document.getElementById('bot-status-text').innerText = error.message;
+    }
+}
+
+async function checkBotHealth(botId) {
+    try {
+        const data = await apiFetch(`/api/notifications/bots/${botId}/health`);
+        alert(`Bot ${data.session_name}: ${data.status}`);
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+function openBotHealth() {
+    const botId = document.getElementById('binding-bot').value;
+    if (!botId) {
+        alert('Pilih bot dulu.');
+        return;
+    }
+    checkBotHealth(botId);
+}
+
+async function runNotificationAction(url) {
+    try {
+        const data = await apiFetch(url, { method: 'POST' });
+        alert(data.message || 'Permintaan berhasil diproses.');
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+async function runClassroomWhatsAppTest() {
+    const chatId = document.getElementById('binding-chat-id').value.trim();
+    try {
+        const data = await apiFetch('{{ url_for('test_whatsapp_notification') }}', {
+            method: 'POST',
+            body: JSON.stringify({ chat_id: chatId, message: 'Test WhatsApp dari panel notifikasi multi-kelas.' }),
+        });
+        alert(data.message || 'Test WhatsApp diproses.');
+    } catch (error) {
+        alert(error.message);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadPolicy();
+    loadBinding();
+    lucide.createIcons();
+});
 </script>
 {% endblock %}

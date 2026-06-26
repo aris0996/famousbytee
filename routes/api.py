@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
-from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom
+from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding
 from datetime import datetime, timedelta
 import os
 import json
@@ -123,6 +123,23 @@ def _classroom_from_request(data, fallback_classroom, allowed_ids):
     if not classroom:
         raise LookupError('Kelas tidak ditemukan')
     return classroom
+
+
+def _can_manage_notification_across_classes(role):
+    return bool(
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, 'can_manage_notifications_multi_class', False) or
+        getattr(role, 'can_access_multi_classroom', False) or
+        getattr(role, 'can_view_all_classrooms', False) or
+        getattr(role, 'can_switch_classroom_context', False)
+    )
+
+
+def _allowed_notification_classrooms_for_user(user):
+    current = _user_classroom(user)
+    if user.role and _can_manage_notification_across_classes(user.role):
+        return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return [current] if current else []
 
 @api_bp.route('/app/releases/windows/latest', methods=['GET'])
 def latest_windows_release():
@@ -534,7 +551,13 @@ def get_announcements():
 
         from app import send_push, log_activity
         title_prefix = "Pengumuman Baru!" if ann.category != 'Penting' else "PENTING: Pengumuman!"
-        send_push(title_prefix, ann.title, sender_id=user.id)
+        send_push(
+            title_prefix,
+            ann.title,
+            sender_id=user.id,
+            classroom_id=ann.classroom_id,
+            category='announcement',
+        )
         log_activity("Tambah Pengumuman API", f"Judul: {ann.title}")
         return jsonify({"status": "success", "id": ann.id})
 
@@ -864,19 +887,15 @@ def manage_schedules():
         db.session.add(s)
         db.session.commit()
         
-        from app import send_multichannel_notification, get_setting_value
-        # Check if WhatsApp notification is enabled for create
-        # Note: Sends daily summary, not per-subject message
-        should_notify = get_setting_value('schedule_notify_on_create', 'true') == 'true'
-        if should_notify:
-            # Send push notification immediately
-            send_multichannel_notification(
-                "Jadwal Baru Ditambahkan",
-                f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
-                sender_id=user.id,
-                allow_whatsapp=False,  # Don't send per-subject WhatsApp
-            )
-            # WhatsApp will be sent via daily summary at scheduled time
+        from app import send_multichannel_notification
+        send_multichannel_notification(
+            "Jadwal Baru Ditambahkan",
+            f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
+            sender_id=user.id,
+            allow_whatsapp=False,
+            classroom_id=s.classroom_id,
+            category='schedule',
+        )
         
         return jsonify({"status": "success", "id": s.id})
 
@@ -912,15 +931,14 @@ def modify_schedule(id):
         db.session.delete(s)
         db.session.commit()
         
-        from app import send_multichannel_notification, get_setting_value
-        # Check if WhatsApp notification is enabled for delete
-        should_notify = get_setting_value('schedule_notify_on_delete', 'true') == 'true'
-        # Only send push notification, WhatsApp via daily summary
+        from app import send_multichannel_notification
         send_multichannel_notification(
             "Jadwal Dihapus",
             f"Jadwal {subject_name} telah dihapus dari sistem.",
             sender_id=user.id,
-            allow_whatsapp=False,  # Don't send per-subject WhatsApp
+            allow_whatsapp=False,
+            classroom_id=s.classroom_id,
+            category='schedule',
         )
         
         return jsonify({"status": "success"})
@@ -936,25 +954,15 @@ def modify_schedule(id):
         
         db.session.commit()
         
-        from app import send_multichannel_notification, get_setting_value
-        # Check if WhatsApp notification is enabled for edit (default: false to avoid spam)
-        should_notify = get_setting_value('schedule_notify_on_edit', 'false') == 'true'
-        if should_notify:
-            # Only send push notification, WhatsApp via daily summary
-            send_multichannel_notification(
-                "Jadwal Diperbarui",
-                f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
-                sender_id=user.id,
-                allow_whatsapp=False,  # Don't send per-subject WhatsApp
-            )
-        else:
-            # Still send push notification
-            send_multichannel_notification(
-                "Jadwal Diperbarui",
-                f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
-                sender_id=user.id,
-                allow_whatsapp=False,
-            )
+        from app import send_multichannel_notification
+        send_multichannel_notification(
+            "Jadwal Diperbarui",
+            f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
+            sender_id=user.id,
+            allow_whatsapp=False,
+            classroom_id=s.classroom_id,
+            category='schedule',
+        )
         
         return jsonify({"status": "success"})
 
@@ -1252,18 +1260,21 @@ def delete_schedule_template_api(template_id):
 @jwt_required()
 def get_notification_preferences():
     """Get notification preferences for schedule management"""
-    from app import get_setting_value
+    from app import get_classroom_notification_policy
+    user = User.query.get(int(get_jwt_identity()))
+    classroom = _user_classroom(user)
+    policy = get_classroom_notification_policy(classroom.id if classroom else None)
     return jsonify({
-        'schedule_notify_on_create': get_setting_value('schedule_notify_on_create', 'true') == 'true',
-        'schedule_notify_on_edit': get_setting_value('schedule_notify_on_edit', 'false') == 'true',
-        'schedule_notify_on_delete': get_setting_value('schedule_notify_on_delete', 'true') == 'true',
+        'schedule_notify_on_create': policy.schedule_enabled if policy else True,
+        'schedule_notify_on_edit': policy.schedule_enabled if policy else True,
+        'schedule_notify_on_delete': policy.schedule_enabled if policy else True,
     })
 
 @api_bp.route('/notifications/preferences', methods=['POST'])
 @jwt_required()
 def update_notification_preferences():
     """Update notification preferences for schedule management"""
-    from app import set_setting_value, db
+    from app import get_classroom_notification_policy
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
@@ -1272,24 +1283,215 @@ def update_notification_preferences():
     
     data = request.get_json()
     
-    if 'schedule_notify_on_create' in data:
-        set_setting_value('schedule_notify_on_create', 
-                         'true' if data['schedule_notify_on_create'] else 'false')
-    if 'schedule_notify_on_edit' in data:
-        set_setting_value('schedule_notify_on_edit', 
-                         'true' if data['schedule_notify_on_edit'] else 'false')
-    if 'schedule_notify_on_delete' in data:
-        set_setting_value('schedule_notify_on_delete', 
-                         'true' if data['schedule_notify_on_delete'] else 'false')
-    
+    classroom = _user_classroom(user)
+    if not classroom:
+        return jsonify({"error": "Kelas aktif tidak ditemukan"}), 400
+    policy = get_classroom_notification_policy(classroom.id)
+    if not policy:
+        policy = ClassroomNotificationConfig(classroom_id=classroom.id)
+        db.session.add(policy)
+
+    schedule_enabled = bool(
+        data.get('schedule_notify_on_create', policy.schedule_enabled) or
+        data.get('schedule_notify_on_edit', policy.schedule_enabled) or
+        data.get('schedule_notify_on_delete', policy.schedule_enabled)
+    )
+    policy.schedule_enabled = schedule_enabled
+    policy.updated_by = user.id
     db.session.commit()
     return jsonify({"status": "success"})
+
+
+@api_bp.route('/notifications/classrooms/<int:classroom_id>/policy', methods=['GET', 'PUT'])
+@jwt_required()
+def classroom_notification_policy_api(classroom_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_notifications:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    allowed_ids = {item.id for item in _allowed_notification_classrooms_for_user(user)}
+    if classroom_id not in allowed_ids:
+        return jsonify({"error": "Kelas tidak diizinkan"}), 403
+
+    classroom = ClassRoom.query.get_or_404(classroom_id)
+    policy = ClassroomNotificationConfig.query.filter_by(classroom_id=classroom_id).first()
+
+    if request.method == 'GET':
+        return jsonify({
+            'classroom_id': classroom.id,
+            'classroom_name': classroom.name,
+            'classroom_batch': classroom.batch,
+            'push_enabled': policy.push_enabled if policy else True,
+            'whatsapp_enabled': policy.whatsapp_enabled if policy else False,
+            'default_channel': policy.default_channel if policy else 'push',
+            'announcement_enabled': policy.announcement_enabled if policy else True,
+            'assignment_enabled': policy.assignment_enabled if policy else True,
+            'schedule_enabled': policy.schedule_enabled if policy else True,
+            'finance_enabled': policy.finance_enabled if policy else True,
+            'emergency_enabled': policy.emergency_enabled if policy else True,
+        })
+
+    data = request.get_json(silent=True) or request.form or {}
+    if not policy:
+        policy = ClassroomNotificationConfig(classroom_id=classroom_id)
+        db.session.add(policy)
+
+    policy.push_enabled = str(data.get('push_enabled', policy.push_enabled)).lower() == 'true' if isinstance(data.get('push_enabled'), str) else bool(data.get('push_enabled', policy.push_enabled))
+    policy.whatsapp_enabled = str(data.get('whatsapp_enabled', policy.whatsapp_enabled)).lower() == 'true' if isinstance(data.get('whatsapp_enabled'), str) else bool(data.get('whatsapp_enabled', policy.whatsapp_enabled))
+    default_channel = (data.get('default_channel') or policy.default_channel or 'push').strip().lower()
+    policy.default_channel = default_channel if default_channel in {'push', 'whatsapp', 'both'} else 'push'
+    for field in ['announcement_enabled', 'assignment_enabled', 'schedule_enabled', 'finance_enabled', 'emergency_enabled']:
+        incoming = data.get(field, getattr(policy, field))
+        setattr(policy, field, str(incoming).lower() == 'true' if isinstance(incoming, str) else bool(incoming))
+    policy.updated_by = user.id
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+
+@api_bp.route('/notifications/classrooms/<int:classroom_id>/whatsapp-binding', methods=['GET', 'PUT'])
+@jwt_required()
+def classroom_whatsapp_binding_api(classroom_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    allowed_ids = {item.id for item in _allowed_notification_classrooms_for_user(user)}
+    if classroom_id not in allowed_ids:
+        return jsonify({"error": "Kelas tidak diizinkan"}), 403
+
+    classroom = ClassRoom.query.get_or_404(classroom_id)
+    binding = ClassroomWhatsAppBinding.query.filter_by(classroom_id=classroom_id).first()
+
+    if request.method == 'GET':
+        return jsonify({
+            'classroom_id': classroom.id,
+            'classroom_name': classroom.name,
+            'classroom_batch': classroom.batch,
+            'bot_id': binding.bot_id if binding else None,
+            'chat_id': binding.chat_id if binding else '',
+            'chat_label': binding.chat_label if binding else '',
+            'is_default': binding.is_default if binding else True,
+        })
+
+    data = request.get_json(silent=True) or request.form or {}
+    bot_id = int(data.get('bot_id')) if data.get('bot_id') not in (None, '') else None
+    chat_id = (data.get('chat_id') or '').strip()
+    chat_label = (data.get('chat_label') or '').strip()
+    if not bot_id or not chat_id:
+        return jsonify({'error': 'bot_id dan chat_id wajib diisi'}), 400
+    bot = WhatsAppBot.query.get(bot_id)
+    if not bot:
+        return jsonify({'error': 'Bot tidak ditemukan'}), 404
+    if not binding:
+        binding = ClassroomWhatsAppBinding(
+            classroom_id=classroom_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            chat_label=chat_label or classroom.name,
+            is_default=True,
+            updated_by=user.id,
+        )
+        db.session.add(binding)
+    else:
+        binding.bot_id = bot_id
+        binding.chat_id = chat_id
+        binding.chat_label = chat_label or binding.chat_label or classroom.name
+        binding.updated_by = user.id
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+
+@api_bp.route('/notifications/bots', methods=['GET', 'POST'])
+@jwt_required()
+def notification_bots_api():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    if request.method == 'GET':
+        bots = WhatsAppBot.query.order_by(WhatsAppBot.name.asc()).all()
+        return jsonify([{
+            'id': bot.id,
+            'name': bot.name,
+            'provider': bot.provider,
+            'session_name': bot.session_name,
+            'base_url': bot.base_url or '',
+            'status': bot.status or 'unknown',
+            'is_active': bot.is_active,
+            'last_seen_at': bot.last_seen_at.isoformat() if bot.last_seen_at else None,
+        } for bot in bots])
+
+    data = request.get_json(silent=True) or request.form or {}
+    name = (data.get('name') or '').strip()
+    session_name = (data.get('session_name') or '').strip()
+    if not name or not session_name:
+        return jsonify({'error': 'Nama bot dan session_name wajib diisi'}), 400
+    bot = WhatsAppBot(
+        name=name,
+        provider=(data.get('provider') or 'waha').strip() or 'waha',
+        session_name=session_name,
+        base_url=(data.get('base_url') or '').strip() or None,
+        status=(data.get('status') or 'configured').strip() or 'configured',
+        is_active=str(data.get('is_active', 'true')).lower() == 'true',
+    )
+    db.session.add(bot)
+    db.session.commit()
+    return jsonify({'status': 'success', 'id': bot.id}), 201
+
+
+@api_bp.route('/notifications/bots/<int:bot_id>', methods=['PUT'])
+@jwt_required()
+def update_notification_bot_api(bot_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    bot = WhatsAppBot.query.get_or_404(bot_id)
+    data = request.get_json(silent=True) or request.form or {}
+    if data.get('name') is not None:
+        bot.name = (data.get('name') or bot.name).strip() or bot.name
+    if data.get('session_name') is not None:
+        bot.session_name = (data.get('session_name') or bot.session_name).strip() or bot.session_name
+    if data.get('base_url') is not None:
+        bot.base_url = (data.get('base_url') or '').strip() or None
+    if data.get('status') is not None:
+        bot.status = (data.get('status') or 'configured').strip() or 'configured'
+    if data.get('is_active') is not None:
+        bot.is_active = str(data.get('is_active')).lower() == 'true' if isinstance(data.get('is_active'), str) else bool(data.get('is_active'))
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+
+@api_bp.route('/notifications/bots/<int:bot_id>/health', methods=['GET'])
+@jwt_required()
+def notification_bot_health_api(bot_id):
+    user = User.query.get(int(get_jwt_identity()))
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request, _normalize_waha_scalar
+    bot = WhatsAppBot.query.get_or_404(bot_id)
+    result = _waha_request('GET', '/api/sessions', base_url_override=bot.base_url or None)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal cek bot')}), 400
+    raw_data = result.get('data') or []
+    sessions = raw_data if isinstance(raw_data, list) else raw_data.get('sessions', [])
+    matched = None
+    for item in sessions:
+        session_name = _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '')
+        if session_name == bot.session_name:
+            matched = item
+            break
+    return jsonify({
+        'ok': bool(matched),
+        'bot_id': bot.id,
+        'session_name': bot.session_name,
+        'status': _normalize_waha_scalar((matched or {}).get('status') or (matched or {}).get('state') or 'not-found'),
+    })
 
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
 def send_schedule_whatsapp(id):
     """Manually send WhatsApp notification for a specific schedule"""
-    from app import send_whatsapp, get_setting_value
+    from app import send_whatsapp
     from models import Schedule
     
     user_id = get_jwt_identity()
@@ -1315,7 +1517,9 @@ def send_schedule_whatsapp(id):
     result = send_whatsapp(
         whatsapp_text,
         sender_id=user.id,
-        title=f"Jadwal: {schedule.subject}"
+        title=f"Jadwal: {schedule.subject}",
+        classroom_id=schedule.classroom_id,
+        category='schedule',
     )
     
     return jsonify(result), (200 if result.get('ok') else 400)
@@ -1324,7 +1528,7 @@ def send_schedule_whatsapp(id):
 @jwt_required()
 def send_daily_summary_on_demand():
     """Send daily schedule summary WhatsApp on demand"""
-    from app import send_whatsapp, _build_schedule_summary_message, get_setting_value
+    from app import send_whatsapp, _build_schedule_summary_message
     
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
@@ -1346,7 +1550,11 @@ def send_daily_summary_on_demand():
         target_date = datetime.now().date() + timedelta(days=1)  # Default: tomorrow
     
     # Build summary message
-    message = _build_schedule_summary_message(target_date)
+    classroom = _user_classroom(user)
+    message = _build_schedule_summary_message(
+        target_date,
+        classroom_id=classroom.id if classroom else None,
+    )
     
     if not message:
         return jsonify({
@@ -1363,7 +1571,9 @@ def send_daily_summary_on_demand():
     result = send_whatsapp(
         message,
         sender_id=user.id,
-        title=f"Ringkasan Jadwal {target_date.strftime('%d/%m/%Y')}"
+        title=f"Ringkasan Jadwal {target_date.strftime('%d/%m/%Y')}",
+        classroom_id=classroom.id if classroom else None,
+        category='schedule',
     )
     
     return jsonify(result), (200 if result.get('ok') else 400)
@@ -2076,7 +2286,7 @@ def upload_gallery_api():
     if status == 'Published':
         try:
             from app import send_push
-            send_push("Foto Baru di Galeri!", f"{user.full_name} baru saja mengunggah foto baru. Cek sekarang!")
+            send_push("Foto Baru di Galeri!", f"{user.full_name} baru saja mengunggah foto baru. Cek sekarang!", classroom_id=photo.classroom_id, category='announcement')
         except:
             pass
 
@@ -2126,6 +2336,11 @@ def get_notification_history():
         "title": h.title,
         "body": h.body,
         "channel": h.channel or 'push',
+        "category": h.category,
+        "delivery_mode": h.delivery_mode,
+        "chat_id": h.chat_id,
+        "bot_name": h.bot.name if h.bot else None,
+        "classroom_name": h.classroom.name if h.classroom else None,
         "target": h.target,
         "sent_at": h.sent_at.isoformat(),
         "status": h.status
@@ -2164,7 +2379,8 @@ def get_notification_recipients():
             "has_account": bool(linked_user),
             "has_token": bool(linked_user and linked_user.fcm_token),
             "status": student.status or 'Aktif',
-            "nim": student.nim
+            "nim": student.nim,
+            "classroom_name": student.classroom.name if student.classroom else None,
         })
 
     # Tetap tampilkan user non-member khusus seperti admin/staff agar bisa dites juga.
@@ -2187,7 +2403,8 @@ def get_notification_recipients():
             "has_account": True,
             "has_token": bool(extra_user.fcm_token),
             "status": extra_user.status or 'Active',
-            "nim": extra_user.student.nim if extra_user.student else None
+            "nim": extra_user.student.nim if extra_user.student else None,
+            "classroom_name": extra_user.classroom.name if extra_user.classroom else (extra_user.student.classroom.name if extra_user.student and extra_user.student.classroom else None)
         })
 
     return jsonify(recipients)
@@ -2225,6 +2442,7 @@ def api_send_notifications():
             sender_id=user.id,
             allow_whatsapp=True,
             classroom_id=classroom.id if classroom else None,
+            category='emergency',
         )
     else:
         target_user_id = None
@@ -2257,6 +2475,7 @@ def api_send_notifications():
             user_id=target_user_id,
             sender_id=user.id,
             classroom_id=classroom.id if classroom else None,
+            category='emergency',
         )
         
     return jsonify({"status": "success"})
@@ -2313,7 +2532,7 @@ def api_manage_fund():
     if fund.type == 'Masuk' and fund.student_id:
         student_user = User.query.filter_by(student_id=fund.student_id).first()
         if student_user:
-            send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id)
+            send_push("Pembayaran Berhasil!", f"Halo {student_user.full_name}, pembayaran kas Rp {fund.amount:,.0f} telah dikonfirmasi.", user_id=student_user.id, classroom_id=student_user.classroom_id or (student_user.student.classroom_id if student_user.student else None), category='finance')
 
     log_activity("Input Kas (Mobile)", f"{fund.description}: Rp {fund.amount:,.0f}")
     auto_recalculate_points()
@@ -2474,7 +2693,9 @@ def create_assignment():
         f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
         sender_id=user.id,
         allow_whatsapp=True,
-        whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+        whatsapp_text=f"Tugas baru\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}",
+        classroom_id=a.classroom_id,
+        category='assignment',
     )
     
     return jsonify({"status": "success", "id": a.id})
@@ -2510,7 +2731,9 @@ def modify_assignment(id):
             f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
             sender_id=user.id,
             allow_whatsapp=True,
-            whatsapp_text=f"Update tugas\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}"
+            whatsapp_text=f"Update tugas\nMata kuliah: {a.subject}\nJudul: {a.title}\nDeadline: {a.deadline.strftime('%d %b %Y %H:%M')}",
+            classroom_id=a.classroom_id,
+            category='assignment',
         )
         
         return jsonify({"status": "success"})
