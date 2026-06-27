@@ -186,14 +186,198 @@ def _normalize_waha_chat_id(item):
 
 def _normalize_waha_chat_identifier(value):
     value = str(value or '').strip()
+import os
+import json
+import re
+from PIL import Image
+import csv
+from io import StringIO
+from flask import send_from_directory, make_response
+from apscheduler.schedulers.background import BackgroundScheduler
+from werkzeug.utils import secure_filename
+from datetime import datetime, timedelta
+from urllib import request as urllib_request, error as urllib_error
+
+import firebase_admin
+from firebase_admin import credentials, messaging
+
+from config import Config
+from flask_jwt_extended import JWTManager, create_access_token
+from flask_cors import CORS
+from routes.api import api_bp
+
+# ============================================================
+# LOGGING CONFIGURATION
+# ============================================================
+# Create logs directory if it doesn't exist
+_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+os.makedirs(_log_dir, exist_ok=True)
+
+# Configure root logger for the application
+_log_file = os.path.join(_log_dir, 'famousbytee.log')
+_error_log_file = os.path.join(_log_dir, 'error.log')
+
+# Main rotating log file (all levels)
+_main_handler = RotatingFileHandler(_log_file, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+_main_handler.setLevel(logging.INFO)
+_main_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s in %(module)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Error-only rotating log file
+_error_handler = RotatingFileHandler(_error_log_file, maxBytes=5*1024*1024, backupCount=5, encoding='utf-8')
+_error_handler.setLevel(logging.ERROR)
+_error_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s in %(module)s (%(pathname)s:%(lineno)d):\n%(message)s\n', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Console handler (for development / Apache error log capture)
+_console_handler = logging.StreamHandler()
+_console_handler.setLevel(logging.WARNING)
+_console_handler.setFormatter(logging.Formatter(
+    '[%(asctime)s] %(levelname)s: %(message)s', datefmt='%Y-%m-%d %H:%M:%S'
+))
+
+# Apply to Flask app logger
+app = Flask(__name__)
+app.logger.handlers.clear()
+app.logger.addHandler(_main_handler)
+app.logger.addHandler(_error_handler)
+app.logger.addHandler(_console_handler)
+app.logger.setLevel(logging.INFO)
+
+# Also configure root logger so library errors are captured
+logging.basicConfig(level=logging.WARNING)
+
+app.logger.info('Famousbytee application starting up...')
+app.config.from_object(Config)
+
+_WAHA_RECENT_COMMANDS = {}
+_WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 3  # Reduced from 12 to allow faster re-commands
+
+# ============================================================
+# REQUEST ACCESS LOGGING (captures access even without Apache logs)
+# ============================================================
+import time as _time
+
+@app.before_request
+def _log_request_start():
+    request._start_time = _time.time()
+
+@app.after_request
+def _log_request_end(response):
+    duration = _time.time() - getattr(request, '_start_time', _time.time())
+    # Skip logging for static files to reduce noise
+    if not request.path.startswith('/static/'):
+        app.logger.info(
+            '%s %s %s -> %s (%.3fs) [IP: %s]',
+            request.method, request.path,
+            'API' if request.path.startswith('/api/') else 'WEB',
+            response.status_code, duration,
+            request.remote_addr
+        )
+    return response
+
+# Initialize Firebase Admin
+def _initialize_firebase():
+    """Helper to initialize Firebase Admin on-demand."""
+    if firebase_admin._apps:
+        return True
+        
+    try:
+        cred_path = os.path.join(app.root_path, 'serviceAccountKey.json')
+        if os.path.exists(cred_path):
+            cred = credentials.Certificate(cred_path)
+            firebase_admin.initialize_app(cred)
+            app.logger.info('Firebase Admin initialized successfully.')
+            return True
+        else:
+            app.logger.warning('serviceAccountKey.json not found. Push notifications disabled.')
+            return False
+    except Exception as e:
+        app.logger.error(f'Firebase Init Error: {e}')
+        return False
+
+# Try initial load
+_initialize_firebase()
+
+def get_setting_value(key, default=''):
+    setting = SystemSetting.query.filter_by(key=key).first()
+    if not setting:
+        return default
+    return setting.value if setting.value is not None else default
+
+def set_setting_value(key, value, description=None):
+    setting = SystemSetting.query.filter_by(key=key).first()
+    if setting:
+        setting.value = value
+        if description:
+            setting.description = description
+    else:
+        db.session.add(SystemSetting(key=key, value=value, description=description))
+
+def _normalize_waha_scalar(value):
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    if isinstance(value, dict):
+        if 'serialized' in value:
+            return _normalize_waha_scalar(value.get('serialized'))
+        if '_serialized' in value:
+            return _normalize_waha_scalar(value.get('_serialized'))
+        if 'id' in value and isinstance(value.get('id'), str):
+            return value.get('id')
+        user = value.get('user') or value.get('number') or value.get('phone')
+        server = value.get('server')
+        if user and server:
+            return f"{user}@{server}"
+        if 'pushname' in value:
+            return _normalize_waha_scalar(value.get('pushname'))
+        if 'name' in value:
+            return _normalize_waha_scalar(value.get('name'))
+        if 'wid' in value:
+            return _normalize_waha_scalar(value.get('wid'))
+        return json.dumps(value, ensure_ascii=True)[:120]
+    if isinstance(value, list):
+        return ', '.join(_normalize_waha_scalar(v) for v in value[:5])
+    return str(value)
+
+def _normalize_waha_chat_id(item):
+    candidates = []
+    if isinstance(item, dict):
+        candidates.extend([
+            item.get('chatId'),
+            item.get('id'),
+            item.get('_id'),
+            item.get('wid'),
+            item.get('contactId')
+        ])
+        if isinstance(item.get('id'), dict):
+            candidates.append(item.get('id'))
+        if isinstance(item.get('wid'), dict):
+            candidates.append(item.get('wid'))
+    for candidate in candidates:
+        normalized = _normalize_waha_chat_identifier(_normalize_waha_scalar(candidate).strip())
+        if normalized:
+            return normalized
+    return ''
+
+def _normalize_waha_chat_identifier(value):
+    value = str(value or '').strip()
     if not value:
         return ''
     if value.endswith('@s.whatsapp.net'):
         return value.replace('@s.whatsapp.net', '@c.us')
     return value
 
-def get_fund_periods():
-    return FundPeriod.query.filter_by(is_active=True).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+def get_fund_periods(classroom_id=None):
+    query = FundPeriod.query.filter_by(is_active=True)
+    if classroom_id:
+        query = query.filter((FundPeriod.classroom_id == classroom_id) | (FundPeriod.classroom_id.is_(None)))
+    return query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
 
 def _count_weekdays_between(start_date, end_date):
     total = 0
@@ -626,12 +810,17 @@ def _build_kas_command_response(sender_ref=''):
 
 def _build_tunggakan_command_response(command_text, sender_ref=''):
     """Build response for /tunggakan command - uses same logic as Flutter (cumulative)"""
-    # Get cumulative target (same as Flutter)
-    target_payment = get_fund_target()
+    default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_id = default_class.id if default_class else None
+    
+    target_payment = get_fund_target(classroom_id=class_id)
     
     # Get all active students
     from models import Student
-    all_students = Student.query.filter(Student.status == 'Aktif').all()
+    all_students = Student.query.filter(Student.status == 'Aktif')
+    if class_id:
+        all_students = all_students.filter_by(classroom_id=class_id)
+    all_students = all_students.all()
     
     arrears_list = []
     for student in all_students:
@@ -677,12 +866,17 @@ def _build_tunggakan_command_response(command_text, sender_ref=''):
 
 def _build_lunas_command_response(command_text, sender_ref=''):
     """Build response for /lunas command - shows ONLY fully paid students"""
-    # Get cumulative target (same as Flutter)
-    target_payment = get_fund_target()
+    default_class = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_id = default_class.id if default_class else None
+    
+    target_payment = get_fund_target(classroom_id=class_id)
     
     # Get all active students
     from models import Student
-    all_students = Student.query.filter(Student.status == 'Aktif').all()
+    all_students = Student.query.filter(Student.status == 'Aktif')
+    if class_id:
+        all_students = all_students.filter_by(classroom_id=class_id)
+    all_students = all_students.all()
     
     # ONLY collect students who are FULLY PAID
     fully_paid_list = []
@@ -1318,279 +1512,6 @@ with app.app_context():
                     'can_view_classroom_reports': False, 'can_export_classroom_data': False
                 }
             }
-
-        }
-
-        try:
-            for name, data in role_data.items():
-                role = Role.query.filter_by(name=name).first()
-                if not role:
-                    role = Role(name=name)
-                    db.session.add(role)
-                
-                role.description = data['description']
-                for perm, value in data['perms'].items():
-                    setattr(role, perm, value)
-            
-            db.session.commit()
-            print("RBAC Synchronization: Success.")
-        except Exception as e:
-            db.session.rollback()
-            print(f"RBAC Synchronization Error: {e}")
-
-    sync_roles()
-
-    def calculate_user_points_breakdown(user, target_payment=None):
-        target_payment = get_fund_target() if target_payment is None else target_payment
-        breakdown = {
-            'fund_points': 0,
-            'gallery_points': 0,
-            'arrears_penalty': 0,
-            'total_paid': 0,
-            'target_payment': target_payment,
-            'arrears': 0,
-            'published_photos': 0,
-        }
-
-        total_points = 0
-        if user.student_id:
-            total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
-                BatchFund.student_id == user.student_id,
-                BatchFund.type == 'Masuk'
-            ).scalar() or 0
-            breakdown['total_paid'] = total_paid
-
-            if target_payment > 0:
-                paid_ratio = min(total_paid / target_payment, 1)
-                breakdown['fund_points'] = int(round(paid_ratio * 500))
-            else:
-                breakdown['fund_points'] = min(int(total_paid / 1000), 500)
-
-            arrears = max(0, target_payment - total_paid)
-            breakdown['arrears'] = arrears
-            breakdown['arrears_penalty'] = min(int(arrears / 2000), 100)
-            total_points += breakdown['fund_points']
-            total_points -= breakdown['arrears_penalty']
-
-        photos_count = GalleryPhoto.query.filter_by(uploaded_by=user.id, status='Published').count()
-        breakdown['published_photos'] = photos_count
-        first_tier = min(photos_count, 5) * 10
-        second_tier = max(min(photos_count - 5, 10), 0) * 5
-        breakdown['gallery_points'] = min(first_tier + second_tier, 100)
-        total_points += breakdown['gallery_points']
-
-        breakdown['total_points'] = total_points
-        return breakdown
-
-    def auto_recalculate_points():
-        try:
-            print("Auto-recalculating points for all users...")
-            target_payment = get_fund_target()
-            users = User.query.all()
-            
-            for u in users:
-                breakdown = calculate_user_points_breakdown(u, target_payment=target_payment)
-                u.points = breakdown['total_points']
-            
-            db.session.commit()
-            print("Point Recalculation: Success (Including Arrears Penalty).")
-        except Exception as e:
-            db.session.rollback()
-            print(f"Point Recalculation Error: {e}")
-
-    try:
-        if FundPeriod.query.count() == 0:
-            legacy_start = get_setting_value('fund_start_date', '2024-03-30')
-            legacy_end = get_setting_value('fund_end_date', '')
-            legacy_rate = int(get_setting_value('fund_daily_rate', '1000') or 1000)
-            start_date = datetime.strptime(legacy_start, '%Y-%m-%d').date()
-            end_date = datetime.strptime(legacy_end, '%Y-%m-%d').date() if legacy_end else datetime.now().date()
-            db.session.add(FundPeriod(
-                title='Periode Awal',
-                start_date=start_date,
-                end_date=end_date,
-                daily_rate=legacy_rate,
-                is_active=True
-            ))
-            db.session.commit()
-            print("Fund Period Seed: Legacy configuration migrated to first period.")
-    except Exception as e:
-        db.session.rollback()
-        print(f"Fund Period Seed Error: {e}")
-            
-
-@login_manager.user_loader
-def load_user(user_id):
-    return User.query.get(int(user_id))
-
-@app.context_processor
-def inject_settings():
-    try:
-        all_s = SystemSetting.query.all()
-        settings = {s.key: s.value for s in all_s}
-    except Exception:
-        settings = {}
-        
-    # Defaults
-    if 'web_title' not in settings: settings['web_title'] = 'Famousbytee.b Portal'
-    if 'web_logo' not in settings: settings['web_logo'] = 'monitor'
-    if 'web_desc' not in settings: settings['web_desc'] = 'Portal Resmi Kelas Famousbytee.b'
-    if 'social_ig' not in settings: settings['social_ig'] = '#'
-    if 'social_wa' not in settings: settings['social_wa'] = '#'
-    
-    # Logic for Branding Assets
-    settings['logo_display_path'] = settings.get('web_logo_path')
-    settings['favicon_display_url'] = settings.get('favicon_path') or settings.get('favicon_url', '/static/favicon.ico')
-    
-    return dict(site_settings=settings, datetime=datetime)
-
-@app.errorhandler(404)
-def page_not_found(e):
-    app.logger.warning(f"404 Not Found: {request.url} (IP: {request.remote_addr})")
-    return render_template('errors/404.html'), 404
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    import traceback
-    error_msg = str(e)
-    tb = traceback.format_exc()
-    app.logger.error(f"500 Internal Server Error on {request.url} (IP: {request.remote_addr}):\n{error_msg}\n{tb}")
-    return render_template('errors/500.html', error=error_msg), 500
-
-@app.errorhandler(Exception)
-def handle_exception(e):
-    """Catch-all handler for unhandled exceptions."""
-    import traceback
-    app.logger.error(f"Unhandled Exception: {type(e).__name__}: {e}\n{traceback.format_exc()}")
-    # Let Flask's default handler take over for 500 errors
-    from werkzeug.exceptions import HTTPException
-    if isinstance(e, HTTPException):
-        return e
-    return render_template('errors/500.html', error=str(e)), 500
-
-@app.route('/report-error', methods=['POST'])
-def report_error():
-    err_body = request.form.get('error_details')
-    page = request.form.get('page_url')
-    # Auto log the error report
-    app.logger.error(f"User-reported error on {page}: {err_body[:500] if err_body else 'No details'}")
-    log_activity("Error Report", f"User reported error on {page}: {err_body[:200] if err_body else ''}")
-    flash('Terima kasih! Laporan galat telah dikirim ke Admin.')
-    return redirect(url_for('dashboard'))
-
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
-    if request.method == 'POST':
-        id_input = request.form['username'] # Can be username or NIM
-        password = request.form.get('password')
-        
-        # 1. Search in User table (Admin/Staff/Activated Members)
-        user = User.query.filter_by(username=id_input).first()
-        if user:
-            if not password:
-                flash('Harap masukkan password untuk akun terdaftar.')
-                return redirect(url_for('login'))
-            
-            from werkzeug.security import check_password_hash
-            
-            is_valid = False
-            # Check if password is hashed (Werkzeug format)
-            if user.password.startswith('scrypt:') or user.password.startswith('pbkdf2:'):
-                is_valid = check_password_hash(user.password, password)
-            else:
-                # Fallback for legacy plain-text passwords
-                is_valid = (user.password == password)
-
-            if is_valid:
-                if user.status != 'Active':
-                    flash('Akun Anda dinonaktifkan. Hubungi admin.')
-                    return redirect(url_for('login'))
-                
-                user.last_login = datetime.now()
-                db.session.commit()
-                login_user(user)
-                return redirect(url_for('dashboard'))
-            else:
-                flash('Password salah.')
-                return redirect(url_for('login'))
-        
-        # 2. Search in Student table for first-time NIM activation
-        student = Student.query.filter_by(nim=id_input).first()
-        if student:
-            # If student found but no User entry, go to activation
-            return redirect(url_for('member_activation', nim=id_input))
-            
-        flash('NIM atau Username tidak terdaftar.')
-    return render_template('login.html')
-
-@app.route('/activate/<nim>', methods=['GET', 'POST'])
-def member_activation(nim):
-    student = Student.query.filter_by(nim=nim).first_or_404()
-    # Check if already has user
-    existing_user = User.query.filter_by(username=nim).first()
-    if existing_user:
-        flash('Akun sudah aktif. Silakan login dengan password.')
-        return redirect(url_for('login'))
-        
-    if request.method == 'POST':
-        password = request.form['password']
-        confirm = request.form['confirm_password']
-        
-        if password != confirm:
-            flash('Password tidak cocok.')
-        else:
-            # Create user account for member and link it
-            member_role = Role.query.filter_by(name='Member').first()
-            new_user = User(
-                username=nim,
-                password=password,
-                role_id=member_role.id,
-                student_id=student.id,
-                full_name=student.full_name,
-                status='Active'
-            )
-            db.session.add(new_user)
-            db.session.commit()
-            flash('Akun berhasil diaktifasi! Silakan login sekarang.')
-            return redirect(url_for('login'))
-            
-    return render_template('member_activation.html', student=student)
-
-@app.route('/logout')
-@login_required
-def logout():
-    logout_user()
-    return redirect(url_for('index'))
-
-@app.route('/')
-def index():
-    announcements = Announcement.query.filter_by(is_public=True).order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
-    # Fetch top 8 latest public photos for the landing page (ONLY PUBLISHED)
-    photos = GalleryPhoto.query.filter_by(is_public=True, status='Published').order_by(GalleryPhoto.created_at.desc()).limit(8).all()
-    return render_template('index.html', announcements=announcements, photos=photos)
-
-def log_activity(action, details=None):
-    if current_user.is_authenticated:
-        enriched_details = f"[{current_user.role.name}] {details}" if details else f"[{current_user.role.name}]"
-        log = ActivityLog(user_id=current_user.id, action=action, details=enriched_details)
-        db.session.add(log)
-        db.session.commit()
-
-def get_fund_target(as_of=None):
-    """Calculates cumulative target based on advanced periods, with legacy fallback."""
-    today = as_of or datetime.now().date()
-    if isinstance(today, datetime):
-        today = today.date()
-
-    periods = get_fund_periods()
-    if periods:
-        total = 0
-        for period in periods:
-            effective_end = min(today, period.end_date)
-            if effective_end < period.start_date:
-                continue
             total += _count_weekdays_between(period.start_date, effective_end) * (period.daily_rate or 0)
         return total
 
@@ -1634,13 +1555,32 @@ def view_announcements():
     classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
     return render_template('announcements.html', announcements=announcements, classrooms=classrooms, active_classroom=active_classroom)
 
+def log_activity(action, details=None):
+    if current_user.is_authenticated:
+        class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+        enriched_details = f"[{current_user.role.name}] {details}" if details else f"[{current_user.role.name}]"
+        log = ActivityLog(
+            user_id=current_user.id, 
+            action=action, 
+            details=enriched_details,
+            classroom_id=class_fb.id if class_fb else None
+        )
+        db.session.add(log)
+        db.session.commit()
+
 @app.route('/logs')
 @login_required
 def view_logs():
     if not current_user.role.can_manage_roles:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
-    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
+        
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    query = ActivityLog.query
+    if active_classroom:
+        query = query.filter((ActivityLog.classroom_id == active_classroom.id) | (ActivityLog.classroom_id.is_(None)))
+        
+    logs = query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
     return render_template('logs.html', logs=logs)
 
 @app.route('/dashboard')
@@ -1731,8 +1671,8 @@ def dashboard():
         total_ann_query = Announcement.query
         if active_classroom:
             total_mhs_query = total_mhs_query.filter_by(classroom_id=active_classroom.id)
-            total_in_query = total_in_query.join(Student, BatchFund.student_id == Student.id).filter(Student.classroom_id == active_classroom.id)
-            total_out_query = total_out_query.join(Student, BatchFund.student_id == Student.id).filter(Student.classroom_id == active_classroom.id)
+            total_in_query = total_in_query.filter((BatchFund.classroom_id == active_classroom.id) | (BatchFund.classroom_id.is_(None)))
+            total_out_query = total_out_query.filter((BatchFund.classroom_id == active_classroom.id) | (BatchFund.classroom_id.is_(None)))
             total_ann_query = total_ann_query.filter((Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None)))
         total_mhs = total_mhs_query.count()
         total_in = total_in_query.scalar() or 0
@@ -2550,7 +2490,6 @@ def manage_fund():
     if not class_fb:
         class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
     students = Student.query.filter_by(classroom_id=class_fb.id).all()
-    
     if request.method == 'POST':
         if not current_user.role.can_manage_fund:
             flash('Akses ditolak.')
@@ -2580,6 +2519,7 @@ def manage_fund():
         if tags and not tags.startswith('#'): tags = '#' + tags
         
         fund = BatchFund(
+            classroom_id=class_fb.id if class_fb else None,
             description=description, 
             amount=amount, 
             type=type_val, 
@@ -2602,7 +2542,8 @@ def manage_fund():
             ann = Announcement(
                 title=f"[PENGELUARAN] {fund.description}",
                 content=f"Diberitahukan bahwa dana kas sebesar Rp {fund.amount:,.0f} telah digunakan untuk: {fund.description}. Kategori: {fund.category}. Dicatat oleh: {fund.recorded_by}.",
-                category='Penting'
+                category='Penting',
+                classroom_id=class_fb.id if class_fb else None
             )
             db.session.add(ann)
             
@@ -2613,6 +2554,9 @@ def manage_fund():
     
     # Suggestion #17: Advanced Filtering
     query = BatchFund.query
+    if class_fb:
+        query = query.filter_by(classroom_id=class_fb.id)
+        
     start_filter = request.args.get('start_date')
     end_filter = request.args.get('end_date')
     tag_filter = request.args.get('tag')
@@ -2625,13 +2569,20 @@ def manage_fund():
         query = query.filter(BatchFund.tags.contains(tag_filter))
         
     funds = query.order_by(BatchFund.date.desc()).all()
-    total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
-    total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
+    
+    total_in_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk')
+    total_out_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar')
+    
+    if class_fb:
+        total_in_query = total_in_query.filter(BatchFund.classroom_id == class_fb.id)
+        total_out_query = total_out_query.filter(BatchFund.classroom_id == class_fb.id)
+        
+    total_in = total_in_query.scalar() or 0
+    total_out = total_out_query.scalar() or 0
     balance = total_in - total_out
     
-    target_payment = get_fund_target()
-    fund_periods = FundPeriod.query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
-
+    target_payment = get_fund_target(classroom_id=class_fb.id if class_fb else None)
+    fund_periods = get_fund_periods(classroom_id=class_fb.id if class_fb else None)
     
     member_statuses = []
     your_status = None
@@ -2672,7 +2623,12 @@ def create_fund_period():
         flash('Tanggal akhir periode tidak boleh sebelum tanggal mulai.')
         return redirect(url_for('manage_fund'))
 
+    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    if not class_fb:
+        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
     db.session.add(FundPeriod(
+        classroom_id=class_fb.id if class_fb else None,
         title=title,
         start_date=start_date,
         end_date=end_date,
@@ -3444,6 +3400,9 @@ def init_db():
                     conn.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
                 
                 # B. Sinkronisasi tabel 'role'
+                    conn.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
+                
+                # B. Sinkronisasi tabel 'role'
                 role_cols = [c['name'] for c in inspector.get_columns('role')]
                 for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery',
                             'can_manage_notifications', 'can_manage_whatsapp', 'can_manage_assignments', 'can_use_api']:
@@ -3452,12 +3411,26 @@ def init_db():
                 
                 # C. Sinkronisasi tabel 'batch_fund'
                 fund_cols = [c['name'] for c in inspector.get_columns('batch_fund')]
+                if 'classroom_id' not in fund_cols:
+                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN classroom_id INTEGER NULL"))
                 if 'original_amount' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT NULL"))
                 if 'original_description' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_description VARCHAR(200) NULL"))
                 if 'tags' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100) NULL"))
+                
+                # C2. Sinkronisasi tabel 'fund_period'
+                if 'fund_period' in inspector.get_table_names():
+                    fp_cols = [c['name'] for c in inspector.get_columns('fund_period')]
+                    if 'classroom_id' not in fp_cols:
+                        conn.execute(text("ALTER TABLE fund_period ADD COLUMN classroom_id INTEGER NULL"))
+
+                # C3. Sinkronisasi tabel 'activity_log'
+                if 'activity_log' in inspector.get_table_names():
+                    log_cols = [c['name'] for c in inspector.get_columns('activity_log')]
+                    if 'classroom_id' not in log_cols:
+                        conn.execute(text("ALTER TABLE activity_log ADD COLUMN classroom_id INTEGER NULL"))
                 
                 # D. Sinkronisasi tabel 'announcement'
                 ann_cols = [c['name'] for c in inspector.get_columns('announcement')]
@@ -4064,7 +4037,11 @@ def clear_notification_history():
 @app.route('/leaderboard')
 @login_required
 def leaderboard():
-    top_users = User.query.filter(User.points > 0).order_by(User.points.desc()).limit(20).all()
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    query = User.query.filter(User.points > 0)
+    if active_classroom:
+        query = query.filter_by(classroom_id=active_classroom.id)
+    top_users = query.order_by(User.points.desc()).limit(20).all()
     return render_template('leaderboard.html', users=top_users)
 
 @app.route('/sitemap.xml')
@@ -4085,9 +4062,15 @@ def sitemap():
     return response
 
 @app.route('/api/leaderboard', methods=['GET'])
+@login_required
 def get_leaderboard():
+    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    query = User.query.filter(User.points > 0)
+    if active_classroom:
+        query = query.filter_by(classroom_id=active_classroom.id)
+    
     # Top 20 users by points
-    top_users = User.query.filter(User.points > 0).order_by(User.points.desc()).limit(20).all()
+    top_users = query.order_by(User.points.desc()).limit(20).all()
     return jsonify([{
         "id": u.id,
         "full_name": (u.student.full_name if u.student and u.student.full_name else u.full_name) or u.username,

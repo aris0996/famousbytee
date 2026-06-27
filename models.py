@@ -107,6 +107,23 @@ class ClassRoom(db.Model):
     schedules = db.relationship('Schedule', backref='classroom', lazy=True)
 
 class Student(db.Model):
+
+class PhotoComment(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    photo_id = db.Column(db.Integer, db.ForeignKey('gallery_photo.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User', backref='comments_made', lazy=True)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+
+class ClassRoom(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False) # e.g., 2A, 2B
+    batch = db.Column(db.String(50)) # e.g., 2024
+    students = db.relationship('Student', backref='classroom', lazy=True)
+    schedules = db.relationship('Schedule', backref='classroom', lazy=True)
+
+class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nim = db.Column(db.String(20), unique=True, nullable=False)
     full_name = db.Column(db.String(100), nullable=False)
@@ -115,8 +132,10 @@ class Student(db.Model):
 
 class ActivityLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     user = db.relationship('User', backref='logs', lazy=True)
+    classroom = db.relationship('ClassRoom', backref=db.backref('activity_logs', lazy=True), lazy=True)
     action = db.Column(db.String(255), nullable=False) # e.g., "Menambah Kas", "Mengubah Jadwal"
     timestamp = db.Column(db.DateTime, default=db.func.current_timestamp())
     details = db.Column(db.Text) # e.g., "ID Transaksi: 5, Alasan: Typo"
@@ -187,6 +206,7 @@ class Announcement(db.Model):
 
 class BatchFund(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     description = db.Column(db.String(200), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     type = db.Column(db.String(10)) # Masuk, Keluar
@@ -206,15 +226,18 @@ class BatchFund(db.Model):
     original_amount = db.Column(db.Float)
     original_description = db.Column(db.String(200))
     tags = db.Column(db.String(100)) # e.g., "#Event #Futsal"
+    classroom = db.relationship('ClassRoom', backref=db.backref('batch_funds', lazy=True), lazy=True)
 
 class FundPeriod(db.Model):
     id = db.Column(db.Integer, primary_key=True)
+    classroom_id = db.Column(db.Integer, db.ForeignKey('class_room.id'), nullable=True)
     title = db.Column(db.String(100), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
     daily_rate = db.Column(db.Integer, nullable=False, default=1000)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    classroom = db.relationship('ClassRoom', backref=db.backref('fund_periods', lazy=True), lazy=True)
 
 class SystemSetting(db.Model):
     id = db.Column(db.Integer, primary_key=True)
