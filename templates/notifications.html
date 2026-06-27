@@ -325,6 +325,7 @@
 
 <script>
 let currentBotId = null;
+const PAGE_TOKEN = "{{ page_token }}";
 
 function showNotifyTab(name) {
     document.querySelectorAll('.notify-tab').forEach(tab => tab.classList.remove('active'));
@@ -337,7 +338,11 @@ function showNotifyTab(name) {
 
 async function apiFetch(url, options = {}) {
     const response = await fetch(url, {
-        headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${PAGE_TOKEN}`,
+            ...(options.headers || {})
+        },
         ...options,
     });
     const data = await response.json();
@@ -349,20 +354,24 @@ async function apiFetch(url, options = {}) {
 
 async function loadPolicy() {
     const classroomId = document.getElementById('policy-classroom').value;
-    const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/policy`);
-    document.getElementById('policy-push').checked = !!data.push_enabled;
-    document.getElementById('policy-whatsapp').checked = !!data.whatsapp_enabled;
-    document.getElementById('policy-channel').value = data.default_channel || 'push';
-    document.getElementById('policy-announcement').checked = !!data.announcement_enabled;
-    document.getElementById('policy-assignment').checked = !!data.assignment_enabled;
-    document.getElementById('policy-schedule').checked = !!data.schedule_enabled;
-    document.getElementById('policy-finance').checked = !!data.finance_enabled;
-    document.getElementById('policy-emergency').checked = !!data.emergency_enabled;
-    document.getElementById('policy-summary').innerHTML = `
-        <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
-        <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
-        <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | WhatsApp: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
-    `;
+    try {
+        const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/policy`);
+        document.getElementById('policy-push').checked = !!data.push_enabled;
+        document.getElementById('policy-whatsapp').checked = !!data.whatsapp_enabled;
+        document.getElementById('policy-channel').value = data.default_channel || 'push';
+        document.getElementById('policy-announcement').checked = !!data.announcement_enabled;
+        document.getElementById('policy-assignment').checked = !!data.assignment_enabled;
+        document.getElementById('policy-schedule').checked = !!data.schedule_enabled;
+        document.getElementById('policy-finance').checked = !!data.finance_enabled;
+        document.getElementById('policy-emergency').checked = !!data.emergency_enabled;
+        document.getElementById('policy-summary').innerHTML = `
+            <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
+            <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
+            <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | WhatsApp: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
+        `;
+    } catch (error) {
+        document.getElementById('policy-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat kebijakan: ${error.message}</span>`;
+    }
 }
 
 async function savePolicy() {
@@ -388,15 +397,19 @@ async function savePolicy() {
 
 async function loadBinding() {
     const classroomId = document.getElementById('binding-classroom').value;
-    const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/whatsapp-binding`);
-    document.getElementById('binding-bot').value = data.bot_id || '';
-    document.getElementById('binding-chat-id').value = data.chat_id || '';
-    document.getElementById('binding-chat-label').value = data.chat_label || '';
-    document.getElementById('binding-summary').innerHTML = `
-        <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
-        <span class="notify-mini">Bot ID: ${data.bot_id || '-'}</span><br>
-        <span class="notify-mini">Chat: ${data.chat_label || data.chat_id || '-'}</span>
-    `;
+    try {
+        const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/whatsapp-binding`);
+        document.getElementById('binding-bot').value = data.bot_id || '';
+        document.getElementById('binding-chat-id').value = data.chat_id || '';
+        document.getElementById('binding-chat-label').value = data.chat_label || '';
+        document.getElementById('binding-summary').innerHTML = `
+            <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
+            <span class="notify-mini">Bot ID: ${data.bot_id || '-'}</span><br>
+            <span class="notify-mini">Chat: ${data.chat_label || data.chat_id || '-'}</span>
+        `;
+    } catch (error) {
+        document.getElementById('binding-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat binding: ${error.message}</span>`;
+    }
 }
 
 async function saveBinding() {

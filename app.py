@@ -21,7 +21,7 @@ import firebase_admin
 from firebase_admin import credentials, messaging
 
 from config import Config
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, create_access_token
 from flask_cors import CORS
 from routes.api import api_bp
 
@@ -3845,7 +3845,10 @@ def manage_notifications():
     policies = {item.classroom_id: item for item in ClassroomNotificationConfig.query.all()}
     bindings = {item.classroom_id: item for item in ClassroomWhatsAppBinding.query.all()}
     bots = WhatsAppBot.query.order_by(WhatsAppBot.name.asc()).all()
-    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=allowed_classrooms, active_classroom=active_classroom, policies=policies, bindings=bindings, bots=bots, can_manage_multi_notifications=can_manage_multi)
+    # Generate short-lived JWT token untuk AJAX calls dari halaman ini
+    from datetime import timedelta
+    page_token = create_access_token(identity=str(current_user.id), expires_delta=timedelta(hours=2))
+    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=allowed_classrooms, active_classroom=active_classroom, policies=policies, bindings=bindings, bots=bots, can_manage_multi_notifications=can_manage_multi, page_token=page_token)
 
 @app.route('/notifications/waha/save-config', methods=['POST'])
 @login_required
