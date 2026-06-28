@@ -1602,6 +1602,66 @@ def get_fund_target(classroom_id=None):
         return 0
     return _count_weekdays_between(start_date, target_until) * daily_rate
 
+
+def calculate_user_points_breakdown(user):
+    if not user:
+        return {
+            'fund_points': 0,
+            'gallery_points': 0,
+            'arrears_penalty': 0,
+            'total_paid': 0,
+            'target_payment': 0,
+            'arrears': 0,
+            'published_photos': 0,
+            'total_points': 0,
+        }
+
+    classroom_id = user.classroom_id or (user.student.classroom_id if user.student else None)
+    target_payment = get_fund_target(classroom_id=classroom_id)
+
+    total_paid = 0
+    arrears = target_payment
+    if user.student_id:
+        total_paid = db.session.query(db.func.sum(BatchFund.amount)).filter(
+            BatchFund.student_id == user.student_id,
+            BatchFund.type == 'Masuk'
+        ).scalar() or 0
+        arrears = max(0, target_payment - total_paid)
+
+    published_photos = GalleryPhoto.query.filter_by(
+        uploaded_by=user.id,
+        status='Published'
+    ).count()
+
+    fund_points = int(total_paid // 10000)
+    gallery_points = published_photos * 5
+    arrears_penalty = int(arrears // 10000)
+    total_points = max(0, fund_points + gallery_points - arrears_penalty)
+
+    return {
+        'fund_points': fund_points,
+        'gallery_points': gallery_points,
+        'arrears_penalty': arrears_penalty,
+        'total_paid': total_paid,
+        'target_payment': target_payment,
+        'arrears': arrears,
+        'published_photos': published_photos,
+        'total_points': total_points,
+    }
+
+
+def auto_recalculate_points():
+    users = User.query.all()
+    dirty = False
+    for user in users:
+        breakdown = calculate_user_points_breakdown(user)
+        new_points = breakdown['total_points']
+        if (user.points or 0) != new_points:
+            user.points = new_points
+            dirty = True
+    if dirty:
+        db.session.commit()
+
 with app.app_context():
     auto_recalculate_points()
 
