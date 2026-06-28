@@ -170,6 +170,10 @@ def _build_template_settings():
     return _TemplateSettings(merged)
 
 
+def _get_site_settings():
+    return _build_template_settings()
+
+
 @app.context_processor
 def inject_global_template_data():
     return {
