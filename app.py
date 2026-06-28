@@ -1702,8 +1702,6 @@ def view_logs():
 
 @app.route('/')
 def index():
-    if current_user.is_authenticated:
-        return redirect(url_for('dashboard'))
     
     announcements = Announcement.query.filter_by(is_public=True).order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(3).all()
     photos = GalleryPhoto.query.filter_by(is_public=True).order_by(GalleryPhoto.date_uploaded.desc()).limit(8).all()
