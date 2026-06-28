@@ -543,78 +543,9 @@
             <div class="nav-item">
                 <a href="{{ url_for('manage_assignments') }}"
                     class="nav-link {{ 'active' if request.endpoint == 'manage_assignments' else '' }}">
-            </div>
-
-            {% if current_user.is_authenticated %}
-            <!-- Dashboard -->
-            <div class="nav-item">
-                <a href="{{ url_for('dashboard') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'dashboard' else '' }}">
-                    <i data-lucide="layout-dashboard"></i> <span>Dashboard</span>
-                </a>
-            </div>
-
-            <!-- Leaderboard -->
-            <div class="nav-item">
-                <a href="{{ url_for('leaderboard') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'leaderboard' else '' }}">
-                    <i data-lucide="trophy"></i> <span>Leaderboard</span>
-                </a>
-            </div>
-
-
-            <!-- Pengumuman (Manage for Staff, View for Members) -->
-            <div class="nav-item">
-                <a href="{{ url_for('manage_announcements') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_announcements' else '' }}">
-                    <i data-lucide="megaphone"></i> <span>{{ 'Manajemen Pengumuman' if current_user.role.can_manage_announcements else 'Pengumuman' }}</span>
-                </a>
-            </div>
-
-            <!-- Uang Kas -->
-            <div class="nav-item">
-                <a href="{{ url_for('manage_fund') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_fund' else '' }}">
-                    <i data-lucide="wallet"></i> <span>{{ 'Manajemen Kas' if current_user.role.can_manage_fund else 'Transparansi Kas' }}</span>
-                </a>
-            </div>
-
-            <!-- Notifikasi (Staff Only) -->
-            {% if current_user.role.can_manage_notifications or current_user.role.can_manage_whatsapp %}
-            <div class="nav-item">
-                <a href="{{ url_for('manage_notifications') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_notifications' else '' }}">
-                    <i data-lucide="bell"></i> <span>Notifikasi & WA</span>
-                </a>
-            </div>
-            {% endif %}
-
-            <!-- Member Management (Staff Only) -->
-            {% if current_user.role.can_manage_students %}
-            <div class="nav-item">
-                <a href="{{ url_for('manage_members') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_members' else '' }}">
-                    <i data-lucide="users"></i> <span>Manajemen Member</span>
-                </a>
-            </div>
-            {% endif %}
-
-            <!-- Jadwal -->
-            <div class="nav-item">
-                <a href="{{ url_for('manage_schedule') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_schedule' else '' }}">
-                    <i data-lucide="calendar"></i> <span>{{ 'Manajemen Jadwal' if current_user.role.can_manage_schedule else 'Jadwal Kuliah' }}</span>
-                </a>
-            </div>
-
-            <!-- Tugas -->
-            <div class="nav-item">
-                <a href="{{ url_for('manage_assignments') }}"
-                    class="nav-link {{ 'active' if request.endpoint == 'manage_assignments' else '' }}">
                     <i data-lucide="check-square"></i> <span>{{ 'Manajemen Tugas' if current_user.role.can_manage_assignments else 'Daftar Tugas' }}</span>
                 </a>
             </div>
-
 
             <!-- Galeri -->
             <div class="nav-item">
@@ -631,7 +562,6 @@
                     <i data-lucide="newspaper"></i> <span>{{ 'Manajemen Berita' if current_user.role.can_manage_news else 'Berita' }}</span>
                 </a>
             </div>
-
 
             <!-- Admin Only: Settings, Roles, Logs -->
             {% if current_user.role.can_edit_settings %}

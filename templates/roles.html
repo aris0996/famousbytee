@@ -139,6 +139,7 @@
                     {% if role.can_manage_announcements %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Pengumuman</span>{% endif %}
                     {% if role.can_manage_roles %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Akses Admin</span>{% endif %}
                     {% if role.can_manage_gallery %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Galeri & Moderasi</span>{% endif %}
+                    {% if role.can_manage_news %}<span class="status-badge" style="background:#ecfdf5; color:#065f46; font-size: 0.75rem;">Manajemen Berita</span>{% endif %}
                     {% if role.can_view_logs %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Sistem Logs</span>{% endif %}
                     {% if role.can_export_data %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">Eksport Data CSV</span>{% endif %}
                     {% if role.can_edit_settings %}<span class="status-badge" style="background:#f1f5f9; color:#475569; font-size: 0.75rem;">App Settings</span>{% endif %}
@@ -175,6 +176,7 @@
                         mN: {{ 'true' if role.can_manage_notifications else 'false' }},
                         mW: {{ 'true' if role.can_manage_whatsapp else 'false' }},
                         mG: {{ 'true' if role.can_manage_gallery else 'false' }},
+                        mNws: {{ 'true' if role.can_manage_news else 'false' }},
                         mAs: {{ 'true' if role.can_manage_assignments else 'false' }},
                         api: {{ 'true' if role.can_use_api else 'false' }},
                         aMC: {{ 'true' if role.can_access_multi_classroom else 'false' }},
@@ -300,6 +302,7 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_news"> Manajemen Berita</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications"> Push Notifications</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments"> Manajemen Tugas</label>
@@ -345,6 +348,7 @@
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_fund" id="edit-can-m-fund"> Kas Keuangan</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_announcements" id="edit-can-m-ann"> Pengumuman</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_gallery" id="edit-can-m-gallery"> Moderasi Galeri</label>
+                <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_news" id="edit-can-m-news"> Manajemen Berita</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_notifications" id="edit-can-m-notifications"> Push Notifications</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_whatsapp" id="edit-can-m-whatsapp"> Integrasi WhatsApp</label>
                 <label style="cursor: pointer; display: flex; gap: 8px; font-size: 0.85rem;"><input type="checkbox" name="can_manage_assignments" id="edit-can-m-assignments"> Manajemen Tugas</label>
@@ -446,6 +450,7 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-m-notifications').checked = p.mN;
     document.getElementById('edit-can-m-whatsapp').checked = p.mW;
     document.getElementById('edit-can-m-gallery').checked = p.mG;
+    document.getElementById('edit-can-m-news').checked = p.mNws;
     document.getElementById('edit-can-m-assignments').checked = p.mAs;
     document.getElementById('edit-can-use-api').checked = p.api;
 

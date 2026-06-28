@@ -1707,8 +1707,10 @@ def index():
     announcements = Announcement.query.filter_by(is_public=True).order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(3).all()
     photos = GalleryPhoto.query.filter_by(is_public=True).order_by(GalleryPhoto.created_at.desc()).limit(8).all()
     classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    recent_news = NewsArticle.query.filter_by(status='Published', is_public=True).order_by(NewsArticle.published_at.desc(), NewsArticle.created_at.desc()).limit(3).all()
     
-    return render_template('index.html', announcements=announcements, photos=photos, classrooms=classrooms)
+    return render_template('index.html', announcements=announcements, photos=photos, classrooms=classrooms, recent_news=recent_news)
+
 
 
 
@@ -3785,6 +3787,9 @@ def init_db():
             inspector = inspect(db.engine)
             
             with db.engine.begin() as conn:
+                fund_cols = [c['name'] for c in inspector.get_columns('batch_fund')]
+                if 'classroom_id' not in fund_cols:
+                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN classroom_id INTEGER NULL"))
                 if 'original_amount' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT NULL"))
                 if 'original_description' not in fund_cols:
@@ -4080,6 +4085,25 @@ def init_db():
         except Exception as e:
             db.session.rollback()
             print(f"Peringatan: Gagal migrasi konfigurasi notifikasi legacy: {e}")
+
+        # 5. Seeding Kategori Berita Default & Update Izin Admin
+        try:
+            admin_role = Role.query.filter_by(name='Admin').first()
+            if admin_role and not admin_role.can_manage_news:
+                admin_role.can_manage_news = True
+                db.session.commit()
+            
+            if not NewsCategory.query.first():
+                db.session.add_all([
+                    NewsCategory(name='Akademik', slug='akademik', color='#3b82f6'),
+                    NewsCategory(name='Kegiatan', slug='kegiatan', color='#10b981'),
+                    NewsCategory(name='Pengumuman', slug='pengumuman', color='#f59e0b')
+                ])
+                db.session.commit()
+                print("Status: Kategori berita default berhasil ditambahkan.")
+        except Exception as e:
+            db.session.rollback()
+            print(f"Peringatan: Gagal seeding kategori berita: {e}")
 
 # ----------------API & SITEMAP----------------
 from flask import jsonify
@@ -4449,7 +4473,9 @@ def sitemap():
         '/fund', '/settings', '/classes', '/roles', '/logs',
         '/notifications', '/assignments', '/leaderboard',
         '/announcements', '/profile', '/logout',
+        '/berita/manage', '/berita/manage/new', '/berita/categories',
     }
+
 
     pages = []
     for rule in app.url_map.iter_rules():
