@@ -29,6 +29,26 @@
     </div>
 </div>
 
+{% if current_user.role.can_manage_roles or current_user.role.can_manage_gallery_multi_class or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom %}
+<form method="GET" action="{{ url_for('manage_gallery') }}" class="card" style="margin-bottom: 1.25rem; padding: 1rem 1.15rem;">
+    <div style="display: grid; grid-template-columns: minmax(0, 220px) auto; gap: 1rem; align-items: end;">
+        <div>
+            <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Tampilkan Kelas</label>
+            <select name="classroom_id" class="form-control" onchange="this.form.submit()">
+                {% for classroom in classrooms %}
+                <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                    {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="font-size: 0.85rem; color: #64748b;">
+            Filter ini memengaruhi daftar foto, moderasi, dan upload baru.
+        </div>
+    </div>
+</form>
+{% endif %}
+
 <div class="masonry-grid" id="gallery-container">
     {% for photo in photos %}
     <div class="masonry-item card" style="padding: 0; overflow: hidden; position: relative;" onclick="if(event.target.tagName !== 'A' && event.target.tagName !== 'BUTTON' && !event.target.closest('button') && !event.target.closest('a')) openLightbox(this.querySelector('img'), '{{ photo.id }}')">
@@ -125,6 +145,7 @@
     <div class="card" style="width: 500px; max-width: 100%; padding: 2.5rem;">
         <h2 style="margin-bottom: 1.5rem; display: flex; align-items: center; gap: 10px;"><i data-lucide="upload-cloud" style="color: var(--primary);"></i> Tambah Momen</h2>
         <form action="{{ url_for('upload_gallery') }}" method="POST" enctype="multipart/form-data" id="upload-form">
+            <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             
             <div class="upload-zone" id="drop-zone" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 2rem; text-align: center; background: #f8fafc; cursor: pointer; margin-bottom: 1.5rem; transition: background 0.2s;">
                 <i data-lucide="image" style="width: 40px; height: 40px; color: #94a3b8; margin-bottom: 10px;"></i>

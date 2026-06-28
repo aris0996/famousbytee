@@ -32,6 +32,26 @@
     </div>
 </div>
 
+{% if current_user.role.can_manage_roles or current_user.role.can_manage_announcements_multi_class or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom %}
+<form method="GET" action="{{ url_for('view_announcements') }}" class="card" style="margin-bottom: 1rem; padding: 1rem 1.15rem;">
+    <div style="display: grid; grid-template-columns: minmax(0, 240px) auto; gap: 1rem; align-items: end;">
+        <div>
+            <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Filter Kelas</label>
+            <select name="classroom_id" class="form-control" onchange="this.form.submit()">
+                {% for classroom in classrooms %}
+                <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                    {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="font-size: 0.85rem; color: #64748b;">
+            Gunakan filter ini untuk meninjau pengumuman per kelas tanpa mengubah konteks halaman lain.
+        </div>
+    </div>
+</form>
+{% endif %}
+
 <div class="announcement-container" id="ann-list">
     <!-- Desktop Table (Hidden on Mobile) -->
     <div class="card desktop-only" style="padding: 0; overflow: hidden; margin-bottom: 1.5rem;">

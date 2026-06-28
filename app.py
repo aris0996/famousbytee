@@ -1553,16 +1553,25 @@ def view_announcements():
     if not current_user.role.can_manage_announcements:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
     anns_query = Announcement.query
     if active_classroom:
         anns_query = anns_query.filter(
             (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
         )
     announcements = anns_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
-    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    classrooms = _web_allowed_classrooms(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
     return render_template('announcements.html', announcements=announcements, classrooms=classrooms, active_classroom=active_classroom)
 
 def log_activity(action, details=None):
@@ -1584,14 +1593,25 @@ def view_logs():
     if not current_user.role.can_manage_roles:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
-        
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     query = ActivityLog.query
     if active_classroom:
         query = query.filter((ActivityLog.classroom_id == active_classroom.id) | (ActivityLog.classroom_id.is_(None)))
-        
+
     logs = query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
-    return render_template('logs.html', logs=logs)
+    classrooms = _web_allowed_classrooms(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
+    return render_template('logs.html', logs=logs, classrooms=classrooms, active_classroom=active_classroom)
 
 
 @app.route('/')
@@ -3351,9 +3371,13 @@ def process_image_upload(file):
 @app.route('/gallery')
 @login_required
 def manage_gallery():
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
     # Admin/Pengurus can see all (including pending), Members can only see Published
     photos_query = GalleryPhoto.query
     if active_classroom:
@@ -3367,8 +3391,12 @@ def manage_gallery():
             (GalleryPhoto.status == 'Published') | 
             ((GalleryPhoto.status == 'Pending') & (GalleryPhoto.uploaded_by == current_user.id))
         ).order_by(GalleryPhoto.created_at.desc()).all()
-        
-    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+
+    classrooms = _web_allowed_classrooms(
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
     return render_template('gallery.html', photos=photos, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/gallery/upload', methods=['POST'])
@@ -3379,9 +3407,13 @@ def upload_gallery():
         flash('Tidak ada file yang dipilih.')
         return redirect(url_for('manage_gallery'))
     
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
     tags = request.form.get('tags', '')
     is_public = 'is_public' in request.form
     
@@ -4243,12 +4275,33 @@ def clear_notification_history():
 @app.route('/leaderboard')
 @login_required
 def leaderboard():
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
     query = User.query.filter(User.points > 0)
     if active_classroom:
-        query = query.filter_by(classroom_id=active_classroom.id)
+        query = query.filter(
+            (User.classroom_id == active_classroom.id) |
+            User.student.has(Student.classroom_id == active_classroom.id)
+        )
     top_users = query.order_by(User.points.desc()).limit(20).all()
-    return render_template('leaderboard.html', users=top_users)
+    classrooms = _web_allowed_classrooms(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
+    return render_template(
+        'leaderboard.html',
+        users=top_users,
+        classrooms=classrooms,
+        active_classroom=active_classroom,
+    )
 
 @app.route('/sitemap.xml')
 
@@ -4270,10 +4323,20 @@ def sitemap():
 @app.route('/api/leaderboard', methods=['GET'])
 @login_required
 def get_leaderboard():
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
     query = User.query.filter(User.points > 0)
     if active_classroom:
-        query = query.filter_by(classroom_id=active_classroom.id)
+        query = query.filter(
+            (User.classroom_id == active_classroom.id) |
+            User.student.has(Student.classroom_id == active_classroom.id)
+        )
     
     # Top 20 users by points
     top_users = query.order_by(User.points.desc()).limit(20).all()

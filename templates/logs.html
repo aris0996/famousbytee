@@ -2,8 +2,28 @@
 {% block content %}
 <header>
     <h1>Log Aktivitas Sistem</h1>
-    <p>Riwayat tindakan administratif dalam portal Famousbytee.b</p>
+    <p>Riwayat tindakan administratif untuk {{ active_classroom.name if active_classroom else 'kelas aktif' }}{% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}</p>
 </header>
+
+{% if current_user.role.can_manage_roles or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom or current_user.role.can_switch_classroom_context %}
+<form method="GET" action="{{ url_for('view_logs') }}" class="card" style="margin-bottom: 1rem; padding: 1rem 1.15rem;">
+    <div style="display: grid; grid-template-columns: minmax(0, 240px) auto; gap: 1rem; align-items: end;">
+        <div>
+            <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Filter Kelas</label>
+            <select name="classroom_id" class="form-control" onchange="this.form.submit()">
+                {% for classroom in classrooms %}
+                <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                    {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div style="font-size: 0.85rem; color: #64748b;">
+            Log umum tanpa kelas tetap ikut tampil agar riwayat sistem tidak terputus.
+        </div>
+    </div>
+</form>
+{% endif %}
 
 <div class="card">
     <div style="max-height: 600px; overflow-y: auto;">
@@ -12,6 +32,7 @@
                 <tr>
                     <th style="width: 20%;">Waktu</th>
                     <th style="width: 15%;">Pengguna</th>
+                    <th style="width: 16%;">Kelas</th>
                     <th style="width: 20%;">Tindakan</th>
                     <th>Detail</th>
                 </tr>
@@ -25,6 +46,9 @@
                     <td style="font-weight: 700;">
                         {{ log.user.full_name or log.user.username }}
                     </td>
+                    <td style="font-size: 0.85rem; color: #475569;">
+                        {{ log.classroom.name if log.classroom else 'Sistem / Global' }}
+                    </td>
                     <td>
                         <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary);">
                             {{ log.action }}
@@ -34,7 +58,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" style="text-align: center; padding: 3rem; opacity: 0.5;">Belum ada log aktivitas.</td>
+                    <td colspan="5" style="text-align: center; padding: 3rem; opacity: 0.5;">Belum ada log aktivitas.</td>
                 </tr>
                 {% endfor %}
             </tbody>

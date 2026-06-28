@@ -1,94 +1,154 @@
 {% extends 'base.html' %}
 {% block content %}
-<header style="margin-bottom: 3rem; text-align: center;">
-    <div style="background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); width: 80px; height: 80px; border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; color: white; box-shadow: 0 10px 20px rgba(255, 165, 0, 0.3);">
-        <i data-lucide="trophy" style="width: 40px; height: 40px;"></i>
+<header style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1.25rem; margin-bottom: 1.5rem;">
+    <div>
+        <h1 style="margin-bottom: 0.35rem;">Leaderboard Kelas</h1>
+        <p style="margin: 0; color: var(--text-muted); max-width: 720px;">
+            Peringkat poin anggota untuk
+            <strong>{{ active_classroom.name if active_classroom else '-' }}</strong>
+            {% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}.
+            Tampilan ini mengikuti konteks kelas aktif agar operator tidak tertukar antar kelas.
+        </p>
     </div>
-    <h1 style="font-weight: 900; font-size: 2.5rem; letter-spacing: -1.5px; margin-bottom: 0.5rem;">Leaderboard Anggota</h1>
-    <p style="color: var(--text-muted); font-size: 1.1rem;">Apresiasi untuk anggota teraktif bulan ini.</p>
+    {% if current_user.role.can_manage_roles or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom or current_user.role.can_switch_classroom_context or current_user.role.can_view_classroom_reports %}
+    <form method="GET" action="{{ url_for('leaderboard') }}" style="min-width: 280px; max-width: 340px; width: 100%;">
+        <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Pilih Kelas</label>
+        <select name="classroom_id" class="form-control" onchange="this.form.submit()">
+            {% for classroom in classrooms %}
+            <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+            </option>
+            {% endfor %}
+        </select>
+    </form>
+    {% endif %}
 </header>
 
-<div class="card" style="max-width: 800px; margin: 0 auto; padding: 0; overflow: hidden;">
-    <div style="padding: 2rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="font-weight: 800;">Top 20 Hall of Fame</h3>
-        <span class="status-badge" style="background: var(--primary); color: white;">{{ users|length }} Aktif</span>
-    </div>
-    
-    <div style="padding: 1rem;">
+<div style="display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(280px, 0.9fr); gap: 1.5rem; align-items: start;">
+    <section class="card" style="padding: 0; overflow: hidden;">
+        <div style="padding: 1.15rem 1.25rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc; display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap;">
+            <div>
+                <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.3rem;">Peringkat Aktif</div>
+                <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a;">Top {{ users|length if users else 0 }} Anggota</div>
+            </div>
+            <span class="status-badge" style="background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe;">
+                {{ active_classroom.name if active_classroom else 'Semua Kelas' }}
+            </span>
+        </div>
+
         {% if users %}
-            <table style="width: 100%; border-collapse: separate; border-spacing: 0 10px;">
+        <div style="overflow-x: auto;">
+            <table style="width: 100%; min-width: 760px;">
                 <thead>
-                    <tr style="color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;">
-                        <th style="padding: 1rem; text-align: center; width: 80px;">Rank</th>
-                        <th style="padding: 1rem; text-align: left;">Mahasiswa</th>
-                        <th style="padding: 1rem; text-align: center;">Total Poin</th>
-                        <th style="padding: 1rem; text-align: right;">Badge</th>
+                    <tr>
+                        <th style="width: 82px; text-align: center;">Rank</th>
+                        <th>Anggota</th>
+                        <th style="width: 150px;">Kelas</th>
+                        <th style="width: 120px; text-align: center;">Poin</th>
+                        <th style="width: 160px; text-align: right;">Level</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for u in users %}
-                    <tr style="background: {{ 'rgba(255, 215, 0, 0.05)' if loop.index == 1 else 'transparent' }}; border-radius: 15px; transition: 0.2s;">
-                        <td style="padding: 1rem; text-align: center;">
+                    {% set total_points = u.points or 0 %}
+                    {% set row_classroom = u.classroom or (u.student.classroom if u.student and u.student.classroom else none) %}
+                    <tr style="{{ 'background: #fffbeb;' if loop.index == 1 else 'background: white;' }}">
+                        <td style="text-align: center; padding: 1rem 0.75rem;">
                             {% if loop.index == 1 %}
-                                <div style="font-size: 1.5rem;">🥇</div>
+                            <div style="width: 40px; height: 40px; margin: 0 auto; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #fbbf24); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900;">#1</div>
                             {% elif loop.index == 2 %}
-                                <div style="font-size: 1.5rem;">🥈</div>
+                            <div style="width: 40px; height: 40px; margin: 0 auto; border-radius: 12px; background: linear-gradient(135deg, #94a3b8, #cbd5e1); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900;">#2</div>
                             {% elif loop.index == 3 %}
-                                <div style="font-size: 1.5rem;">🥉</div>
+                            <div style="width: 40px; height: 40px; margin: 0 auto; border-radius: 12px; background: linear-gradient(135deg, #b45309, #d97706); color: white; display: flex; align-items: center; justify-content: center; font-weight: 900;">#3</div>
                             {% else %}
-                                <span style="font-weight: 800; color: #94a3b8;">#{{ loop.index }}</span>
+                            <span style="font-weight: 800; color: #64748b;">#{{ loop.index }}</span>
                             {% endif %}
                         </td>
-                        <td style="padding: 1rem;">
-                            <div style="display: flex; align-items: center; gap: 15px;">
-                                <div style="width: 40px; height: 40px; border-radius: 12px; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-weight: 800; color: #64748b;">
-                                    {{ u.full_name[0] if u.full_name else u.username[0] }}
+                        <td style="padding: 1rem 0.75rem;">
+                            <div style="display: flex; align-items: center; gap: 0.85rem;">
+                                <div style="width: 42px; height: 42px; border-radius: 12px; background: #eef2ff; color: #4338ca; display: flex; align-items: center; justify-content: center; font-weight: 800; flex-shrink: 0;">
+                                    {{ (u.full_name or u.username or 'U')[0]|upper }}
                                 </div>
-                                <div>
-                                    <div style="font-weight: 800; color: var(--text-main);">{{ u.full_name or u.username }}</div>
-                                    <div style="font-size: 0.75rem; color: var(--text-muted);">NIM: {{ u.student.nim if u.student else '-' }}</div>
+                                <div style="min-width: 0;">
+                                    <div style="font-weight: 800; color: #0f172a;">{{ u.full_name or u.username }}</div>
+                                    <div style="font-size: 0.82rem; color: #64748b;">
+                                        NIM: {{ u.student.nim if u.student else '-' }}
+                                        <span style="margin: 0 0.35rem;">•</span>
+                                        {{ u.role.name if u.role else '-' }}
+                                    </div>
                                 </div>
                             </div>
                         </td>
-                        <td style="padding: 1rem; text-align: center;">
-                            <span style="font-weight: 900; font-size: 1.1rem; color: var(--primary);">{{ u.points or 0 }}</span>
+                        <td style="padding: 1rem 0.75rem;">
+                            <div style="font-weight: 700; color: #1e293b;">{{ row_classroom.name if row_classroom else '-' }}</div>
+                            <div style="font-size: 0.78rem; color: #64748b;">{{ row_classroom.batch if row_classroom and row_classroom.batch else 'Batch belum diisi' }}</div>
                         </td>
-                        <td style="padding: 1rem; text-align: right;">
-                            {% if (u.points or 0) > 500 %}
-                                <span class="status-badge" style="background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe;">Diamond Member</span>
-                            {% elif (u.points or 0) > 200 %}
-                                <span class="status-badge" style="background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0;">Gold Member</span>
+                        <td style="text-align: center; padding: 1rem 0.75rem;">
+                            <div style="font-size: 1.1rem; font-weight: 900; color: #4338ca;">{{ total_points }}</div>
+                        </td>
+                        <td style="text-align: right; padding: 1rem 0.75rem;">
+                            {% if total_points >= 500 %}
+                            <span class="status-badge" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;">Diamond</span>
+                            {% elif total_points >= 250 %}
+                            <span class="status-badge" style="background: #fef3c7; color: #92400e; border: 1px solid #fcd34d;">Gold</span>
+                            {% elif total_points >= 100 %}
+                            <span class="status-badge" style="background: #ecfccb; color: #3f6212; border: 1px solid #bef264;">Silver</span>
                             {% else %}
-                                <span class="status-badge" style="background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Silver</span>
+                            <span class="status-badge" style="background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0;">Starter</span>
                             {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
         {% else %}
-            <div style="padding: 4rem; text-align: center;">
-                <p style="color: var(--text-muted); font-weight: 600;">Belum ada poin yang terkumpul.</p>
+        <div style="padding: 3.25rem 1.5rem; text-align: center;">
+            <div style="width: 56px; height: 56px; margin: 0 auto 1rem; border-radius: 16px; background: #f8fafc; display: flex; align-items: center; justify-content: center; color: #94a3b8;">
+                <i data-lucide="trophy" style="width: 24px; height: 24px;"></i>
             </div>
+            <div style="font-weight: 800; color: #0f172a; margin-bottom: 0.45rem;">Belum ada peringkat</div>
+            <div style="color: #64748b;">Poin untuk kelas ini belum terkumpul atau belum dihitung.</div>
+        </div>
         {% endif %}
-    </div>
-</div>
+    </section>
 
-<div style="margin-top: 3rem; text-align: center; background: white; padding: 2rem; border-radius: 20px; box-shadow: var(--shadow);">
-    <h4 style="font-weight: 800; margin-bottom: 1rem;">Cara Mendapatkan Poin:</h4>
-    <div style="display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap;">
-        <div style="text-align: center;">
-            <div style="color: #10b981; font-weight: 900; font-size: 1.2rem; margin-bottom: 5px;">+50 Poin</div>
-            <p style="font-size: 0.85rem; color: var(--text-muted);">Membayar Iuran Kas</p>
-        </div>
-        <div style="text-align: center;">
-            <div style="color: #6366f1; font-weight: 900; font-size: 1.2rem; margin-bottom: 5px;">+10 Poin</div>
-            <p style="font-size: 0.85rem; color: var(--text-muted);">Dokumentasi Galeri</p>
-        </div>
-        <div style="text-align: center;">
-            <div style="color: #f59e0b; font-weight: 900; font-size: 1.2rem; margin-bottom: 5px;">+5 Poin</div>
-            <p style="font-size: 0.85rem; color: var(--text-muted);">Login Harian</p>
-        </div>
-    </div>
+    <aside style="display: flex; flex-direction: column; gap: 1rem;">
+        <section class="card">
+            <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Ringkasan Kelas</div>
+            <div style="font-size: 1.05rem; font-weight: 800; color: #0f172a; margin-bottom: 0.75rem;">
+                {{ active_classroom.name if active_classroom else '-' }}
+                {% if active_classroom and active_classroom.batch %}<span style="display:block; font-size: 0.82rem; color: #64748b; font-weight: 600;">{{ active_classroom.batch }}</span>{% endif %}
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem;">
+                <div style="padding: 0.9rem; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 800; margin-bottom: 0.25rem;">Peserta</div>
+                    <div style="font-size: 1.2rem; font-weight: 900; color: #0f172a;">{{ users|length }}</div>
+                </div>
+                <div style="padding: 0.9rem; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 800; margin-bottom: 0.25rem;">Poin Tertinggi</div>
+                    <div style="font-size: 1.2rem; font-weight: 900; color: #4338ca;">{{ users[0].points if users else 0 }}</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card">
+            <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.65rem;">Sumber Poin</div>
+            <div style="display: flex; flex-direction: column; gap: 0.7rem;">
+                <div style="display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.85rem 0.95rem; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <span style="font-weight: 700; color: #0f172a;">Kas</span>
+                    <span style="font-weight: 800; color: #059669;">+50 poin</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.85rem 0.95rem; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <span style="font-weight: 700; color: #0f172a;">Galeri</span>
+                    <span style="font-weight: 800; color: #2563eb;">+10 poin</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.85rem 0.95rem; border-radius: 12px; background: #f8fafc; border: 1px solid #e2e8f0;">
+                    <span style="font-weight: 700; color: #0f172a;">Aktivitas Harian</span>
+                    <span style="font-weight: 800; color: #d97706;">+5 poin</span>
+                </div>
+            </div>
+        </section>
+    </aside>
 </div>
 {% endblock %}
