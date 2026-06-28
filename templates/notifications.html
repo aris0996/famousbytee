@@ -222,12 +222,22 @@
                 </form>
                 <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Tambah / Edit Bot</h3>
-                    <div class="notify-toolbar" style="margin-bottom:1rem;">
-                        <select id="waha-session-live" class="form-control" style="min-width:240px;">
-                            <option value="">Muat session aktif dari WAHA</option>
-                        </select>
-                        <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Session</button>
-                        <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Pakai Session</button>
+                    <div class="notify-card" style="margin-bottom:1rem; background:#f8fafc;">
+                        <div class="notify-toolbar">
+                            <select id="waha-session-live" class="form-control" style="min-width:240px;">
+                                <option value="">Muat session aktif dari WAHA</option>
+                            </select>
+                            <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Session</button>
+                            <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Pakai Session</button>
+                        </div>
+                        <div id="waha-session-status" class="notify-mini" style="margin-top:.6rem;">Session live akan muncul di sini.</div>
+                        <div id="waha-session-qr" style="display:none; margin-top:1rem; text-align:center;">
+                            <div class="notify-mini" style="margin-bottom:.5rem;">QR session</div>
+                            <img id="waha-session-qr-img" src="" alt="QR WAHA" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
+                        </div>
+                        <div class="notify-actions" style="margin-top:.75rem;">
+                            <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan / Update QR</button>
+                        </div>
                     </div>
                     <div class="notify-grid">
                         <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
@@ -502,19 +512,24 @@ function fillBotForm(id, name, sessionName, baseUrl, status) {
 
 async function refreshWahaSessions() {
     const select = document.getElementById('waha-session-live');
+    const status = document.getElementById('waha-session-status');
     select.innerHTML = '<option value="">Memuat session...</option>';
+    if (status) status.innerText = 'Mengambil daftar session dari WAHA...';
     try {
         const data = await apiFetch('{{ url_for("get_waha_sessions") }}');
         const items = data.items || [];
         if (!items.length) {
             select.innerHTML = '<option value="">Tidak ada session aktif</option>';
+            if (status) status.innerText = 'Tidak ada session aktif yang ditemukan.';
             return;
         }
         select.innerHTML = '<option value="">Pilih session aktif</option>' + items.map(item => {
             return `<option value="${item.name}">${item.name} - ${item.status || 'unknown'}</option>`;
         }).join('');
+        if (status) status.innerText = `Ditemukan ${items.length} session.`;
     } catch (error) {
         select.innerHTML = '<option value="">Gagal memuat session</option>';
+        if (status) status.innerText = error.message;
     }
 }
 
@@ -523,6 +538,31 @@ function useSelectedSession() {
     const session = document.getElementById('bot-session');
     if (select && select.value && session) {
         session.value = select.value;
+    }
+}
+
+async function refreshSelectedSessionQr() {
+    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const qrWrap = document.getElementById('waha-session-qr');
+    const qrImg = document.getElementById('waha-session-qr-img');
+    const status = document.getElementById('waha-session-status');
+    if (!sessionName) {
+        if (status) status.innerText = 'Pilih session dulu.';
+        return;
+    }
+    try {
+        const data = await apiFetch(`/notifications/waha/session/${encodeURIComponent(sessionName)}/qr`);
+        if (status) status.innerText = `Status session: ${data.status || 'unknown'}`;
+        if (data.qr) {
+            qrWrap.style.display = 'block';
+            qrImg.src = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
+        } else {
+            qrWrap.style.display = 'none';
+            if (status) status.innerText += ' | QR belum tersedia dari WAHA.';
+        }
+    } catch (error) {
+        if (qrWrap) qrWrap.style.display = 'none';
+        if (status) status.innerText = error.message;
     }
 }
 
@@ -603,6 +643,7 @@ document.addEventListener('DOMContentLoaded', () => {
     lucide.createIcons();
     const liveSelect = document.getElementById('waha-session-live');
     if (liveSelect) liveSelect.addEventListener('change', useSelectedSession);
+    if (liveSelect) liveSelect.addEventListener('change', refreshSelectedSessionQr);
 });
 </script>
 {% endblock %}
