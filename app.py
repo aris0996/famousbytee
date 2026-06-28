@@ -4462,17 +4462,38 @@ def leaderboard():
     )
 
 @app.route('/sitemap.xml')
-
 def sitemap():
-    """Generates sitemap.xml dynamically."""
+    """Generates sitemap.xml dynamically. Excludes API, webhook, and admin-only routes."""
+    # Prefixes and endpoints to exclude from public sitemap
+    EXCLUDED_PREFIXES = ('/api/', '/webhooks/', '/static/')
+    EXCLUDED_ENDPOINTS = {'static', 'sitemap'}
+    # Routes that are internal/admin only (require login and are not public landing pages)
+    ADMIN_ONLY_ROUTES = {
+        '/dashboard', '/members', '/schedule', '/announcements/manage',
+        '/fund', '/settings', '/classes', '/roles', '/logs',
+        '/notifications', '/assignments', '/leaderboard',
+        '/announcements', '/profile', '/logout',
+    }
+
     pages = []
-    # Static pages
     for rule in app.url_map.iter_rules():
-        if "GET" in rule.methods and len(rule.arguments) == 0:
+        # Skip rules that require URL arguments (dynamic segments)
+        if len(rule.arguments) > 0:
+            continue
+        # Skip non-GET rules
+        if "GET" not in rule.methods:
+            continue
+        # Skip excluded endpoints
+        if rule.endpoint in EXCLUDED_ENDPOINTS:
+            continue
+        # Skip API, webhook, and static prefixes
+        if any(rule.rule.startswith(p) for p in EXCLUDED_PREFIXES):
+            continue
+        # Skip admin-only / login-required routes
+        if rule.rule in ADMIN_ONLY_ROUTES:
+            continue
+        pages.append([url_for(rule.endpoint, _external=True), datetime.now().date()])
 
-
-            pages.append([url_for(rule.endpoint, _external=True), datetime.now().date()])
-    
     sitemap_xml = render_template('sitemap.xml', pages=pages)
     response = make_response(sitemap_xml)
     response.headers["Content-Type"] = "application/xml"

@@ -128,7 +128,41 @@
         .overlay p { color: white; font-size: 0.9rem; font-weight: 600; margin: 0; transform: translateY(10px); transition: transform 0.3s; }
         .gallery-item:hover .overlay p { transform: translateY(0); }
 
-        footer { padding: 4rem 5%; background: #0f172a; color: white; text-align: center; }
+        footer { padding: 4rem 5%; background: #0f172a; color: white; }
+        .footer-inner {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 2.5rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        @media (min-width: 768px) {
+            .footer-inner { grid-template-columns: 2fr 1fr 1fr; }
+        }
+        .footer-brand p { color: rgba(255,255,255,0.55); font-size: 0.92rem; line-height: 1.75; margin-top: 1rem; max-width: 320px; }
+        .footer-col h4 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.4); margin-bottom: 1.2rem; }
+        .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+        .footer-col ul li a { color: rgba(255,255,255,0.65); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.25s; }
+        .footer-col ul li a:hover { color: var(--accent); }
+        .footer-socials { display: flex; gap: 0.8rem; margin-top: 1rem; }
+        .footer-social-btn {
+            width: 40px; height: 40px; border-radius: 12px;
+            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
+            display: flex; align-items: center; justify-content: center;
+            color: rgba(255,255,255,0.65); text-decoration: none;
+            transition: background 0.25s, color 0.25s, transform 0.2s;
+        }
+        .footer-social-btn:hover { background: var(--primary); color: white; transform: translateY(-2px); }
+        .footer-social-btn i { width: 18px; height: 18px; }
+        .footer-bottom {
+            border-top: 1px solid rgba(255,255,255,0.07);
+            margin-top: 3rem; padding-top: 1.8rem;
+            display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;
+            font-size: 0.85rem; color: rgba(255,255,255,0.4);
+        }
+        .footer-bottom a { color: var(--accent); text-decoration: none; font-weight: 600; }
+        .footer-bottom a:hover { text-decoration: underline; }
+    
 
         @media (min-width: 992px) {
             .hero { flex-direction: row; text-align: left; padding: 12rem 10% 8rem; }
@@ -308,24 +342,61 @@
     </section>
 
     <footer id="footer">
-        <div class="footer-logo" style="display: flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.4rem; margin-bottom: 2rem;">
-            {% if site_settings.logo_display_path %}
-                <img src="{{ site_settings.logo_display_path }}" style="height: 40px; width: 40px; object-fit: contain; filter: brightness(0) invert(1);">
-            {% else %}
-                <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
-            {% endif %}
-            {{ site_settings.get('web_title', 'Portal Manajemen') }}
-        </div>
-        <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi internal seluruh kelas secara elegan.</p>
-        
-        <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; opacity: 0.8;">
-            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}. All rights reserved.</p>
-            <div style="display: flex; gap: 1.5rem; justify-content: center; margin: 1.5rem 0;">
-                <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;"><i data-lucide="instagram"></i></a>
-                <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;"><i data-lucide="message-circle"></i></a>
-                <a href="/sitemap.xml" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;" title="Sitemap"><i data-lucide="file-code"></i></a>
+        <div class="footer-inner">
+            <!-- Brand Column -->
+            <div class="footer-brand footer-col">
+                <div style="display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem;">
+                    {% if site_settings.logo_display_path %}
+                        <img src="{{ site_settings.logo_display_path }}" style="height: 36px; width: 36px; object-fit: contain; filter: brightness(0) invert(1);">
+                    {% else %}
+                        <i data-lucide="{{ site_settings.web_logo or 'monitor' }}" style="width: 28px; height: 28px;"></i>
+                    {% endif %}
+                    {{ site_settings.get('web_title', 'Portal Manajemen') }}
+                </div>
+                <p>Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi internal seluruh kelas secara elegan.</p>
+                <div class="footer-socials">
+                    <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" class="footer-social-btn" title="Instagram">
+                        <i data-lucide="instagram"></i>
+                    </a>
+                    <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" class="footer-social-btn" title="WhatsApp Group">
+                        <i data-lucide="message-circle"></i>
+                    </a>
+                    <a href="/sitemap.xml" target="_blank" class="footer-social-btn" title="Sitemap XML">
+                        <i data-lucide="file-code"></i>
+                    </a>
+                </div>
             </div>
-            <p style="margin-top: 10px; font-weight: 600;">Platform Engine by <a href="https://instagram.com/ars_0996" target="_blank" style="color: var(--accent); text-decoration: none;">@ars_0996</a></p>
+
+            <!-- Quick Links Column -->
+            <div class="footer-col">
+                <h4>Navigasi</h4>
+                <ul>
+                    <li><a href="#">Beranda</a></li>
+                    <li><a href="#jadwal">Jadwal Publik</a></li>
+                    <li><a href="#pengumuman">Pengumuman</a></li>
+                    {% if classrooms %}
+                    <li><a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}">Galeri Kelas</a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('login') }}">Login Portal</a></li>
+                </ul>
+            </div>
+
+            <!-- Contact / Info Column -->
+            <div class="footer-col">
+                <h4>Informasi</h4>
+                <ul>
+                    <li><a href="/sitemap.xml" target="_blank">Sitemap</a></li>
+                    {% for class_obj in classrooms %}
+                    <li><a href="{{ url_for('public_view', class_name=class_obj.name) }}">{{ class_obj.name }}</a></li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <!-- Bottom Bar -->
+        <div class="footer-bottom">
+            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}. All rights reserved.</p>
+            <p>Platform Engine by <a href="https://instagram.com/ars_0996" target="_blank">@ars_0996</a></p>
         </div>
     </footer>
 
