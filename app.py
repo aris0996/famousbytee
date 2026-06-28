@@ -14,6 +14,7 @@ from io import StringIO
 from flask import send_from_directory, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash
 from datetime import datetime, timedelta
 from urllib import request as urllib_request, error as urllib_error
 from sqlalchemy.exc import OperationalError
@@ -135,6 +136,46 @@ def set_setting_value(key, value, description=None):
             setting.description = description
     else:
         db.session.add(SystemSetting(key=key, value=value, description=description))
+
+
+class _TemplateSettings(dict):
+    def __getattr__(self, item):
+        return self.get(item)
+
+
+def _build_template_settings():
+    defaults = {
+        'web_title': 'Portal Kelas Famousbytee.b',
+        'web_desc': 'Portal Resmi Kelas Famousbytee.b',
+        'seo_keywords': 'famousbytee, portal, kelas',
+        'web_logo': 'monitor',
+        'favicon_url': '/static/favicon.ico',
+        'web_logo_path': '',
+        'favicon_path': '',
+        'social_ig': '#',
+        'social_wa': '#',
+        'fund_daily_rate': '1000',
+    }
+    try:
+        values = {s.key: (s.value or '') for s in SystemSetting.query.all()}
+    except Exception:
+        values = {}
+    merged = {**defaults, **values}
+    merged['logo_display_path'] = merged.get('web_logo_path') or ''
+    merged['favicon_display_url'] = (
+        merged.get('favicon_path')
+        or merged.get('favicon_url')
+        or '/static/favicon.ico'
+    )
+    return _TemplateSettings(merged)
+
+
+@app.context_processor
+def inject_global_template_data():
+    return {
+        'site_settings': _build_template_settings(),
+        'datetime': datetime,
+    }
 
 def _normalize_waha_scalar(value):
     if value is None:
@@ -1732,6 +1773,69 @@ def view_logs():
         
     logs = query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
     return render_template('logs.html', logs=logs)
+
+
+@app.route('/')
+def index():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+
+        if not username:
+            flash('Username atau NIM wajib diisi.')
+            return render_template('login.html')
+
+        user = User.query.filter(
+            db.or_(
+                db.func.lower(User.username) == username.lower(),
+                db.func.lower(User.email) == username.lower(),
+                User.student.has(Student.nim == username),
+            )
+        ).first()
+
+        if not user:
+            flash('Akun tidak ditemukan.')
+            return render_template('login.html')
+
+        stored_password = user.password or ''
+        is_valid = False
+        if stored_password:
+            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                is_valid = check_password_hash(stored_password, password)
+            else:
+                is_valid = (stored_password == password)
+
+        if not is_valid:
+            flash('Username/NIM atau password salah.')
+            return render_template('login.html')
+
+        if user.status != 'Active':
+            flash('Akun ini sedang tidak aktif.')
+            return render_template('login.html')
+
+        login_user(user, remember=True)
+        flash(f'Selamat datang, {user.full_name or user.username}.')
+        return redirect(url_for('dashboard'))
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+@login_required
+def logout():
+    logout_user()
+    flash('Anda telah keluar dari portal.')
+    return redirect(url_for('login'))
 
 @app.route('/dashboard')
 @login_required
