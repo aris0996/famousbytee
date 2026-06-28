@@ -1690,6 +1690,101 @@ def notification_waha_dashboard_api():
 
     return jsonify(dashboard)
 
+@api_bp.route('/notifications/waha/sessions/create', methods=['POST'])
+@jwt_required()
+def notification_waha_create_session_api():
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request_any, get_setting_value
+    data = request.get_json(silent=True) or {}
+    session_name = (data.get('session_name') or data.get('name') or '').strip()
+    if not session_name:
+        return jsonify({'ok': False, 'error': 'Session name wajib diisi'}), 400
+    base_url = (data.get('base_url') or get_setting_value('waha_base_url', '')).strip() or None
+    result = _waha_request_any('POST', ['/api/sessions', '/api/session'], payload={'name': session_name, 'session': session_name}, base_url_override=base_url)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal membuat session WAHA')}), 400
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+
+@api_bp.route('/notifications/waha/sessions/<string:session_name>/start', methods=['POST'])
+@jwt_required()
+def notification_waha_start_session_api(session_name):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request_any, get_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
+    result = _waha_request_any('POST', [
+        f'/api/sessions/{session_name}/start',
+        f'/api/{session_name}/start',
+        f'/api/sessions/{session_name}/connect',
+    ], base_url_override=(base_url or '').strip() or None)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal start session WAHA')}), 400
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+
+@api_bp.route('/notifications/waha/sessions/<string:session_name>/stop', methods=['POST'])
+@jwt_required()
+def notification_waha_stop_session_api(session_name):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request_any, get_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
+    result = _waha_request_any('POST', [
+        f'/api/sessions/{session_name}/stop',
+        f'/api/{session_name}/stop',
+        f'/api/sessions/{session_name}/disconnect',
+    ], base_url_override=(base_url or '').strip() or None)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal stop session WAHA')}), 400
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+
+@api_bp.route('/notifications/waha/sessions/<string:session_name>/restart', methods=['POST'])
+@jwt_required()
+def notification_waha_restart_session_api(session_name):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request_any, get_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
+    result = _waha_request_any('POST', [
+        f'/api/sessions/{session_name}/restart',
+        f'/api/{session_name}/restart',
+        f'/api/sessions/{session_name}/start',
+    ], base_url_override=(base_url or '').strip() or None)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal restart session WAHA')}), 400
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+
+@api_bp.route('/notifications/waha/sessions/<string:session_name>/screenshot', methods=['GET'])
+@jwt_required()
+def notification_waha_session_screenshot_api(session_name):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import _waha_request_any, get_setting_value
+    base_url = get_setting_value('waha_base_url', '').strip() or None
+    result = _waha_request_any('GET', [
+        f'/api/sessions/{session_name}/screenshot',
+        f'/api/{session_name}/screenshot',
+        f'/api/sessions/{session_name}/qr',
+    ], base_url_override=base_url)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal ambil screenshot/QR WAHA')}), 400
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
 def send_schedule_whatsapp(id):

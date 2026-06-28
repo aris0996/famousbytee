@@ -237,6 +237,19 @@
                 <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Tambah / Edit Bot</h3>
                     <div class="notify-card" style="margin-bottom:1rem; background:#f8fafc;">
+                        <div class="notify-grid" style="grid-template-columns:1fr 160px 160px; align-items:end;">
+                            <div class="form-group">
+                                <label>Buat Session Baru</label>
+                                <input type="text" id="waha-new-session-name" class="form-control" placeholder="session-kelas-b">
+                            </div>
+                            <div class="form-group">
+                                <label>Base URL</label>
+                                <input type="text" id="waha-new-session-baseurl" class="form-control" value="{{ settings.waha_base_url }}">
+                            </div>
+                            <div class="notify-actions">
+                                <button class="btn" type="button" style="background:#16a34a;" onclick="createWahaSession()">Buat Session</button>
+                            </div>
+                        </div>
                         <div class="notify-toolbar">
                             <select id="waha-session-live" class="form-control" style="min-width:240px;">
                                 <option value="">Muat session aktif dari WAHA</option>
@@ -251,6 +264,10 @@
                         </div>
                         <div class="notify-actions" style="margin-top:.75rem;">
                             <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan / Update QR</button>
+                            <button class="btn" type="button" style="background:#0f172a;" onclick="refreshSelectedSessionScreenshot()">Screenshot QR</button>
+                            <button class="btn" type="button" style="background:#0ea5e9;" onclick="startSelectedSession()">Start</button>
+                            <button class="btn" type="button" style="background:#f97316;" onclick="restartSelectedSession()">Restart</button>
+                            <button class="btn" type="button" style="background:#ef4444;" onclick="stopSelectedSession()">Stop</button>
                         </div>
                     </div>
                     <div class="notify-grid">
@@ -598,6 +615,32 @@ async function refreshSelectedSessionQr() {
     }
 }
 
+async function refreshSelectedSessionScreenshot() {
+    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const qrWrap = document.getElementById('waha-session-qr');
+    const qrImg = document.getElementById('waha-session-qr-img');
+    const status = document.getElementById('waha-session-status');
+    if (!sessionName) {
+        if (status) status.innerText = 'Pilih session dulu.';
+        return;
+    }
+    try {
+        const data = await apiFetch(`/notifications/waha/session/${encodeURIComponent(sessionName)}/screenshot`);
+        if (data.data) {
+            const value = typeof data.data === 'string' ? data.data : (data.data.screenshot || data.data.qr || data.data.image || '');
+            if (value) {
+                qrWrap.style.display = 'block';
+                qrImg.src = value.startsWith('data:') ? value : `data:image/png;base64,${value}`;
+                if (status) status.innerText = 'Screenshot / QR berhasil dimuat.';
+                return;
+            }
+        }
+        if (status) status.innerText = 'Screenshot belum tersedia. Coba update QR.';
+    } catch (error) {
+        if (status) status.innerText = error.message;
+    }
+}
+
 async function refreshWahaDashboard() {
     const board = document.getElementById('waha-dashboard');
     if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard WAHA...</div>';
@@ -699,6 +742,50 @@ async function loadSessionQr(sessionName) {
         alert(error.message);
     }
 }
+
+async function createWahaSession() {
+    const sessionName = (document.getElementById('waha-new-session-name')?.value || '').trim();
+    const baseUrl = (document.getElementById('waha-new-session-baseurl')?.value || '').trim();
+    const status = document.getElementById('waha-session-status');
+    if (!sessionName) {
+        if (status) status.innerText = 'Nama session baru wajib diisi.';
+        return;
+    }
+    try {
+        const result = await apiFetch('/notifications/waha/sessions/create', {
+            method: 'POST',
+            body: JSON.stringify({ session_name: sessionName, base_url: baseUrl })
+        });
+        if (status) status.innerText = `Session ${sessionName} dibuat. ${result.path ? `Endpoint: ${result.path}` : ''}`;
+        await refreshWahaSessions();
+        useSessionName(sessionName);
+    } catch (error) {
+        if (status) status.innerText = error.message;
+    }
+}
+
+async function _changeWahaSession(action) {
+    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const status = document.getElementById('waha-session-status');
+    if (!sessionName) {
+        if (status) status.innerText = 'Pilih session dulu.';
+        return;
+    }
+    try {
+        const result = await apiFetch(`/notifications/waha/sessions/${encodeURIComponent(sessionName)}/${action}`, { method: 'POST' });
+        if (status) status.innerText = `Session ${sessionName} ${action} berhasil.`;
+        await refreshWahaSessions();
+        if (result && result.path) {
+            await refreshSelectedSessionQr();
+        }
+    } catch (error) {
+        if (status) status.innerText = error.message;
+    }
+}
+
+function startSelectedSession() { return _changeWahaSession('start'); }
+function stopSelectedSession() { return _changeWahaSession('stop'); }
+function restartSelectedSession() { return _changeWahaSession('restart'); }
 
 async function saveBot() {
     const payload = {
