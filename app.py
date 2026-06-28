@@ -8,7 +8,7 @@ from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset,
 import os
 import json
 import re
-from PIL import Image
+from PIL import Image, ImageOps
 import csv
 from io import StringIO
 from flask import send_from_directory, make_response
@@ -4598,12 +4598,26 @@ def _save_news_cover(file):
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(news_dir, filename)
     try:
-        img = Image.open(file)
-        img.thumbnail((1200, 800), Image.LANCZOS)
-        img.save(filepath, optimize=True, quality=88)
-    except Exception:
-        file.seek(0)
-        file.save(filepath)
+        file.stream.seek(0)
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img)
+        if ext in {'.jpg', '.jpeg'} and img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+        elif ext == '.png' and img.mode not in ('RGB', 'RGBA', 'L', 'P'):
+            img = img.convert('RGBA')
+        img.thumbnail((1400, 1000), Image.LANCZOS)
+        save_kwargs = {'optimize': True}
+        if ext in {'.jpg', '.jpeg'}:
+            save_kwargs['quality'] = 88
+        img.save(filepath, **save_kwargs)
+    except Exception as err:
+        app.logger.exception('Gagal menyimpan cover berita: %s', err)
+        try:
+            file.stream.seek(0)
+            file.save(filepath)
+        except Exception as fallback_err:
+            app.logger.exception('Fallback simpan cover berita gagal: %s', fallback_err)
+            return None
     return filename
 
 
@@ -4821,12 +4835,26 @@ def news_upload_image():
     filename = f"{uuid.uuid4().hex}{ext}"
     filepath = os.path.join(news_dir, filename)
     try:
-        img = Image.open(file)
-        img.thumbnail((1400, 1000), Image.LANCZOS)
-        img.save(filepath, optimize=True, quality=85)
-    except Exception:
-        file.seek(0)
-        file.save(filepath)
+        file.stream.seek(0)
+        img = Image.open(file.stream)
+        img = ImageOps.exif_transpose(img)
+        if ext in {'.jpg', '.jpeg'} and img.mode not in ('RGB', 'L'):
+            img = img.convert('RGB')
+        elif ext == '.png' and img.mode not in ('RGB', 'RGBA', 'L', 'P'):
+            img = img.convert('RGBA')
+        img.thumbnail((1600, 1200), Image.LANCZOS)
+        save_kwargs = {'optimize': True}
+        if ext in {'.jpg', '.jpeg'}:
+            save_kwargs['quality'] = 85
+        img.save(filepath, **save_kwargs)
+    except Exception as err:
+        app.logger.exception('TinyMCE image upload failed: %s', err)
+        try:
+            file.stream.seek(0)
+            file.save(filepath)
+        except Exception as fallback_err:
+            app.logger.exception('TinyMCE fallback upload failed: %s', fallback_err)
+            return jsonify({'error': 'Upload gagal'}), 500
     return jsonify({'location': url_for('static', filename=f'uploads/news/{filename}', _external=True)})
 
 
