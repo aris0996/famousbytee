@@ -306,6 +306,66 @@ def _requested_classroom(form_key='classroom_id', fallback=None, *flags):
                 return classroom
     return fallback
 
+
+def _can_manage_gallery_content(role=None):
+    role = role or current_user.role
+    return bool(
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, 'can_manage_gallery', False) or
+        getattr(role, 'name', '') in ['Admin', 'Pengurus']
+    )
+
+
+def _fund_allowed_classrooms():
+    return _web_allowed_classrooms(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
+
+
+def _requested_fund_classroom():
+    return _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
+
+
+def _apply_fund_classroom_filter(query, classroom, include_legacy_default=True):
+    if not classroom:
+        return query
+
+    if include_legacy_default and _default_classroom() and classroom.id == _default_classroom().id:
+        return query.filter(
+            (BatchFund.classroom_id == classroom.id) |
+            (BatchFund.classroom_id.is_(None))
+        )
+    return query.filter(BatchFund.classroom_id == classroom.id)
+
+
+def _apply_fund_classroom_sum_filter(query, classroom, include_legacy_default=True):
+    if not classroom:
+        return query
+    if include_legacy_default and _default_classroom() and classroom.id == _default_classroom().id:
+        return query.filter(
+            (BatchFund.classroom_id == classroom.id) |
+            (BatchFund.classroom_id.is_(None))
+        )
+    return query.filter(BatchFund.classroom_id == classroom.id)
+
+
+def _is_fund_in_allowed_scope(fund, classroom):
+    if not classroom:
+        return True
+    if fund.classroom_id == classroom.id:
+        return True
+    return bool(fund.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
+
 def _waha_headers(api_key_override=None):
     api_key = (api_key_override if api_key_override is not None else get_setting_value('waha_api_key', '')).strip()
     headers = {'Content-Type': 'application/json'}
@@ -2705,9 +2765,8 @@ def delete_announcement(id):
 @app.route('/fund', methods=['GET', 'POST'])
 @login_required
 def manage_fund():
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_fund_classroom()
+    classrooms = _fund_allowed_classrooms()
     students = Student.query.filter_by(classroom_id=class_fb.id).all()
     if request.method == 'POST':
         if not current_user.role.can_manage_fund:
@@ -2737,8 +2796,11 @@ def manage_fund():
 
         if tags and not tags.startswith('#'): tags = '#' + tags
         
+        student_obj = Student.query.get(int(student_id_val)) if student_id_val and str(student_id_val).lower() != 'none' else None
+        fund_classroom = student_obj.classroom if student_obj and student_obj.classroom else class_fb
+
         fund = BatchFund(
-            classroom_id=class_fb.id if class_fb else None,
+            classroom_id=fund_classroom.id if fund_classroom else None,
             description=description, 
             amount=amount, 
             type=type_val, 
@@ -2746,7 +2808,7 @@ def manage_fund():
             evidence_note=evidence_note,
             recorded_by=current_user.username,
             date=date_val,
-            student_id=int(student_id_val) if student_id_val and str(student_id_val).lower() != 'none' else None,
+            student_id=student_obj.id if student_obj else None,
             tags=tags
         )
         db.session.add(fund)
@@ -2762,7 +2824,7 @@ def manage_fund():
                 title=f"[PENGELUARAN] {fund.description}",
                 content=f"Diberitahukan bahwa dana kas sebesar Rp {fund.amount:,.0f} telah digunakan untuk: {fund.description}. Kategori: {fund.category}. Dicatat oleh: {fund.recorded_by}.",
                 category='Penting',
-                classroom_id=class_fb.id if class_fb else None
+                classroom_id=fund_classroom.id if fund_classroom else None
             )
             db.session.add(ann)
             
@@ -2772,9 +2834,7 @@ def manage_fund():
         return redirect(url_for('manage_fund'))
     
     # Suggestion #17: Advanced Filtering
-    query = BatchFund.query
-    if class_fb:
-        query = query.filter_by(classroom_id=class_fb.id)
+    query = _apply_fund_classroom_filter(BatchFund.query, class_fb)
         
     start_filter = request.args.get('start_date')
     end_filter = request.args.get('end_date')
@@ -2789,12 +2849,14 @@ def manage_fund():
         
     funds = query.order_by(BatchFund.date.desc()).all()
     
-    total_in_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk')
-    total_out_query = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar')
-    
-    if class_fb:
-        total_in_query = total_in_query.filter(BatchFund.classroom_id == class_fb.id)
-        total_out_query = total_out_query.filter(BatchFund.classroom_id == class_fb.id)
+    total_in_query = _apply_fund_classroom_sum_filter(
+        db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk'),
+        class_fb,
+    )
+    total_out_query = _apply_fund_classroom_sum_filter(
+        db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar'),
+        class_fb,
+    )
         
     total_in = total_in_query.scalar() or 0
     total_out = total_out_query.scalar() or 0
@@ -2821,6 +2883,8 @@ def manage_fund():
                          member_statuses=member_statuses, 
                          your_status=your_status,
                          fund_periods=fund_periods,
+                         classrooms=classrooms,
+                         active_classroom=class_fb,
                          target_daily=int(SystemSetting.query.filter_by(key='fund_daily_rate').first().value) if SystemSetting.query.filter_by(key='fund_daily_rate').first() else 1000,
                          today_date=datetime.now().strftime('%Y-%m-%d'))
 
@@ -2842,9 +2906,7 @@ def create_fund_period():
         flash('Tanggal akhir periode tidak boleh sebelum tanggal mulai.')
         return redirect(url_for('manage_fund'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_fund_classroom()
 
     db.session.add(FundPeriod(
         classroom_id=class_fb.id if class_fb else None,
@@ -2866,6 +2928,10 @@ def update_fund_period(id):
         return redirect(url_for('dashboard'))
 
     period = FundPeriod.query.get_or_404(id)
+    if class_fb := _requested_fund_classroom():
+        if period.classroom_id not in (class_fb.id, None if class_fb.id == _default_classroom().id else -1):
+            flash('Akses ditolak.')
+            return redirect(url_for('manage_fund', classroom_id=class_fb.id))
     start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
     end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
     if end_date < start_date:
@@ -2889,6 +2955,10 @@ def delete_fund_period(id):
         return redirect(url_for('dashboard'))
 
     period = FundPeriod.query.get_or_404(id)
+    if class_fb := _requested_fund_classroom():
+        if period.classroom_id not in (class_fb.id, None if class_fb.id == _default_classroom().id else -1):
+            flash('Akses ditolak.')
+            return redirect(url_for('manage_fund', classroom_id=class_fb.id))
     if FundPeriod.query.count() <= 1:
         flash('Minimal harus ada satu periode kas aktif/tersimpan.')
         return redirect(url_for('manage_fund'))
@@ -2904,6 +2974,10 @@ def delete_fund_period(id):
 def edit_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
     f = BatchFund.query.get_or_404(id)
+    class_fb = _requested_fund_classroom()
+    if not _is_fund_in_allowed_scope(f, class_fb):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund', classroom_id=class_fb.id if class_fb else None))
     reason = request.form.get('reason')
     
     # Suggestion #10: Forensic Audit Detail
@@ -2916,8 +2990,8 @@ def edit_fund(id):
     f.last_edited_by = current_user.username
     f.description = request.form['desc']
     f.amount = float(request.form['amount'])
-    f.type = request.form['type']
-    f.category = request.form['category']
+    f.type = request.form.get('type', f.type)
+    f.category = request.form.get('category', f.category)
     
     # Handle Tags
     tags = request.form.get('tags', '').strip()
@@ -2945,7 +3019,12 @@ def edit_fund(id):
 def duplicate_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
     f = BatchFund.query.get_or_404(id)
+    class_fb = _requested_fund_classroom()
+    if not _is_fund_in_allowed_scope(f, class_fb):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund', classroom_id=class_fb.id if class_fb else None))
     new_f = BatchFund(
+        classroom_id=f.classroom_id or (class_fb.id if class_fb else None),
         description=f"{f.description} (Copy)",
         amount=f.amount,
         type=f.type,
@@ -2966,6 +3045,7 @@ def duplicate_fund(id):
 @login_required
 def batch_add_fund():
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
+    class_fb = _requested_fund_classroom()
     ids = request.form.getlist('student_ids[]')
     amounts = request.form.getlist('amounts[]')
     desc = request.form.get('common_desc', 'Iuran Massal')
@@ -2977,6 +3057,7 @@ def batch_add_fund():
             student = Student.query.get(int(ids[i]))
             if student:
                 f = BatchFund(
+                    classroom_id=student.classroom_id or (class_fb.id if class_fb else None),
                     description=f"{desc} - {student.full_name}",
                     amount=float(amounts[i]),
                     type='Masuk',
@@ -2998,6 +3079,10 @@ def batch_add_fund():
 def delete_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
     f = BatchFund.query.get_or_404(id)
+    class_fb = _requested_fund_classroom()
+    if not _is_fund_in_allowed_scope(f, class_fb):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund', classroom_id=class_fb.id if class_fb else None))
     log_activity("Hapus Kas", f"ID: {id}, Ket: {f.description}")
     db.session.delete(f)
     db.session.commit()
@@ -3015,7 +3100,8 @@ def export_fund():
     cw = csv.writer(si)
     cw.writerow(['ID', 'Tanggal', 'Keterangan', 'Jumlah', 'Tipe', 'Kategori', 'Pelapor'])
     
-    funds = BatchFund.query.order_by(BatchFund.date.desc()).all()
+    class_fb = _requested_fund_classroom()
+    funds = _apply_fund_classroom_filter(BatchFund.query, class_fb).order_by(BatchFund.date.desc()).all()
     for f in funds:
         cw.writerow([f.id, f.date, f.description, f.amount, f.type, f.category, f.recorded_by])
         
@@ -3397,7 +3483,13 @@ def manage_gallery():
         'can_view_all_classrooms',
         'can_access_multi_classroom',
     )
-    return render_template('gallery.html', photos=photos, classrooms=classrooms, active_classroom=active_classroom)
+    return render_template(
+        'gallery.html',
+        photos=photos,
+        classrooms=classrooms,
+        active_classroom=active_classroom,
+        gallery_can_moderate=_can_manage_gallery_content(),
+    )
 
 @app.route('/gallery/upload', methods=['POST'])
 @login_required
@@ -3457,7 +3549,7 @@ def upload_gallery():
 def delete_gallery(id):
     photo = GalleryPhoto.query.get_or_404(id)
     # Check permission
-    can_manage = (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery) or (current_user.role.name in ['Admin', 'Pengurus'])
+    can_manage = _can_manage_gallery_content()
     
     if not can_manage and photo.uploaded_by != current_user.id:
         flash('Akses ditolak.')
@@ -3482,7 +3574,7 @@ def delete_gallery(id):
 @app.route('/gallery/approve/<int:id>')
 @login_required
 def approve_gallery(id):
-    if not (current_user.role.name in ['Admin', 'Pengurus'] or (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery)):
+    if not _can_manage_gallery_content():
         flash('Akses ditolak.')
         return redirect(url_for('manage_gallery'))
         
@@ -3497,7 +3589,7 @@ def approve_gallery(id):
 @app.route('/gallery/reject/<int:id>')
 @login_required
 def reject_gallery(id):
-    if not (current_user.role.name in ['Admin', 'Pengurus'] or (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery)):
+    if not _can_manage_gallery_content():
         flash('Akses ditolak.')
         return redirect(url_for('manage_gallery'))
         
@@ -3520,9 +3612,8 @@ def reject_gallery(id):
 @app.route('/gallery/toggle/<int:id>')
 @login_required
 def toggle_gallery_visibility(id):
-    if not hasattr(current_user.role, 'can_manage_gallery') or not current_user.role.can_manage_gallery:
-        if current_user.role.name not in ['Admin', 'Pengurus']: 
-            return redirect(url_for('manage_gallery'))
+    if not _can_manage_gallery_content():
+        return redirect(url_for('manage_gallery'))
         
     p = GalleryPhoto.query.get_or_404(id)
     p.is_public = not p.is_public
