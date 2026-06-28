@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding
+from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding, NewsCategory, NewsArticle
 import os
 import json
 import re
@@ -1409,6 +1409,7 @@ with app.app_context():
         'can_manage_notifications_multi_class',
         'can_view_classroom_reports',
         'can_export_classroom_data',
+        'can_manage_news',
     ]
     for col in multi_class_role_cols:
         try:
@@ -1478,7 +1479,7 @@ with app.app_context():
                     'can_manage_roles': True, 'can_view_logs': True,
                     'can_export_data': True, 'can_edit_settings': True,
                     'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
-                    'can_manage_assignments': True, 'can_use_api': True,
+                    'can_manage_assignments': True, 'can_use_api': True, 'can_manage_news': True,
                     'can_access_multi_classroom': True, 'can_switch_classroom_context': True,
                     'can_manage_classrooms': True, 'can_assign_users_to_classroom': True,
                     'can_move_users_between_classrooms': True, 'can_view_all_classrooms': True,
@@ -1496,7 +1497,7 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': True, 'can_edit_settings': False,
                     'can_manage_gallery': True, 'can_manage_notifications': True, 'can_manage_whatsapp': True,
-                    'can_manage_assignments': True, 'can_use_api': True,
+                    'can_manage_assignments': True, 'can_use_api': True, 'can_manage_news': True,
                     'can_access_multi_classroom': True, 'can_switch_classroom_context': True,
                     'can_manage_classrooms': False, 'can_assign_users_to_classroom': True,
                     'can_move_users_between_classrooms': True, 'can_view_all_classrooms': True,
@@ -1514,7 +1515,7 @@ with app.app_context():
                     'can_manage_roles': False, 'can_view_logs': False,
                     'can_export_data': False, 'can_edit_settings': False,
                     'can_manage_gallery': False, 'can_manage_notifications': False, 'can_manage_whatsapp': False,
-                    'can_manage_assignments': False, 'can_use_api': True,
+                    'can_manage_assignments': False, 'can_use_api': True, 'can_manage_news': False,
                     'can_access_multi_classroom': False, 'can_switch_classroom_context': False,
                     'can_manage_classrooms': False, 'can_assign_users_to_classroom': False,
                     'can_move_users_between_classrooms': False, 'can_view_all_classrooms': False,
@@ -3297,6 +3298,7 @@ def manage_roles():
                 can_manage_whatsapp='can_manage_whatsapp' in request.form,
                 can_manage_assignments='can_manage_assignments' in request.form,
                 can_use_api='can_use_api' in request.form,
+                can_manage_news='can_manage_news' in request.form,
                 can_access_multi_classroom='can_access_multi_classroom' in request.form,
                 can_switch_classroom_context='can_switch_classroom_context' in request.form,
                 can_manage_classrooms='can_manage_classrooms' in request.form,
@@ -3413,6 +3415,7 @@ def edit_role(id):
     role.can_manage_whatsapp = 'can_manage_whatsapp' in request.form
     role.can_manage_assignments = 'can_manage_assignments' in request.form
     role.can_use_api = 'can_use_api' in request.form
+    role.can_manage_news = 'can_manage_news' in request.form
     role.can_access_multi_classroom = 'can_access_multi_classroom' in request.form
     role.can_switch_classroom_context = 'can_switch_classroom_context' in request.form
     role.can_manage_classrooms = 'can_manage_classrooms' in request.form
@@ -3782,33 +3785,6 @@ def init_db():
             inspector = inspect(db.engine)
             
             with db.engine.begin() as conn:
-                # A. Sinkronisasi tabel 'user'
-                user_cols = [c['name'] for c in inspector.get_columns('user')]
-                if 'student_id' not in user_cols:
-                    conn.execute(text("ALTER TABLE user ADD COLUMN student_id INTEGER NULL"))
-                if 'classroom_id' not in user_cols:
-                    conn.execute(text("ALTER TABLE user ADD COLUMN classroom_id INTEGER NULL"))
-                if 'bio' not in user_cols:
-                    conn.execute(text("ALTER TABLE user ADD COLUMN bio VARCHAR(255) NULL"))
-                if 'whatsapp' not in user_cols:
-                    conn.execute(text("ALTER TABLE user ADD COLUMN whatsapp VARCHAR(20) NULL"))
-                if 'points' not in user_cols:
-                    conn.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
-                
-                # B. Sinkronisasi tabel 'role'
-                    conn.execute(text("ALTER TABLE user ADD COLUMN points INTEGER DEFAULT 0"))
-                
-                # B. Sinkronisasi tabel 'role'
-                role_cols = [c['name'] for c in inspector.get_columns('role')]
-                for col in ['can_view_logs', 'can_export_data', 'can_edit_settings', 'can_manage_gallery',
-                            'can_manage_notifications', 'can_manage_whatsapp', 'can_manage_assignments', 'can_use_api']:
-                    if col not in role_cols:
-                        conn.execute(text(f"ALTER TABLE role ADD COLUMN {col} BOOLEAN DEFAULT 0"))
-                
-                # C. Sinkronisasi tabel 'batch_fund'
-                fund_cols = [c['name'] for c in inspector.get_columns('batch_fund')]
-                if 'classroom_id' not in fund_cols:
-                    conn.execute(text("ALTER TABLE batch_fund ADD COLUMN classroom_id INTEGER NULL"))
                 if 'original_amount' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_amount FLOAT NULL"))
                 if 'original_description' not in fund_cols:
@@ -4549,7 +4525,321 @@ def get_leaderboard_detail(user_id):
         }
     })
 
+
+# ============================================================
+# BERITA (NEWS) ROUTES
+# ============================================================
+
+def _generate_slug(title):
+    """Generate a URL-friendly slug from title."""
+    import unicodedata
+    title = unicodedata.normalize('NFKD', str(title))
+    title = title.encode('ascii', 'ignore').decode('ascii')
+    title = title.lower().strip()
+    title = re.sub(r'[^\w\s-]', '', title)
+    title = re.sub(r'[\s_-]+', '-', title)
+    title = re.sub(r'^-+|-+$', '', title)
+    return title or 'artikel'
+
+def _unique_slug(title, model, exclude_id=None):
+    """Generate a unique slug, appending a number if a collision occurs."""
+    base = _generate_slug(title)
+    slug = base
+    counter = 1
+    while True:
+        q = model.query.filter_by(slug=slug)
+        if exclude_id:
+            q = q.filter(model.id != exclude_id)
+        if not q.first():
+            return slug
+        slug = f"{base}-{counter}"
+        counter += 1
+
+def _save_news_cover(file):
+    """Save an uploaded cover image and return the filename, or None on failure."""
+    if not file or not file.filename:
+        return None
+    ext = os.path.splitext(secure_filename(file.filename))[1].lower()
+    if ext not in {'.jpg', '.jpeg', '.png', '.webp', '.gif'}:
+        return None
+    import uuid
+    news_dir = os.path.join(app.root_path, 'static', 'uploads', 'news')
+    os.makedirs(news_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(news_dir, filename)
+    try:
+        img = Image.open(file)
+        img.thumbnail((1200, 800), Image.LANCZOS)
+        img.save(filepath, optimize=True, quality=88)
+    except Exception:
+        file.seek(0)
+        file.save(filepath)
+    return filename
+
+
+# --- Public: Daftar Berita ---
+@app.route('/berita')
+def news_public():
+    page = request.args.get('page', 1, type=int)
+    cat_slug = request.args.get('kategori', '')
+    q = NewsArticle.query.filter_by(status='Published', is_public=True)
+    active_cat = None
+    if cat_slug:
+        active_cat = NewsCategory.query.filter_by(slug=cat_slug).first()
+        if active_cat:
+            q = q.filter_by(category_id=active_cat.id)
+    articles = q.order_by(
+        NewsArticle.published_at.desc(), NewsArticle.created_at.desc()
+    ).paginate(page=page, per_page=9, error_out=False)
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    site_settings = _get_site_settings()
+    return render_template('news_public.html',
+                           articles=articles, categories=categories,
+                           active_cat=active_cat, site_settings=site_settings)
+
+
+# --- Public: Detail Berita ---
+@app.route('/berita/<slug>')
+def news_detail(slug):
+    article = NewsArticle.query.filter_by(
+        slug=slug, status='Published', is_public=True
+    ).first_or_404()
+    try:
+        article.views = (article.views or 0) + 1
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    related = []
+    if article.category_id:
+        related = NewsArticle.query.filter(
+            NewsArticle.status == 'Published',
+            NewsArticle.is_public == True,
+            NewsArticle.id != article.id,
+            NewsArticle.category_id == article.category_id
+        ).order_by(NewsArticle.published_at.desc()).limit(3).all()
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    site_settings = _get_site_settings()
+    return render_template('news_detail.html',
+                           article=article, related=related,
+                           categories=categories, site_settings=site_settings)
+
+
+# --- Admin: Daftar Manajemen Berita ---
+@app.route('/berita/manage')
+@login_required
+def manage_news():
+    if not current_user.role.can_manage_news:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    page = request.args.get('page', 1, type=int)
+    status_filter = request.args.get('status', '')
+    cat_filter = request.args.get('cat', '')
+    q = NewsArticle.query
+    if status_filter:
+        q = q.filter_by(status=status_filter)
+    if cat_filter:
+        cat_obj = NewsCategory.query.filter_by(slug=cat_filter).first()
+        if cat_obj:
+            q = q.filter_by(category_id=cat_obj.id)
+    articles = q.order_by(NewsArticle.created_at.desc()).paginate(
+        page=page, per_page=15, error_out=False)
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    stats = {
+        'total': NewsArticle.query.count(),
+        'published': NewsArticle.query.filter_by(status='Published').count(),
+        'draft': NewsArticle.query.filter_by(status='Draft').count(),
+        'archived': NewsArticle.query.filter_by(status='Archived').count(),
+        'total_views': db.session.query(db.func.sum(NewsArticle.views)).scalar() or 0,
+    }
+    return render_template('news_manage.html',
+                           articles=articles, categories=categories, stats=stats,
+                           status_filter=status_filter, cat_filter=cat_filter)
+
+
+# --- Admin: Tambah Berita Baru ---
+@app.route('/berita/manage/new', methods=['GET', 'POST'])
+@login_required
+def news_new():
+    if not current_user.role.can_manage_news:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    if request.method == 'POST':
+        title   = request.form.get('title', '').strip()
+        content = request.form.get('content', '').strip()
+        excerpt = request.form.get('excerpt', '').strip()[:500]
+        cat_id  = request.form.get('category_id') or None
+        status  = request.form.get('status', 'Draft')
+        is_pub  = 'is_public' in request.form
+        if not title or not content:
+            flash('Judul dan konten wajib diisi.')
+            return render_template('news_form.html',
+                                   categories=categories, article=None, mode='new')
+        slug = _unique_slug(title, NewsArticle)
+        cover_fn = _save_news_cover(request.files.get('cover_image'))
+        pub_at = datetime.now() if status == 'Published' else None
+        article = NewsArticle(
+            title=title, slug=slug, content=content, excerpt=excerpt,
+            category_id=int(cat_id) if cat_id else None,
+            status=status, is_public=is_pub,
+            author_id=current_user.id,
+            cover_image=cover_fn,
+            published_at=pub_at
+        )
+        db.session.add(article)
+        db.session.commit()
+        log_activity('Tambah Berita', f'Judul: {title}')
+        flash('Berita berhasil dipublikasikan!' if status == 'Published' else 'Berita disimpan sebagai draft.')
+        return redirect(url_for('manage_news'))
+    return render_template('news_form.html', categories=categories, article=None, mode='new')
+
+
+# --- Admin: Edit Berita ---
+@app.route('/berita/manage/edit/<int:id>', methods=['GET', 'POST'])
+@login_required
+def news_edit(id):
+    if not current_user.role.can_manage_news:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    article = NewsArticle.query.get_or_404(id)
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    if request.method == 'POST':
+        article.title   = request.form.get('title', '').strip()
+        article.content = request.form.get('content', '').strip()
+        article.excerpt = request.form.get('excerpt', '').strip()[:500]
+        cat_id = request.form.get('category_id') or None
+        article.category_id = int(cat_id) if cat_id else None
+        new_status = request.form.get('status', 'Draft')
+        if new_status == 'Published' and article.status != 'Published':
+            article.published_at = datetime.now()
+        article.status    = new_status
+        article.is_public = 'is_public' in request.form
+        article.slug = _unique_slug(article.title, NewsArticle, exclude_id=article.id)
+        cover_file = request.files.get('cover_image')
+        if cover_file and cover_file.filename:
+            new_cover = _save_news_cover(cover_file)
+            if new_cover:
+                if article.cover_image:
+                    old = os.path.join(app.root_path, 'static', 'uploads', 'news', article.cover_image)
+                    if os.path.exists(old):
+                        try: os.remove(old)
+                        except Exception: pass
+                article.cover_image = new_cover
+        try:
+            db.session.commit()
+            log_activity('Edit Berita', f'ID: {id}, Judul: {article.title}')
+            flash('Berita berhasil diperbarui!')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Gagal menyimpan: {e}')
+        return redirect(url_for('manage_news'))
+    return render_template('news_form.html', categories=categories, article=article, mode='edit')
+
+
+# --- Admin: Hapus Berita ---
+@app.route('/berita/manage/delete/<int:id>', methods=['POST'])
+@login_required
+def news_delete(id):
+    if not current_user.role.can_manage_news:
+        return redirect(url_for('dashboard'))
+    article = NewsArticle.query.get_or_404(id)
+    if article.cover_image:
+        p = os.path.join(app.root_path, 'static', 'uploads', 'news', article.cover_image)
+        if os.path.exists(p):
+            try: os.remove(p)
+            except Exception: pass
+    log_activity('Hapus Berita', f'Judul: {article.title}')
+    db.session.delete(article)
+    db.session.commit()
+    flash('Berita berhasil dihapus.')
+    return redirect(url_for('manage_news'))
+
+
+# --- Admin: Toggle Status Berita ---
+@app.route('/berita/manage/toggle/<int:id>', methods=['POST'])
+@login_required
+def news_toggle_status(id):
+    if not current_user.role.can_manage_news:
+        return redirect(url_for('dashboard'))
+    article = NewsArticle.query.get_or_404(id)
+    if article.status == 'Published':
+        article.status = 'Draft'
+    else:
+        article.status = 'Published'
+        if not article.published_at:
+            article.published_at = datetime.now()
+    db.session.commit()
+    flash(f'Status berita diubah ke {article.status}.')
+    return redirect(url_for('manage_news'))
+
+
+# --- Admin: Upload Gambar (TinyMCE image_upload_handler) ---
+@app.route('/berita/manage/upload-image', methods=['POST'])
+@login_required
+def news_upload_image():
+    if not current_user.role.can_manage_news:
+        return jsonify({'error': 'Unauthorized'}), 403
+    file = request.files.get('file')
+    if not file or not file.filename:
+        return jsonify({'error': 'No file'}), 400
+    ext = os.path.splitext(secure_filename(file.filename))[1].lower()
+    if ext not in {'.jpg', '.jpeg', '.png', '.webp', '.gif'}:
+        return jsonify({'error': 'Format tidak didukung'}), 400
+    import uuid
+    news_dir = os.path.join(app.root_path, 'static', 'uploads', 'news')
+    os.makedirs(news_dir, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}{ext}"
+    filepath = os.path.join(news_dir, filename)
+    try:
+        img = Image.open(file)
+        img.thumbnail((1400, 1000), Image.LANCZOS)
+        img.save(filepath, optimize=True, quality=85)
+    except Exception:
+        file.seek(0)
+        file.save(filepath)
+    return jsonify({'location': url_for('static', filename=f'uploads/news/{filename}', _external=True)})
+
+
+# --- Admin: Manajemen Kategori Berita ---
+@app.route('/berita/categories', methods=['GET', 'POST'])
+@login_required
+def manage_news_categories():
+    if not current_user.role.can_manage_news:
+        flash('Akses ditolak.')
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        action = request.form.get('action', 'add')
+        if action == 'add':
+            name  = request.form.get('name', '').strip()
+            color = request.form.get('color', '#4361ee').strip()
+            if name:
+                slug = _unique_slug(name, NewsCategory)
+                db.session.add(NewsCategory(name=name, slug=slug, color=color))
+                db.session.commit()
+                flash(f'Kategori "{name}" berhasil ditambahkan.')
+            else:
+                flash('Nama kategori wajib diisi.')
+        elif action == 'delete':
+            cat = NewsCategory.query.get_or_404(int(request.form.get('cat_id', 0)))
+            NewsArticle.query.filter_by(category_id=cat.id).update({'category_id': None})
+            db.session.delete(cat)
+            db.session.commit()
+            flash(f'Kategori dihapus.')
+        elif action == 'edit':
+            cat  = NewsCategory.query.get_or_404(int(request.form.get('cat_id', 0)))
+            name = request.form.get('name', '').strip()
+            if name:
+                cat.name  = name
+                cat.color = request.form.get('color', cat.color).strip()
+                db.session.commit()
+                flash('Kategori berhasil diperbarui.')
+        return redirect(url_for('manage_news_categories'))
+    categories = NewsCategory.query.order_by(NewsCategory.name).all()
+    return render_template('news_categories.html', categories=categories)
+
+
 # Inisialisasi database saat aplikasi dinyalakan (WSGI-safe)
+
 try:
     init_db()
     with app.app_context():

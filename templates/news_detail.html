@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ article.title }} — {{ site_settings.app_name or 'Famousbytee' }}</title>
+    <meta name="description" content="{{ article.excerpt or (article.content | striptags | truncate(160)) }}">
+    <meta property="og:title" content="{{ article.title }}">
+    <meta property="og:description" content="{{ article.excerpt or (article.content | striptags | truncate(160)) }}">
+    {% if article.cover_image %}<meta property="og:image" content="{{ url_for('static', filename='uploads/news/' ~ article.cover_image, _external=True) }}">{% endif %}
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=Lora:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --primary: #4361ee;
+            --primary-dark: #3a0ca3;
+            --surface: #ffffff;
+            --bg: #f0f4ff;
+            --text: #1e293b;
+            --text-muted: #64748b;
+            --radius: 16px;
+            --shadow: 0 4px 24px rgba(67,97,238,0.08);
+        }
+        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); }
+
+        /* NAV */
+        nav {
+            background: rgba(255,255,255,0.92); backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(67,97,238,0.1);
+            padding: 0 2rem; position: sticky; top: 0; z-index: 100;
+        }
+        .nav-inner {
+            max-width: 1100px; margin: 0 auto;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .nav-brand { font-weight: 800; font-size: 1.2rem; color: var(--primary); text-decoration: none; letter-spacing: -0.5px; }
+        .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+        .nav-links a { text-decoration: none; color: var(--text-muted); font-size: 0.9rem; font-weight: 600; transition: color 0.2s; }
+        .nav-links a:hover { color: var(--primary); }
+
+        /* HERO COVER */
+        .article-hero {
+            width: 100%; height: 420px; position: relative; overflow: hidden;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+        }
+        .article-hero img { width: 100%; height: 100%; object-fit: cover; }
+        .article-hero .overlay {
+            position: absolute; inset: 0;
+            background: linear-gradient(to top, rgba(15,23,42,0.85) 0%, rgba(15,23,42,0.2) 60%, transparent 100%);
+        }
+        .article-hero .hero-content {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            padding: 2.5rem; max-width: 900px; margin: 0 auto;
+        }
+        .article-hero-no-cover {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            padding: 4rem 2rem;
+        }
+        .article-hero-no-cover .hero-content { color: white; max-width: 900px; margin: 0 auto; }
+
+        /* BREADCRUMB */
+        .breadcrumb {
+            display: flex; align-items: center; gap: 0.5rem;
+            font-size: 0.8rem; color: rgba(255,255,255,0.75);
+            margin-bottom: 1rem; flex-wrap: wrap;
+        }
+        .breadcrumb a { color: rgba(255,255,255,0.85); text-decoration: none; }
+        .breadcrumb a:hover { color: white; text-decoration: underline; }
+
+        /* ARTICLE LAYOUT */
+        .article-layout {
+            max-width: 1100px; margin: 0 auto; padding: 2.5rem 2rem;
+            display: grid; grid-template-columns: 1fr 300px; gap: 2.5rem;
+        }
+
+        /* ARTICLE CONTENT */
+        .article-card {
+            background: white; border-radius: var(--radius); padding: 2.5rem;
+            box-shadow: var(--shadow);
+        }
+        .article-meta {
+            display: flex; flex-wrap: wrap; gap: 1rem; align-items: center;
+            padding-bottom: 1.5rem; border-bottom: 2px solid #f1f5f9; margin-bottom: 2rem;
+        }
+        .meta-item { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-muted); font-weight: 500; }
+        .cat-badge {
+            font-size: 0.72rem; font-weight: 800; text-transform: uppercase;
+            letter-spacing: 0.8px; padding: 4px 12px; border-radius: 999px;
+        }
+
+        /* Article body typography */
+        .article-body { font-size: 1.05rem; line-height: 1.85; color: #334155; }
+        .article-body h1, .article-body h2, .article-body h3, .article-body h4 {
+            font-weight: 800; line-height: 1.3; margin: 2rem 0 1rem; color: var(--text);
+        }
+        .article-body h2 { font-size: 1.5rem; }
+        .article-body h3 { font-size: 1.25rem; }
+        .article-body p { margin-bottom: 1.25rem; }
+        .article-body img { max-width: 100%; border-radius: 12px; margin: 1.5rem 0; }
+        .article-body a { color: var(--primary); text-decoration: underline; }
+        .article-body ul, .article-body ol { padding-left: 1.75rem; margin-bottom: 1.25rem; }
+        .article-body li { margin-bottom: 0.4rem; }
+        .article-body blockquote {
+            border-left: 4px solid var(--primary); padding: 0.75rem 1.25rem;
+            background: #eef2ff; border-radius: 0 12px 12px 0;
+            color: #4361ee; font-style: italic; margin: 1.5rem 0;
+        }
+        .article-body table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+        .article-body th, .article-body td { border: 1px solid #e2e8f0; padding: 0.6rem 0.9rem; text-align: left; }
+        .article-body th { background: #f8fafc; font-weight: 700; }
+        .article-body pre { background: #1e293b; color: #f1f5f9; border-radius: 12px; padding: 1.25rem; overflow: auto; margin: 1.5rem 0; font-size: 0.9rem; }
+        .article-body code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 0.875em; }
+        .article-body pre code { background: none; padding: 0; }
+
+        /* Share bar */
+        .share-bar { margin-top: 2.5rem; padding-top: 1.5rem; border-top: 2px solid #f1f5f9; }
+        .share-bar h4 { font-size: 0.9rem; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:0.75rem; }
+        .share-btns { display:flex; flex-wrap:wrap; gap:0.6rem; }
+        .share-btn {
+            padding: 0.45rem 1rem; border-radius:999px; font-size:0.82rem; font-weight:700;
+            text-decoration:none; display:flex; align-items:center; gap:6px; transition: opacity 0.2s;
+        }
+        .share-btn:hover { opacity: 0.85; }
+
+        /* Sidebar */
+        .sidebar { display: flex; flex-direction: column; gap: 1.5rem; }
+        .sidebar-card { background: white; border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); }
+        .sidebar-card h4 { font-size: 0.85rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 1.25rem; }
+
+        /* Related articles */
+        .related-item { display: flex; gap: 0.75rem; margin-bottom: 1.1rem; text-decoration: none; color: var(--text); }
+        .related-item:last-child { margin-bottom: 0; }
+        .related-thumb { width: 60px; height: 50px; border-radius: 8px; object-fit: cover; flex-shrink: 0; background: #e2e8f0; display: flex; align-items: center; justify-content: center; }
+        .related-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
+        .related-title { font-size: 0.85rem; font-weight: 700; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .related-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
+
+        /* Category pills in sidebar */
+        .cat-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .cat-link {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0.5rem 0.75rem; border-radius: 10px;
+            text-decoration: none; font-size: 0.85rem; font-weight: 600;
+            color: var(--text); transition: background 0.2s;
+        }
+        .cat-link:hover { background: #f0f4ff; color: var(--primary); }
+
+        /* Footer */
+        footer { text-align: center; padding: 2.5rem 2rem; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid #e2e8f0; margin-top: 2rem; }
+
+        @media (max-width: 768px) {
+            .article-layout { grid-template-columns: 1fr; }
+            .article-hero { height: 260px; }
+            .article-card { padding: 1.5rem; }
+            .article-body { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+<nav>
+    <div class="nav-inner">
+        <a href="{{ url_for('index') }}" class="nav-brand">{{ site_settings.app_name or 'Famousbytee' }}</a>
+        <div class="nav-links">
+            <a href="{{ url_for('index') }}">Beranda</a>
+            <a href="{{ url_for('news_public') }}">Berita</a>
+            {% if current_user.is_authenticated %}
+            <a href="{{ url_for('dashboard') }}" style="background:var(--primary); color:white; padding:0.45rem 1.1rem; border-radius:999px;">Dashboard</a>
+            {% else %}
+            <a href="{{ url_for('login') }}" style="background:var(--primary); color:white; padding:0.45rem 1.1rem; border-radius:999px;">Masuk</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+<!-- Hero: with or without cover image -->
+{% if article.cover_image %}
+<div class="article-hero">
+    <img src="{{ url_for('static', filename='uploads/news/' ~ article.cover_image) }}" alt="{{ article.title }}">
+    <div class="overlay"></div>
+    <div class="hero-content">
+        <div class="breadcrumb">
+            <a href="{{ url_for('index') }}">Beranda</a> <i data-lucide="chevron-right" style="width:14px;"></i>
+            <a href="{{ url_for('news_public') }}">Berita</a>
+            {% if article.category %}<i data-lucide="chevron-right" style="width:14px;"></i>
+            <a href="{{ url_for('news_public', kategori=article.category.slug) }}">{{ article.category.name }}</a>{% endif %}
+        </div>
+        <h1 style="font-size:clamp(1.5rem,3.5vw,2.5rem); font-weight:900; color:white; line-height:1.25; letter-spacing:-0.5px;">{{ article.title }}</h1>
+    </div>
+</div>
+{% else %}
+<div class="article-hero-no-cover">
+    <div class="hero-content">
+        <div class="breadcrumb">
+            <a href="{{ url_for('index') }}">Beranda</a> <i data-lucide="chevron-right" style="width:14px;"></i>
+            <a href="{{ url_for('news_public') }}">Berita</a>
+            {% if article.category %}<i data-lucide="chevron-right" style="width:14px;"></i>
+            <a href="{{ url_for('news_public', kategori=article.category.slug) }}">{{ article.category.name }}</a>{% endif %}
+        </div>
+        <h1 style="font-size:clamp(1.5rem,3.5vw,2.25rem); font-weight:900; color:white; line-height:1.25; margin-top:0.5rem;">{{ article.title }}</h1>
+    </div>
+</div>
+{% endif %}
+
+<!-- Article Body -->
+<div class="article-layout">
+    <main>
+        <article class="article-card">
+            <!-- Meta -->
+            <div class="article-meta">
+                {% if article.category %}
+                <span class="cat-badge" style="background:{{ article.category.color }}22; color:{{ article.category.color }};">
+                    {{ article.category.name }}
+                </span>
+                {% endif %}
+                <span class="meta-item">
+                    <i data-lucide="user" style="width:14px;"></i>
+                    {{ article.author.full_name or article.author.username if article.author else 'Admin' }}
+                </span>
+                <span class="meta-item">
+                    <i data-lucide="calendar" style="width:14px;"></i>
+                    {{ (article.published_at or article.created_at).strftime('%d %B %Y') }}
+                </span>
+                <span class="meta-item">
+                    <i data-lucide="eye" style="width:14px;"></i>
+                    {{ article.views or 0 }} views
+                </span>
+            </div>
+
+            <!-- Content -->
+            <div class="article-body">
+                {{ article.content | safe }}
+            </div>
+
+            <!-- Share Bar -->
+            <div class="share-bar">
+                <h4>Bagikan Artikel</h4>
+                <div class="share-btns">
+                    <a href="https://wa.me/?text={{ (article.title ~ ' ' ~ request.url) | urlencode }}"
+                        target="_blank" class="share-btn" style="background:#25D366; color:white;">
+                        <i data-lucide="message-circle" style="width:15px;"></i> WhatsApp
+                    </a>
+                    <a href="https://twitter.com/intent/tweet?text={{ article.title | urlencode }}&url={{ request.url | urlencode }}"
+                        target="_blank" class="share-btn" style="background:#1da1f2; color:white;">
+                        <i data-lucide="twitter" style="width:15px;"></i> Twitter
+                    </a>
+                    <button onclick="copyLink()" class="share-btn" style="background:#f1f5f9; color:#475569; border:none; cursor:pointer;">
+                        <i data-lucide="link" style="width:15px;"></i> Salin Link
+                    </button>
+                </div>
+            </div>
+        </article>
+
+        <!-- Tags / Back -->
+        <div style="margin-top:1.5rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem;">
+            <a href="{{ url_for('news_public') }}" style="display:flex; align-items:center; gap:6px; color:var(--primary); font-weight:700; text-decoration:none;">
+                <i data-lucide="arrow-left" style="width:16px;"></i> Kembali ke Daftar Berita
+            </a>
+            {% if current_user.is_authenticated and current_user.role.can_manage_news %}
+            <a href="{{ url_for('news_edit', id=article.id) }}"
+                style="display:flex; align-items:center; gap:6px; color:#f59e0b; font-weight:700; text-decoration:none;">
+                <i data-lucide="edit-3" style="width:16px;"></i> Edit Berita Ini
+            </a>
+            {% endif %}
+        </div>
+    </main>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+        <!-- Related Articles -->
+        {% if related %}
+        <div class="sidebar-card">
+            <h4>Berita Terkait</h4>
+            {% for r in related %}
+            <a href="{{ url_for('news_detail', slug=r.slug) }}" class="related-item">
+                <div class="related-thumb">
+                    {% if r.cover_image %}
+                    <img src="{{ url_for('static', filename='uploads/news/' ~ r.cover_image) }}" alt="{{ r.title }}">
+                    {% else %}
+                    <i data-lucide="newspaper" style="width:22px; color:#a5b4fc;"></i>
+                    {% endif %}
+                </div>
+                <div>
+                    <div class="related-title">{{ r.title }}</div>
+                    <div class="related-meta">{{ (r.published_at or r.created_at).strftime('%d %b %Y') }}</div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Categories -->
+        {% if categories %}
+        <div class="sidebar-card">
+            <h4>Kategori Berita</h4>
+            <div class="cat-list">
+                <a href="{{ url_for('news_public') }}" class="cat-link">
+                    <span>Semua Berita</span>
+                </a>
+                {% for cat in categories %}
+                <a href="{{ url_for('news_public', kategori=cat.slug) }}" class="cat-link">
+                    <span style="display:flex; align-items:center; gap:8px;">
+                        <span style="width:10px; height:10px; border-radius:3px; background:{{ cat.color }}; display:inline-block;"></span>
+                        {{ cat.name }}
+                    </span>
+                    <span style="background:#f1f5f9; color:var(--text-muted); font-size:0.72rem; padding:2px 8px; border-radius:999px;">
+                        {{ cat.articles | selectattr('status', 'equalto', 'Published') | selectattr('is_public') | list | length }}
+                    </span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Info Card -->
+        <div class="sidebar-card" style="background:linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%); color:white;">
+            <h4 style="color:rgba(255,255,255,0.75);">Tentang Portal</h4>
+            <p style="font-size:0.9rem; line-height:1.6; margin-top:0.5rem;">
+                {{ site_settings.app_name or 'Famousbytee' }} — Portal akademik kelas dengan informasi terkini seputar jadwal, kegiatan, dan berita kampus.
+            </p>
+            <a href="{{ url_for('index') }}" style="display:inline-block; margin-top:1rem; background:white; color:var(--primary); padding:0.45rem 1rem; border-radius:999px; font-size:0.85rem; font-weight:700; text-decoration:none;">
+                Kunjungi Portal →
+            </a>
+        </div>
+    </aside>
+</div>
+
+<footer>
+    <p>&copy; {{ site_settings.app_name or 'Famousbytee' }} &mdash; <a href="{{ url_for('news_public') }}" style="color:var(--primary);">Daftar Berita</a></p>
+</footer>
+
+<script>
+lucide.createIcons();
+function copyLink() {
+    navigator.clipboard.writeText(window.location.href).then(() => {
+        alert('Link berhasil disalin!');
+    });
+}
+</script>
+</body>
+</html>

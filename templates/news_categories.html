@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block content %}
+<header style="display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:1rem;">
+    <div>
+        <h1>Kategori Berita</h1>
+        <p style="color:var(--text-muted); font-size:0.9rem; margin-top:0.3rem;">Kelola kategori untuk mengelompokkan berita.</p>
+    </div>
+    <a href="{{ url_for('manage_news') }}" class="btn" style="background:#e2e8f0; color:#475569; text-decoration:none; display:flex; align-items:center; gap:8px;">
+        <i data-lucide="arrow-left" style="width:16px;"></i> Kembali ke Berita
+    </a>
+</header>
+
+{% with messages = get_flashed_messages() %}
+{% if messages %}{% for m in messages %}
+<div style="background:#eff6ff; color:#1d4ed8; padding:1rem; border-radius:12px; margin-bottom:1.5rem; border:1px solid #dbeafe; font-weight:500;">{{ m }}</div>
+{% endfor %}{% endif %}{% endwith %}
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; align-items:start;">
+
+    <!-- Add Category Form -->
+    <div class="card">
+        <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:1.5rem; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="plus-circle" style="width:20px; color:var(--primary);"></i> Tambah Kategori Baru
+        </h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="form-group">
+                <label>Nama Kategori</label>
+                <input type="text" name="name" class="form-control" placeholder="Contoh: Akademik" required>
+            </div>
+            <div class="form-group">
+                <label>Warna Badge</label>
+                <div style="display:flex; align-items:center; gap:1rem;">
+                    <input type="color" name="color" value="#4361ee" style="width:48px; height:40px; border:none; border-radius:8px; cursor:pointer; padding:2px;">
+                    <span style="font-size:0.85rem; color:var(--text-muted);">Warna untuk badge kategori di daftar berita</span>
+                </div>
+            </div>
+            <button type="submit" class="btn" style="display:flex; align-items:center; gap:8px;">
+                <i data-lucide="plus" style="width:14px;"></i> Tambah Kategori
+            </button>
+        </form>
+    </div>
+
+    <!-- Category List -->
+    <div class="card">
+        <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:1.5rem; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="tag" style="width:20px; color:var(--primary);"></i> Daftar Kategori ({{ categories|length }})
+        </h3>
+        {% if categories %}
+        <div style="display:flex; flex-direction:column; gap:10px;">
+            {% for cat in categories %}
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:0.8rem 1rem; background:#f8fafc; border-radius:12px; border:1px solid #f1f5f9;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="width:16px; height:16px; border-radius:4px; background:{{ cat.color }}; flex-shrink:0;"></div>
+                    <div>
+                        <div style="font-weight:700; font-size:0.9rem;">{{ cat.name }}</div>
+                        <div style="font-size:0.75rem; color:var(--text-muted); font-family:monospace;">/berita?kategori={{ cat.slug }}</div>
+                    </div>
+                    <span class="status-badge" style="font-size:0.72rem; background:{{ cat.color }}22; color:{{ cat.color }};">
+                        {{ cat.articles|length }} artikel
+                    </span>
+                </div>
+                <div style="display:flex; gap:6px;">
+                    <button onclick="openEditCat('{{ cat.id }}', '{{ cat.name }}', '{{ cat.color }}')"
+                        style="background:none; border:none; cursor:pointer; color:var(--primary); padding:4px;" title="Edit">
+                        <i data-lucide="edit-3" style="width:16px;"></i>
+                    </button>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Hapus kategori ini? Artikel tidak akan terhapus.')">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                        <button type="submit" style="background:none; border:none; cursor:pointer; color:#ef4444; padding:4px;" title="Hapus">
+                            <i data-lucide="trash-2" style="width:16px;"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+            <i data-lucide="tag" style="width:40px; display:block; margin:0 auto 0.75rem; opacity:0.3;"></i>
+            <p>Belum ada kategori. Tambahkan kategori pertama!</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Edit Category Modal -->
+<div id="modal-edit-cat" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:2000;">
+    <div class="card" style="width:400px; max-width:90%; padding:2rem; animation:slideDown 0.3s ease;">
+        <h3 style="font-size:1.1rem; font-weight:700; margin-bottom:1.5rem;">Edit Kategori</h3>
+        <form id="form-edit-cat" method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="cat_id" id="edit-cat-id">
+            <div class="form-group">
+                <label>Nama Kategori</label>
+                <input type="text" name="name" id="edit-cat-name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Warna Badge</label>
+                <input type="color" name="color" id="edit-cat-color" style="width:48px; height:40px; border:none; border-radius:8px; cursor:pointer; padding:2px;">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:1.5rem;">
+                <button type="submit" class="btn" style="flex:1;">Simpan</button>
+                <button type="button" onclick="document.getElementById('modal-edit-cat').style.display='none'" class="btn" style="flex:1; background:#e2e8f0; color:#475569;">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>@keyframes slideDown { from { transform:translateY(-20px); opacity:0; } to { transform:translateY(0); opacity:1; } }</style>
+<script>
+function openEditCat(id, name, color) {
+    document.getElementById('edit-cat-id').value = id;
+    document.getElementById('edit-cat-name').value = name;
+    document.getElementById('edit-cat-color').value = color;
+    document.getElementById('modal-edit-cat').style.display = 'flex';
+}
+window.onclick = function(e) {
+    if (e.target == document.getElementById('modal-edit-cat'))
+        document.getElementById('modal-edit-cat').style.display = 'none';
+}
+lucide.createIcons();
+</script>
+{% endblock %}

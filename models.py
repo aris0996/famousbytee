@@ -49,6 +49,8 @@ class Role(db.Model):
     can_manage_whatsapp = db.Column(db.Boolean, default=False)
     can_manage_assignments = db.Column(db.Boolean, default=False)
     can_use_api = db.Column(db.Boolean, default=False) # New: API Access Control
+    can_manage_news = db.Column(db.Boolean, default=False) # Manajemen Berita
+
     can_access_multi_classroom = db.Column(db.Boolean, default=False)
     can_switch_classroom_context = db.Column(db.Boolean, default=False)
     can_manage_classrooms = db.Column(db.Boolean, default=False)
@@ -305,3 +307,32 @@ class NotificationHistory(db.Model):
     status = db.Column(db.String(100)) # Success, Failed, Error Details
     classroom = db.relationship('ClassRoom', backref=db.backref('notification_histories', lazy=True), lazy=True)
     bot = db.relationship('WhatsAppBot', backref=db.backref('notification_histories', lazy=True), lazy=True)
+
+
+class NewsCategory(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False, unique=True)
+    slug = db.Column(db.String(100), nullable=False, unique=True)
+    color = db.Column(db.String(20), default='#4361ee')  # hex color for badge
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    articles = db.relationship('NewsArticle', backref='category', lazy=True)
+
+
+class NewsArticle(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    category_id = db.Column(db.Integer, db.ForeignKey('news_category.id'), nullable=True)
+    title = db.Column(db.String(200), nullable=False)
+    slug = db.Column(db.String(250), nullable=False, unique=True)
+    content = db.Column(db.Text, nullable=False)
+    excerpt = db.Column(db.String(500))
+    cover_image = db.Column(db.String(255))   # filename relative to static/uploads/news/
+    status = db.Column(db.String(20), default='Draft')  # Draft, Published, Archived
+    is_public = db.Column(db.Boolean, default=True)     # True = visible to guests
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+    author = db.relationship('User', backref='news_articles', lazy=True)
+    views = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
+    updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(),
+                           onupdate=db.func.current_timestamp())
+    published_at = db.Column(db.DateTime, nullable=True)
+
