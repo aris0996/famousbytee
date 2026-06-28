@@ -1704,7 +1704,13 @@ def view_logs():
 def index():
     if current_user.is_authenticated:
         return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    
+    announcements = Announcement.query.filter_by(is_public=True).order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(3).all()
+    photos = GalleryPhoto.query.filter_by(is_public=True).order_by(GalleryPhoto.date_uploaded.desc()).limit(8).all()
+    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    
+    return render_template('index.html', announcements=announcements, photos=photos, classrooms=classrooms)
+
 
 
 @app.route('/login', methods=['GET', 'POST'])

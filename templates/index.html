@@ -5,36 +5,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     
     <!-- SEO Meta Tags -->
-    <title>{{ site_settings.get('web_title', 'Famousbytee.b - Portal Kelas Eksklusif') }}</title>
+    <title>{{ site_settings.get('web_title', 'Portal Manajemen Kelas Terpadu') }}</title>
     <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
-    <meta name="description" content="{{ site_settings.get('web_desc', 'Portal Resmi Kelas Famousbytee.b') }}">
+    <meta name="description" content="{{ site_settings.get('web_desc', 'Portal Resmi Manajemen Kelas') }}">
     <meta name="keywords" content="{{ site_settings.get('seo_keywords', 'famousbytee, portal, kelas') }}">
     <meta name="author" content="arisdev">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ request.url }}">
-    <meta property="og:title" content="Famousbytee.b - Portal Kelas Jauh Lebih Mudah">
-    <meta property="og:description" content="Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kas kelas eksklusif Famousbytee.b.">
+    <meta property="og:title" content="{{ site_settings.get('web_title', 'Portal Manajemen Kelas') }}">
+    <meta property="og:description" content="Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kelas eksklusif.">
     <meta property="og:image" content="{{ url_for('static', filename='og-image.jpg') }}">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    
+    <!-- External Libraries -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/glightbox/dist/css/glightbox.min.css" />
+
     <style>
         :root {
             --primary: #4361ee;
             --secondary: #3f37c9;
             --accent: #4cc9f0;
-            --text-main: #1e293b;
+            --text-main: #0f172a;
             --text-muted: #64748b;
             --bg: #f8faff;
-            --transition: all 0.4s ease;
+            --bg-card: #ffffff;
+            --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        /* Dark mode palette support can be added dynamically, but for now we keep a clean modern light theme */
+
         * { margin:0; padding:0; box-sizing:border-box; }
-        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.6; overflow-x: hidden; }
+        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.6; overflow-x: hidden; scroll-behavior: smooth; }
 
         /* Navbar */
         nav {
@@ -43,12 +51,19 @@
             position: fixed; top: 0; width: 100%; z-index: 1000;
             background: rgba(248, 250, 255, 0.85); backdrop-filter: blur(12px);
             border-bottom: 1px solid rgba(238, 242, 255, 0.5);
+            transition: var(--transition);
+        }
+        nav.scrolled {
+            padding: 1rem 5%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+            background: rgba(255, 255, 255, 0.95);
         }
         .logo { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; color: var(--primary); }
         .nav-links { display: flex; gap: 1.5rem; list-style: none; align-items: center; }
         .nav-links a { text-decoration: none; color: var(--text-main); font-weight: 600; transition: var(--transition); font-size: 0.95rem; }
         .nav-links a:hover { color: var(--primary); }
-        .btn-login { background: var(--primary); color: white !important; padding: 0.7rem 1.3rem; border-radius: 12px; font-size: 0.9rem; }
+        .btn-login { background: var(--primary); color: white !important; padding: 0.7rem 1.3rem; border-radius: 12px; font-size: 0.9rem; transition: transform 0.2s, box-shadow 0.2s; }
+        .btn-login:hover { transform: translateY(-2px); box-shadow: 0 8px 15px rgba(67, 97, 238, 0.2); }
 
         /* Hero Section */
         .hero {
@@ -58,8 +73,8 @@
             min-height: 90vh;
         }
         .hero-content { max-width: 800px; margin-bottom: 3rem; }
-        .hero h1 { font-size: clamp(2.2rem, 8vw, 3.8rem); font-weight: 800; line-height: 1.1; margin-bottom: 1.5rem; color: #0f172a; letter-spacing: -1px; }
-        .hero h1 span { color: var(--primary); }
+        .hero h1 { font-size: clamp(2.2rem, 8vw, 4rem); font-weight: 900; line-height: 1.1; margin-bottom: 1.5rem; color: #0f172a; letter-spacing: -1px; }
+        .hero h1 span { color: var(--primary); display: inline-block; }
         .hero p { font-size: clamp(1rem, 4vw, 1.25rem); color: var(--text-muted); margin-bottom: 2.5rem; max-width: 650px; margin-left: auto; margin-right: auto; }
         .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
         
@@ -69,61 +84,82 @@
             border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; 
             filter: drop-shadow(0 20px 40px rgba(67, 97, 238, 0.3));
             animation: morphing 10s infinite alternate ease-in-out;
+            display: flex; align-items: center; justify-content: center;
         }
+        .abstract-shape i { color: white; width: 120px; height: 120px; opacity: 0.9; }
+        
         @keyframes morphing {
             0% { border-radius: 30% 70% 70% 30% / 30% 30% 70% 70%; }
             100% { border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
         }
 
+        /* Class Selector Section */
+        .class-selector { padding: 4rem 5%; background: white; text-align: center; }
+        .class-selector h2 { font-size: 2rem; font-weight: 800; margin-bottom: 2rem; }
+        .class-grid { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; max-width: 900px; margin: 0 auto; }
+        .class-btn {
+            background: var(--bg); border: 2px solid #e2e8f0; border-radius: 16px; padding: 1rem 1.5rem;
+            color: var(--text-main); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 10px;
+            transition: var(--transition);
+        }
+        .class-btn:hover { border-color: var(--primary); background: rgba(67, 97, 238, 0.05); transform: translateY(-3px); }
+
         /* Features */
         .features { padding: 5rem 5%; text-align: center; }
         .features-grid { margin-top: 3.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
-        .feature-card { background: white; padding: 2.5rem; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.02); transition: var(--transition); border: 1px solid #f8faff; }
+        .feature-card { background: var(--bg-card); padding: 2.5rem; border-radius: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.02); transition: var(--transition); border: 1px solid #f8faff; }
         .feature-card:hover { transform: translateY(-8px); box-shadow: 0 20px 40px rgba(67, 97, 238, 0.08); }
-        .feature-icon { width: 56px; height: 56px; background: rgba(67, 97, 238, 0.1); color: var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; }
+        .feature-icon { width: 64px; height: 64px; background: rgba(67, 97, 238, 0.1); color: var(--primary); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; transition: transform 0.3s; }
+        .feature-card:hover .feature-icon { transform: scale(1.1) rotate(5deg); }
 
-        /* Schedule Access */
-        .schedule-access { padding: 5rem 5%; background: white; text-align: center; }
-        .class-grid { margin-top: 3rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; justify-content: center; }
-        .class-card {
-            background: #f8faff; padding: 2rem 1rem; border-radius: 20px; border: 1px solid #eef2ff;
-            transition: var(--transition); text-decoration: none; color: inherit;
+        /* Gallery */
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; text-align: left; }
+        .gallery-item {
+            display: block; position: relative; aspect-ratio: 1; border-radius: 20px; overflow: hidden; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05); background: #e2e8f0;
         }
-        .class-card:hover { background: var(--primary); color: white; transform: translateY(-5px); }
-        .class-card h3 { font-size: 1.4rem; margin-bottom: 0.5rem; }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+        .gallery-item .overlay {
+            position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
+            opacity: 0; transition: opacity 0.3s; display: flex; align-items: flex-end; padding: 1.5rem;
+        }
+        .gallery-item:hover img { transform: scale(1.08); }
+        .gallery-item:hover .overlay { opacity: 1; }
+        .overlay p { color: white; font-size: 0.9rem; font-weight: 600; margin: 0; transform: translateY(10px); transition: transform 0.3s; }
+        .gallery-item:hover .overlay p { transform: translateY(0); }
 
         footer { padding: 4rem 5%; background: #0f172a; color: white; text-align: center; }
 
-        /* Desktop specific layout */
         @media (min-width: 992px) {
             .hero { flex-direction: row; text-align: left; padding: 12rem 10% 8rem; }
             .hero-content { margin-bottom: 0; }
             .hero p { margin-left: 0; }
             .hero-btns { justify-content: flex-start; }
-            .features, .schedule-access, footer { padding-left: 10%; padding-right: 10%; }
+            .features, .class-selector, footer { padding-left: 10%; padding-right: 10%; }
         }
 
         @media (max-width: 600px) {
-            .nav-links li:not(:last-child) { display: none; } /* Show only login button on very small screens */
+            .nav-links li.hide-mobile { display: none; }
             .hero { padding-top: 8rem; }
-            .hero h1 { margin-bottom: 1rem; }
             .feature-card { padding: 2rem 1.5rem; }
+            .gallery-grid { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
-    <nav>
+    <nav id="navbar">
         <div class="logo">
             {% if site_settings.logo_display_path %}
                 <img src="{{ site_settings.logo_display_path }}" style="height: 32px; width: 32px; object-fit: contain;">
             {% else %}
                 <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
             {% endif %}
-            {{ site_settings.get('web_title', 'Famousbytee.b').split(' ')[0] }}
+            {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}
         </div>
         <ul class="nav-links">
-            <li><a href="#">Beranda</a></li>
-            <li><a href="{{ url_for('public_view', class_name='Famousbytee.b') }}">Jadwal</a></li>
+            <li class="hide-mobile"><a href="#">Beranda</a></li>
+            <li class="hide-mobile"><a href="#pengumuman">Pengumuman</a></li>
+            <li class="hide-mobile"><a href="#jadwal">Jadwal</a></li>
             {% if current_user.is_authenticated %}
             <li><a href="{{ url_for('dashboard') }}" class="btn-login" style="background:var(--text-main);">Dashboard Saya</a></li>
             {% else %}
@@ -133,105 +169,140 @@
     </nav>
 
     <section class="hero">
-        <div class="hero-content">
-            <span style="color: var(--primary); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem;">Official Portal Famousbytee.b</span>
-            <h1>Koordinasi Kelas <span>Jauh Lebih Mudah</span></h1>
-            <p>Satu pintu untuk seluruh informasi perkuliahan, pengumuman internal, dan transparansi kas kelas eksklusif Famousbytee.b.</p>
-            <div class="hero-btns">
+        <div class="hero-content" data-aos="fade-up" data-aos-duration="1000">
+            <span style="color: var(--primary); font-weight: 800; text-transform: uppercase; letter-spacing: 2px; font-size: 0.9rem; display: inline-block; margin-bottom: 1rem;">
+                Official Web Portal
+            </span>
+            <h1>Koordinasi & Informasi <br><span data-aos="zoom-in" data-aos-delay="200">Semakin Mudah</span></h1>
+            <p data-aos="fade-up" data-aos-delay="300">Satu pintu untuk jadwal kuliah, pengumuman internal, galeri kelas, hingga transparansi kas eksklusif.</p>
+            <div class="hero-btns" data-aos="fade-up" data-aos-delay="400">
                 {% if current_user.is_authenticated %}
-                <a href="{{ url_for('dashboard') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem; background: var(--text-main);">Buka Dashboard Utama</a>
+                <a href="{{ url_for('dashboard') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem; background: var(--text-main);">
+                    Buka Dashboard Utama
+                </a>
                 {% else %}
-                <a href="{{ url_for('login') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem;">Masuk ke Portal Member</a>
+                <a href="{{ url_for('login') }}" class="btn-login" style="text-decoration: none; padding: 1rem 2rem; font-size: 1rem;">
+                    Masuk ke Portal Member
+                </a>
                 {% endif %}
-                <a href="{{ url_for('public_view', class_name='Famousbytee.b') }}" style="text-decoration: none; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; margin-left: 20px;">
-                    Lihat Jadwal Harian <i data-lucide="calendar"></i>
+                <a href="#jadwal" style="text-decoration: none; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; margin-left: 10px;">
+                    Lihat Jadwal Harian <i data-lucide="arrow-down" style="width: 20px;"></i>
                 </a>
             </div>
         </div>
-        <div class="hero-image">
+        <div class="hero-image" data-aos="fade-left" data-aos-duration="1200">
             <div class="abstract-shape">
-                <div style="display: flex; align-items: center; justify-content: center; height: 100%; color: white; font-size: 5rem; font-weight: 900;"></div>
+                <i data-lucide="layers"></i>
             </div>
+        </div>
+    </section>
+
+    <!-- Jadwal & Classes Section -->
+    <section class="class-selector" id="jadwal">
+        <h2 data-aos="fade-up">Akses Jadwal Publik & Galeri</h2>
+        <p data-aos="fade-up" data-aos-delay="100" style="color: var(--text-muted); margin-bottom: 2rem;">Pilih kelas Anda untuk melihat jadwal hari ini atau galeri publik.</p>
+        
+        <div class="class-grid" data-aos="fade-up" data-aos-delay="200">
+            {% for class_obj in classrooms %}
+            <a href="{{ url_for('public_view', class_name=class_obj.name) }}" class="class-btn">
+                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(67,97,238,0.1); color: var(--primary); display: flex; align-items: center; justify-content: center;">
+                    <i data-lucide="users" style="width: 20px; height: 20px;"></i>
+                </div>
+                {{ class_obj.name }}
+            </a>
+            {% else %}
+            <p>Belum ada kelas yang terdaftar.</p>
+            {% endfor %}
         </div>
     </section>
 
     {% if photos %}
     <section class="features" style="background: white; padding-top: 4rem;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem;">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; gap: 1rem;" data-aos="fade-up">
             <div style="text-align: left;">
                 <h2 style="font-size: 2.5rem; font-weight: 800;">Memory & Dokumentasi</h2>
-                <p style="color: var(--text-muted);">Cuplikan keseruan dari galeri publik kelas.</p>
+                <p style="color: var(--text-muted);">Cuplikan keseruan dari galeri publik seluruh kelas.</p>
             </div>
-            <a href="{{ url_for('public_gallery') }}" style="color: var(--primary); font-weight: 700; text-decoration: none;">Lihat Galeri <i data-lucide="arrow-right" style="width: 16px; vertical-align: middle;"></i></a>
+            {% if classrooms %}
+            <a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}" style="color: var(--primary); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                Lihat Galeri Penuh <i data-lucide="arrow-right" style="width: 18px;"></i>
+            </a>
+            {% endif %}
         </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; text-align: left;">
+        
+        <div class="gallery-grid">
             {% for photo in photos %}
-            <a href="{{ url_for('public_gallery') }}" style="display: block; position: relative; aspect-ratio: 1; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); group;">
-                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" style="width: 100%; height: 100%; object-fit: cover; transition: transform 0.3s ease;">
-                <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 20px 15px 15px; background: linear-gradient(to top, rgba(0,0,0,0.8), transparent); color: white; transform: translateY(100%); transition: transform 0.3s ease;" class="hover-overlay">
-                    <p style="margin: 0; font-size: 0.8rem; font-weight: 600;">{{ photo.caption or 'Lihat Detail' }}</p>
+            <a href="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}" class="gallery-item glightbox" data-gallery="gallery-home" data-description="{{ photo.caption or 'Dokumentasi Kelas' }}" data-aos="zoom-in" data-aos-delay="{{ loop.index0 * 100 }}">
+                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" alt="{{ photo.caption }}" loading="lazy">
+                <div class="overlay">
+                    <p>{{ photo.caption or 'Lihat Detail' }}</p>
                 </div>
             </a>
             {% endfor %}
         </div>
-        <style>
-            .hover-overlay { opacity: 0; }
-            a:hover .hover-overlay { transform: translateY(0); opacity: 1; }
-            a:hover img { transform: scale(1.1); }
-        </style>
     </section>
     {% endif %}
 
-    <section class="features" id="pengumuman">
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem;">
+    <section class="features" id="pengumuman" style="background: var(--bg);">
+        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; gap: 1rem;" data-aos="fade-up">
             <div style="text-align: left;">
                 <h2 style="font-size: 2.5rem; font-weight: 800;">Pengumuman Terbaru</h2>
-                <p style="color: var(--text-muted);">Informasi penting dan jadwal mendalam untuk anggota kelas.</p>
+                <p style="color: var(--text-muted);">Informasi penting untuk seluruh anggota kelas.</p>
             </div>
-            <a href="{{ url_for('login') }}" style="color: var(--primary); font-weight: 700; text-decoration: none;">Lihat Semua <i data-lucide="arrow-right" style="width: 16px; vertical-align: middle;"></i></a>
+            <a href="{{ url_for('login') }}" style="color: var(--primary); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 5px;">
+                Masuk untuk Lebih Banyak <i data-lucide="arrow-right" style="width: 18px;"></i>
+            </a>
         </div>
         
         <div class="features-grid" style="text-align: left;">
             {% for a in announcements %}
-            <div class="feature-card" style="padding: 2rem; border-left: 4px solid {{ '#ef4444' if a.category == 'Penting' else 'var(--primary)' }};">
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="{{ loop.index0 * 150 }}" style="padding: 2rem; border-left: 4px solid {{ '#ef4444' if a.category == 'Penting' else 'var(--primary)' }};">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                    <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary); font-size: 0.7rem;">{{ a.category }}</span>
-                    <div style="font-size: 0.75rem; color: var(--text-muted);">{{ a.date_posted.strftime('%d %b %Y') }}</div>
+                    <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary); font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; font-weight: 700;">
+                        {{ a.category }}
+                    </span>
+                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
+                        <i data-lucide="clock" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> 
+                        {{ a.date_posted.strftime('%d %b %Y') }}
+                    </div>
                 </div>
-                <h3 style="font-size: 1.25rem; margin-bottom: 12px; font-weight: 700;">{{ a.title }}</h3>
+                <h3 style="font-size: 1.3rem; margin-bottom: 12px; font-weight: 800; color: #0f172a;">{{ a.title }}</h3>
                 <p style="font-size: 0.95rem; line-height: 1.6; color: #475569;">{{ a.content[:150] }}{{ '...' if a.content|length > 150 else '' }}</p>
                 {% if a.is_pinned %}
-                <div style="margin-top: 1.5rem; display: flex; align-items: center; gap: 6px; color: var(--primary); font-weight: 700; font-size: 0.8rem;">
-                    <i data-lucide="pin" style="width: 14px;"></i> Pinned Information
+                <div style="margin-top: 1.5rem; display: flex; align-items: center; gap: 6px; color: #ef4444; font-weight: 700; font-size: 0.8rem;">
+                    <i data-lucide="pin" style="width: 14px;"></i> Disematkan
                 </div>
                 {% endif %}
             </div>
             {% else %}
-            <div style="grid-column: 1/-1; padding: 4rem; text-align: center; background: white; border-radius: 24px; opacity: 0.5;">
-                <i data-lucide="inbox" style="width: 48px; height: 48px; margin-bottom: 1rem;"></i>
-                <p>Belum ada pengumuman kelas saat ini.</p>
+            <div style="grid-column: 1/-1; padding: 4rem; text-align: center; background: white; border-radius: 24px; opacity: 0.7;">
+                <i data-lucide="inbox" style="width: 56px; height: 56px; margin-bottom: 1rem; color: var(--text-muted);"></i>
+                <p style="font-size: 1.1rem; font-weight: 600;">Belum ada pengumuman kelas saat ini.</p>
             </div>
             {% endfor %}
         </div>
     </section>
 
     <section class="features" style="background: white;">
-        <h2 style="font-size: 2.5rem; font-weight: 800;">Layanan Famousbytee.b</h2>
+        <div data-aos="fade-up">
+            <h2 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem;">Layanan Portal Terintegrasi</h2>
+            <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">Nikmati ekosistem manajemen kelas yang modern, responsif, dan mudah digunakan.</p>
+        </div>
         <div class="features-grid">
-            <div class="feature-card">
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="100">
                 <div class="feature-icon"><i data-lucide="calendar"></i></div>
-                <h3>Jadwal Kuliah</h3>
-                <p>Akses jadwal kuliah terbaru yang selalu sinkron dengan database kelas.</p>
+                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Jadwal Kuliah</h3>
+                <p style="color: #475569;">Akses jadwal kuliah terbaru yang tersinkronisasi otomatis untuk seluruh anggota kelas.</p>
             </div>
-            <div class="feature-card">
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
                 <div class="feature-icon"><i data-lucide="wallet"></i></div>
-                <h3>Transparansi Kas</h3>
-                <p>Pantau penggunaan dana kas kelas secara terbuka dan bertanggung jawab.</p>
+                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Transparansi Kas</h3>
+                <p style="color: #475569;">Pantau penerimaan dan penggunaan dana kelas dengan riwayat yang jelas dan terbuka.</p>
             </div>
-            <div class="feature-card">
-                <div class="feature-icon"><i data-lucide="layout"></i></div>
-                <h3>Koordinasi Internal</h3>
-                <p>Portal satu pintu untuk seluruh kebutuhan administratif kelas Famousbytee.b.</p>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="300">
+                <div class="feature-icon"><i data-lucide="bell-ring"></i></div>
+                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Push Notifikasi</h3>
+                <p style="color: #475569;">Pemberitahuan otomatis ke smartphone dan bot WhatsApp untuk info genting.</p>
             </div>
         </div>
     </section>
@@ -243,23 +314,52 @@
             {% else %}
                 <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
             {% endif %}
-            {{ site_settings.get('web_title', 'Famousbytee.b Portal') }}
+            {{ site_settings.get('web_title', 'Portal Manajemen') }}
         </div>
-        <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform eksklusif untuk integrasi data, koordinasi harian, dan transparansi internal kelas Famousbytee.b.</p>
+        <p style="opacity: 0.7; max-width: 500px; margin: 0 auto 2.5rem;">Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi internal seluruh kelas secara elegan.</p>
         
         <div style="margin-top: 3rem; padding-top: 2rem; border-top: 1px solid rgba(255,255,255,0.05); font-size: 0.9rem; opacity: 0.8;">
-            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Famousbytee.b Portal') }}. All rights reserved.</p>
+            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}. All rights reserved.</p>
             <div style="display: flex; gap: 1.5rem; justify-content: center; margin: 1.5rem 0;">
-                <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" style="color: white; opacity: 0.7;"><i data-lucide="instagram"></i></a>
-                <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" style="color: white; opacity: 0.7;"><i data-lucide="message-circle"></i></a>
-                <a href="/sitemap.xml" target="_blank" style="color: white; opacity: 0.7;" title="Sitemap"><i data-lucide="file-code"></i></a>
+                <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;"><i data-lucide="instagram"></i></a>
+                <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;"><i data-lucide="message-circle"></i></a>
+                <a href="/sitemap.xml" target="_blank" style="color: white; opacity: 0.7; transition: opacity 0.3s;" title="Sitemap"><i data-lucide="file-code"></i></a>
             </div>
-            <p style="margin-top: 10px; font-weight: 600;">Created by <a href="https://instagram.com/ars_0996" target="_blank" style="color: var(--accent); text-decoration: none;">@ars_0996</a> | BY arisdev</p>
+            <p style="margin-top: 10px; font-weight: 600;">Platform Engine by <a href="https://instagram.com/ars_0996" target="_blank" style="color: var(--accent); text-decoration: none;">@ars_0996</a></p>
         </div>
     </footer>
 
+    <!-- Scripts -->
+    <script src="https://unpkg.com/aos@next/dist/aos.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/mcstudios/glightbox/dist/js/glightbox.min.js"></script>
     <script>
+        // Init Icons
         lucide.createIcons();
+        
+        // Init AOS Animations
+        AOS.init({
+            once: true,
+            offset: 50,
+            duration: 800,
+            easing: 'ease-out-cubic',
+        });
+        
+        // Init GLightbox
+        const lightbox = GLightbox({
+            selector: '.glightbox',
+            touchNavigation: true,
+            loop: true,
+        });
+
+        // Navbar Scroll Effect
+        window.addEventListener('scroll', () => {
+            const nav = document.getElementById('navbar');
+            if (window.scrollY > 20) {
+                nav.classList.add('scrolled');
+            } else {
+                nav.classList.remove('scrolled');
+            }
+        });
     </script>
 </body>
 </html>
