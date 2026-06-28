@@ -1777,13 +1777,18 @@ def notification_waha_session_screenshot_api(session_name):
     from app import _waha_request_any, get_setting_value
     base_url = get_setting_value('waha_base_url', '').strip() or None
     result = _waha_request_any('GET', [
-        f'/api/sessions/{session_name}/screenshot',
+        '/api/screenshot',
         f'/api/{session_name}/screenshot',
+        f'/api/sessions/{session_name}/screenshot',
+        f'/api/{session_name}/qr',
         f'/api/sessions/{session_name}/qr',
     ], base_url_override=base_url)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal ambil screenshot/QR WAHA')}), 400
-    return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal ambil screenshot/QR WAHA')}), 200
+    data = result.get('data')
+    if isinstance(data, dict):
+        data = data.get('screenshot') or data.get('qr') or data.get('image') or data.get('data') or ''
+    return jsonify({'ok': True, 'path': result.get('path'), 'data': data})
 
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
