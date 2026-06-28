@@ -1373,6 +1373,14 @@ login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
 
+
+@login_manager.user_loader
+def load_user(user_id):
+    try:
+        return User.query.get(int(user_id))
+    except Exception:
+        return None
+
 # Ensure database tables are created for new features
 with app.app_context():
     # Auto-run migrations on startup to ensure schema is always up to date
