@@ -50,6 +50,7 @@
         padding: .75rem;
         min-height: 100px;
     }
+    .notify-toolbar { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
     .notify-history table td { vertical-align: top; }
     @media (max-width: 920px) {
         .notify-split { grid-template-columns: 1fr; }
@@ -173,7 +174,7 @@
                 </div>
                 <div class="form-group">
                     <label>Pilih Bot</label>
-                    <select id="binding-bot" class="form-control">
+                    <select id="binding-bot" class="form-control" onchange="loadWahaGroups()">
                         <option value="">Pilih bot</option>
                         {% for bot in bots %}
                         <option value="{{ bot.id }}">{{ bot.name }} - {{ bot.session_name }}</option>
@@ -181,8 +182,14 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Chat ID</label>
-                    <input type="text" id="binding-chat-id" class="form-control" placeholder="1203xxxx@g.us">
+                    <label>Grup WhatsApp</label>
+                    <div style="display:flex; gap:.6rem; align-items:center;">
+                        <select id="binding-chat-select" class="form-control" onchange="syncBindingChat()">
+                            <option value="">Muat grup dari WAHA</option>
+                        </select>
+                        <button type="button" class="btn" style="background:#1e293b; white-space:nowrap;" onclick="loadWahaGroups()">Muat</button>
+                    </div>
+                    <input type="text" id="binding-chat-id" class="form-control" placeholder="Atau isi manual chat id" style="margin-top:.6rem;">
                 </div>
                 <div class="form-group">
                     <label>Label Target</label>
@@ -215,6 +222,13 @@
                 </form>
                 <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Tambah / Edit Bot</h3>
+                    <div class="notify-toolbar" style="margin-bottom:1rem;">
+                        <select id="waha-session-live" class="form-control" style="min-width:240px;">
+                            <option value="">Muat session aktif dari WAHA</option>
+                        </select>
+                        <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Session</button>
+                        <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Pakai Session</button>
+                    </div>
                     <div class="notify-grid">
                         <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
                         <div class="form-group"><label>Session Name</label><input type="text" id="bot-session" class="form-control" placeholder="session-kelas-a"></div>
@@ -243,6 +257,7 @@
                         <div class="notify-actions" style="margin-top:.75rem;">
                             <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm('{{ bot.id }}', '{{ bot.name|replace('\'', '\\\'') }}', '{{ bot.session_name|replace('\'', '\\\'') }}', '{{ (bot.base_url or '')|replace('\'', '\\\'') }}', '{{ (bot.status or 'configured')|replace('\'', '\\\'') }}', '{{ 'true' if bot.is_active else 'false' }}')">Edit</button>
                             <button class="btn" type="button" style="background:#1e293b; padding:8px 12px;" onclick="checkBotHealth('{{ bot.id }}')">Cek Health</button>
+                            <button class="btn" type="button" style="background:#fee2e2; color:#991b1b; padding:8px 12px;" onclick="deleteBot('{{ bot.id }}')">Hapus</button>
                         </div>
                     </div>
                     {% else %}
@@ -411,6 +426,7 @@ async function loadBinding() {
         document.getElementById('binding-bot').value = data.bot_id || '';
         document.getElementById('binding-chat-id').value = data.chat_id || '';
         document.getElementById('binding-chat-label').value = data.chat_label || '';
+        await loadWahaGroups();
         document.getElementById('binding-summary').innerHTML = `
             <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
             <span class="notify-mini">Bot ID: ${data.bot_id || '-'}</span><br>
@@ -428,7 +444,7 @@ async function saveBinding() {
             method: 'PUT',
             body: JSON.stringify({
                 bot_id: document.getElementById('binding-bot').value,
-                chat_id: document.getElementById('binding-chat-id').value,
+                chat_id: document.getElementById('binding-chat-id').value || document.getElementById('binding-chat-select').value,
                 chat_label: document.getElementById('binding-chat-label').value,
             }),
         });
@@ -439,12 +455,75 @@ async function saveBinding() {
     }
 }
 
+async function loadWahaGroups() {
+    const botId = document.getElementById('binding-bot').value;
+    const select = document.getElementById('binding-chat-select');
+    const manual = document.getElementById('binding-chat-id');
+    if (!botId) {
+        select.innerHTML = '<option value="">Pilih bot dulu</option>';
+        return;
+    }
+    select.innerHTML = '<option value="">Memuat grup...</option>';
+    try {
+        const data = await apiFetch(`/api/notifications/bots/${botId}/groups`);
+        const items = data.items || [];
+        if (!items.length) {
+            select.innerHTML = '<option value="">Tidak ada grup ditemukan</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">Pilih grup WhatsApp</option>' + items.map(item => {
+            const label = `${item.name} (${item.participants || 0})`;
+            return `<option value="${item.chat_id}">${label}</option>`;
+        }).join('');
+        if (manual && manual.value) {
+            select.value = manual.value;
+        }
+    } catch (error) {
+        select.innerHTML = '<option value="">Gagal memuat grup</option>';
+        console.error(error);
+    }
+}
+
+function syncBindingChat() {
+    const select = document.getElementById('binding-chat-select');
+    const manual = document.getElementById('binding-chat-id');
+    if (select && manual && select.value) {
+        manual.value = select.value;
+    }
+}
+
 function fillBotForm(id, name, sessionName, baseUrl, status) {
     currentBotId = id;
     document.getElementById('bot-name').value = name;
     document.getElementById('bot-session').value = sessionName;
     document.getElementById('bot-base-url').value = baseUrl;
     document.getElementById('bot-status').value = status;
+}
+
+async function refreshWahaSessions() {
+    const select = document.getElementById('waha-session-live');
+    select.innerHTML = '<option value="">Memuat session...</option>';
+    try {
+        const data = await apiFetch('{{ url_for("get_waha_sessions") }}');
+        const items = data.items || [];
+        if (!items.length) {
+            select.innerHTML = '<option value="">Tidak ada session aktif</option>';
+            return;
+        }
+        select.innerHTML = '<option value="">Pilih session aktif</option>' + items.map(item => {
+            return `<option value="${item.name}">${item.name} - ${item.status || 'unknown'}</option>`;
+        }).join('');
+    } catch (error) {
+        select.innerHTML = '<option value="">Gagal memuat session</option>';
+    }
+}
+
+function useSelectedSession() {
+    const select = document.getElementById('waha-session-live');
+    const session = document.getElementById('bot-session');
+    if (select && select.value && session) {
+        session.value = select.value;
+    }
 }
 
 async function saveBot() {
@@ -464,6 +543,16 @@ async function saveBot() {
         document.getElementById('bot-status-text').innerText = 'Data bot berhasil disimpan. Muat ulang halaman untuk melihat daftar terbaru.';
     } catch (error) {
         document.getElementById('bot-status-text').innerText = error.message;
+    }
+}
+
+async function deleteBot(botId) {
+    if (!confirm('Hapus bot ini?')) return;
+    try {
+        await apiFetch(`/api/notifications/bots/${botId}`, { method: 'DELETE' });
+        alert('Bot berhasil dihapus. Muat ulang halaman untuk melihat daftar terbaru.');
+    } catch (error) {
+        alert(error.message);
     }
 }
 
@@ -510,7 +599,10 @@ async function runClassroomWhatsAppTest() {
 document.addEventListener('DOMContentLoaded', () => {
     loadPolicy();
     loadBinding();
+    refreshWahaSessions();
     lucide.createIcons();
+    const liveSelect = document.getElementById('waha-session-live');
+    if (liveSelect) liveSelect.addEventListener('change', useSelectedSession);
 });
 </script>
 {% endblock %}

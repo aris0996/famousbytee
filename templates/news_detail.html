@@ -214,11 +214,11 @@
                 <a href="https://wa.me/?text={{ (article.title ~ ' ' ~ request.url) | urlencode }}" target="_blank" class="share-btn wa">
                     <i data-lucide="message-circle" style="width:15px;"></i> WhatsApp
                 </a>
-                <a href="https://twitter.com/intent/tweet?text={{ article.title | urlencode }}&url={{ request.url | urlencode }}" target="_blank" class="share-btn tw">
-                    <i data-lucide="twitter" style="width:15px;"></i> Twitter
+                <a href="https://x.com/intent/post?text={{ article.title | urlencode }}&url={{ request.url | urlencode }}" target="_blank" class="share-btn tw">
+                    <i data-lucide="x" style="width:15px;"></i> X
                 </a>
                 <button type="button" onclick="copyLink()" class="share-btn muted">
-                    <i data-lucide="link" style="width:15px;"></i> Salin Link
+                    <i data-lucide="link-2" style="width:15px;"></i> Salin Link
                 </button>
             </div>
         </div>

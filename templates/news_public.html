@@ -154,7 +154,7 @@
 <main class="content">
     <div class="toolbar">
         <div class="chips">
-            <a href="{{ url_for('news_public') }}" class="chip all {{ 'active' if not active_cat else '' }}">Semua Berita</a>
+        <a href="{{ url_for('news_public') }}" class="chip all {{ 'active' if not active_cat else '' }}">Semua Berita</a>
             {% for cat in categories %}
             <a href="{{ url_for('news_public', kategori=cat.slug) }}"
                class="chip {{ 'active' if active_cat and active_cat.id == cat.id else '' }}"
@@ -194,7 +194,7 @@
                         <i data-lucide="eye" style="width:12px; display:inline; vertical-align:middle;"></i>
                         {{ article.views or 0 }}
                     </span>
-                    <a href="{{ url_for('news_detail', slug=article.slug) }}" class="read">Baca</a>
+                    <a href="{{ url_for('news_detail', slug=article.slug) }}" class="read">Baca Selengkapnya <i data-lucide="arrow-right" style="width:13px;"></i></a>
                 </div>
             </div>
         </article>

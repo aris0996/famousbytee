@@ -350,7 +350,7 @@
                     <h2 style="font-size: 2.5rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">Kabar & Berita Terbaru</h2>
                     <p style="color: var(--text-muted); margin-top: 0.5rem; font-size: 1.05rem;">Pantau terus kegiatan, pencapaian, dan pengumuman menarik lainnya.</p>
                 </div>
-                <a href="{{ url_for('news_public') }}" class="btn" style="text-decoration: none; display: flex; align-items: center; gap: 8px; font-weight: 700; background: var(--primary);">
+                <a href="{{ url_for('news_public') }}" class="btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 800; background: var(--primary); padding: 0.9rem 1.25rem; border-radius: 999px;">
                     Lihat Semua Berita <i data-lucide="arrow-right" style="width: 18px;"></i>
                 </a>
             </div>
@@ -416,12 +416,18 @@
                 </div>
                 <p>Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi internal seluruh kelas secara elegan.</p>
                 <div class="footer-socials">
-                    <a href="{{ site_settings.get('social_ig', '#') }}" target="_blank" class="footer-social-btn" title="Instagram">
+                    {% set social_ig = site_settings.get('social_ig') %}
+                    {% set social_wa = site_settings.get('social_wa') %}
+                    {% if social_ig and social_ig != '#' %}
+                    <a href="{{ site_settings.get('social_ig') }}" target="_blank" class="footer-social-btn" title="Instagram">
                         <i data-lucide="instagram"></i>
                     </a>
-                    <a href="{{ site_settings.get('social_wa', '#') }}" target="_blank" class="footer-social-btn" title="WhatsApp Group">
+                    {% endif %}
+                    {% if social_wa and social_wa != '#' %}
+                    <a href="{{ site_settings.get('social_wa') }}" target="_blank" class="footer-social-btn" title="WhatsApp Group">
                         <i data-lucide="message-circle"></i>
                     </a>
+                    {% endif %}
                     <a href="/sitemap.xml" target="_blank" class="footer-social-btn" title="Sitemap XML">
                         <i data-lucide="file-code"></i>
                     </a>

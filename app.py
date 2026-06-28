@@ -4317,7 +4317,7 @@ def get_waha_chats():
         if not chat_id:
             continue
         chat_type = 'group' if '@g.us' in chat_id else 'personal'
-        if chat_type != 'personal':
+        if chat_type != 'group':
             continue
         normalized.append({
             'name': _normalize_waha_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
@@ -4327,6 +4327,18 @@ def get_waha_chats():
             'type': chat_type
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': session_name})
+
+
+@app.errorhandler(404)
+def page_not_found(error):
+    site_settings = _get_site_settings()
+    return render_template('404.html', site_settings=site_settings), 404
+
+
+@app.errorhandler(500)
+def internal_server_error(error):
+    site_settings = _get_site_settings()
+    return render_template('500.html', site_settings=site_settings), 500
 
 @app.route('/notifications/test-push', methods=['POST'])
 @login_required

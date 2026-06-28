@@ -1560,6 +1560,21 @@ def update_notification_bot_api(bot_id):
     return jsonify({'status': 'success'})
 
 
+@api_bp.route('/notifications/bots/<int:bot_id>', methods=['DELETE'])
+def delete_notification_bot_api(bot_id):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    bot = WhatsAppBot.query.get_or_404(bot_id)
+    if ClassroomWhatsAppBinding.query.filter_by(bot_id=bot.id).first():
+        return jsonify({'error': 'Bot masih dipakai binding kelas'}), 400
+    db.session.delete(bot)
+    db.session.commit()
+    return jsonify({'status': 'success'})
+
+
 @api_bp.route('/notifications/bots/<int:bot_id>/health', methods=['GET'])
 def notification_bot_health_api(bot_id):
     user = _api_request_user()
@@ -1586,6 +1601,37 @@ def notification_bot_health_api(bot_id):
         'session_name': bot.session_name,
         'status': _normalize_waha_scalar((matched or {}).get('status') or (matched or {}).get('state') or 'not-found'),
     })
+
+
+@api_bp.route('/notifications/bots/<int:bot_id>/groups', methods=['GET'])
+def notification_bot_groups_api(bot_id):
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    bot = WhatsAppBot.query.get_or_404(bot_id)
+    from app import _waha_request, _normalize_waha_scalar, _normalize_waha_chat_id
+    result = _waha_request('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal memuat grup WAHA')}), 400
+
+    raw_data = result.get('data') or []
+    chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
+    normalized = []
+    for item in chats:
+        if not isinstance(item, dict):
+            continue
+        chat_id = _normalize_waha_chat_id(item)
+        if not chat_id or '@g.us' not in chat_id:
+            continue
+        normalized.append({
+            'name': _normalize_waha_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
+            'chat_id': chat_id,
+            'participants': item.get('participantsCount') or item.get('size') or 0,
+            'owner': _normalize_waha_scalar(item.get('owner') or item.get('ownerPn') or '-'),
+        })
+    return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': bot.session_name, 'bot_id': bot.id})
 
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
