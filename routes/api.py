@@ -143,6 +143,82 @@ def _allowed_notification_classrooms_for_user(user):
     return [current] if current else []
 
 
+def _can_manage_fund_across_classes(role):
+    return bool(
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, 'can_access_multi_classroom', False) or
+        getattr(role, 'can_view_all_classrooms', False) or
+        getattr(role, 'can_switch_classroom_context', False) or
+        getattr(role, 'can_view_classroom_reports', False)
+    )
+
+
+def _allowed_fund_classrooms_for_user(user):
+    current = _user_classroom(user)
+    if user.role and _can_manage_fund_across_classes(user.role):
+        return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return [current] if current else []
+
+
+def _requested_fund_classroom_for_user(user, data_source=None):
+    fallback = _user_classroom(user)
+    allowed = _allowed_fund_classrooms_for_user(user)
+    allowed_ids = {item.id for item in allowed}
+    raw_classroom_id = None
+    if data_source:
+        raw_classroom_id = data_source.get('classroom_id')
+    if raw_classroom_id in (None, ''):
+        raw_classroom_id = request.args.get('classroom_id')
+    if raw_classroom_id not in (None, ''):
+        try:
+            classroom_id = int(raw_classroom_id)
+        except Exception:
+            raise ValueError('Format classroom_id tidak valid')
+        if classroom_id not in allowed_ids:
+            raise PermissionError('Kelas tidak diizinkan')
+        classroom = ClassRoom.query.get(classroom_id)
+        if not classroom:
+            raise LookupError('Kelas tidak ditemukan')
+        return classroom
+    return fallback
+
+
+def _apply_fund_classroom_filter(query, classroom, include_legacy_default=True):
+    if not classroom:
+        return query
+    default_classroom = _default_classroom()
+    if include_legacy_default and default_classroom and classroom.id == default_classroom.id:
+        return query.filter(
+            (BatchFund.classroom_id == classroom.id) |
+            (BatchFund.classroom_id.is_(None))
+        )
+    return query.filter(BatchFund.classroom_id == classroom.id)
+
+
+def _apply_fund_period_classroom_filter(query, classroom, include_legacy_default=True):
+    if not classroom:
+        return query
+    default_classroom = _default_classroom()
+    try:
+        if include_legacy_default and default_classroom and classroom.id == default_classroom.id:
+            return query.filter(
+                (FundPeriod.classroom_id == classroom.id) |
+                (FundPeriod.classroom_id.is_(None))
+            )
+        return query.filter(FundPeriod.classroom_id == classroom.id)
+    except Exception:
+        return query
+
+
+def _is_fund_record_in_scope(record_classroom_id, classroom):
+    if not classroom:
+        return True
+    if record_classroom_id == classroom.id:
+        return True
+    default_classroom = _default_classroom()
+    return bool(record_classroom_id is None and default_classroom and classroom.id == default_classroom.id)
+
+
 def _api_request_user(require_api_access=False):
     verify_jwt_in_request(optional=True)
     identity = get_jwt_identity()
@@ -1611,13 +1687,18 @@ def _count_weekdays_between(start_date, end_date):
         current += timedelta(days=1)
     return total
 
-def get_fund_target(as_of=None):
+def get_fund_target(as_of=None, classroom_id=None):
     """Calculates cumulative target based on advanced periods, with legacy fallback."""
     today = as_of or datetime.now().date()
     if isinstance(today, datetime):
         today = today.date()
 
-    periods = FundPeriod.query.filter_by(is_active=True).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    periods_query = FundPeriod.query.filter_by(is_active=True)
+    periods_query = _apply_fund_period_classroom_filter(
+        periods_query,
+        ClassRoom.query.get(classroom_id) if classroom_id else None,
+    )
+    periods = periods_query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
     if periods:
         total = 0
         for period in periods:
@@ -1650,12 +1731,23 @@ def get_fund_target(as_of=None):
 def get_funds_summary():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
-    total_in = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk').scalar() or 0
-    total_out = db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar').scalar() or 0
-    balance = total_in - total_out
-    target_payment = get_fund_target()
-
     classroom = _user_classroom(user)
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    total_in = _apply_fund_classroom_filter(
+        db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk'),
+        classroom,
+    ).scalar() or 0
+    total_out = _apply_fund_classroom_filter(
+        db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Keluar'),
+        classroom,
+    ).scalar() or 0
+    balance = total_in - total_out
+    target_payment = get_fund_target(classroom_id=classroom.id if classroom else None)
+
     if classroom:
         students = Student.query.filter_by(
             classroom_id=classroom.id
@@ -1718,9 +1810,16 @@ def get_funds_summary():
 @api_bp.route('/funds/history', methods=['GET'])
 @jwt_required()
 def get_funds_history():
-    history = BatchFund.query.order_by(BatchFund.date.desc()).all()
+    user = User.query.get(int(get_jwt_identity()))
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    history = _apply_fund_classroom_filter(BatchFund.query, classroom).order_by(BatchFund.date.desc()).all()
     return jsonify([{
         "id": f.id,
+        "classroom_id": f.classroom_id,
+        "classroom_name": f.classroom.name if f.classroom else (_default_classroom().name if _default_classroom() else None),
         "description": f.description,
         "amount": f.amount,
         "type": f.type,
@@ -1741,8 +1840,17 @@ def get_funds_history():
 @api_bp.route('/funds/audit', methods=['GET'])
 @jwt_required()
 def get_funds_audit():
-    students = Student.query.order_by(Student.full_name).all()
-    target_payment = get_fund_target()
+    user = User.query.get(int(get_jwt_identity()))
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    students_query = Student.query.order_by(Student.full_name)
+    if classroom:
+        students_query = students_query.filter_by(classroom_id=classroom.id)
+    students = students_query.all()
+    target_payment = get_fund_target(classroom_id=classroom.id if classroom else None)
     
     audit_data = []
     for s in students:
@@ -1980,9 +2088,16 @@ def get_fund_periods_api():
     if not user.role.can_manage_fund:
         return jsonify({"error": "Unauthorized"}), 403
 
-    periods = FundPeriod.query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    periods = _apply_fund_period_classroom_filter(FundPeriod.query, classroom).order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
     return jsonify([{
         "id": period.id,
+        "classroom_id": period.classroom_id,
+        "classroom_name": period.classroom.name if period.classroom else (_default_classroom().name if _default_classroom() else None),
         "title": period.title,
         "start_date": period.start_date.isoformat(),
         "end_date": period.end_date.isoformat(),
@@ -2020,7 +2135,13 @@ def create_fund_period_api():
     if daily_rate <= 0:
         return jsonify({"error": "Nominal harian wajib lebih dari 0"}), 400
 
+    try:
+        classroom = _requested_fund_classroom_for_user(user, data)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
     period = FundPeriod(
+        classroom_id=classroom.id if classroom else None,
         title=title,
         start_date=start_date,
         end_date=end_date,
@@ -2045,6 +2166,12 @@ def update_fund_period_api(period_id):
 
     period = FundPeriod.query.get_or_404(period_id)
     data = request.get_json(silent=True) or request.form or {}
+    try:
+        classroom = _requested_fund_classroom_for_user(user, data)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not _is_fund_record_in_scope(period.classroom_id, classroom):
+        return jsonify({"error": "Periode kas tidak termasuk kelas aktif"}), 403
 
     title = (data.get('title') or period.title).strip() or period.title
     try:
@@ -2517,6 +2644,11 @@ def api_manage_fund():
     else:
         data = request.form
 
+    try:
+        classroom = _requested_fund_classroom_for_user(user, data)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+
     description = data.get('desc')
     amount = float(data.get('amount', 0))
     type_val = data.get('type')
@@ -2537,7 +2669,18 @@ def api_manage_fund():
 
     if tags and not tags.startswith('#'): tags = '#' + tags
     
+    student = None
+    if student_id_val and str(student_id_val).lower() != 'none':
+        student = Student.query.get(int(student_id_val))
+        if not student:
+            return jsonify({"error": "Member tidak ditemukan"}), 404
+        if classroom and student.classroom_id != classroom.id:
+            return jsonify({"error": "Member tidak termasuk kelas aktif"}), 403
+
+    fund_classroom = student.classroom if student and student.classroom else classroom
+
     fund = BatchFund(
+        classroom_id=fund_classroom.id if fund_classroom else None,
         description=description, 
         amount=amount, 
         type=type_val, 
@@ -2545,7 +2688,7 @@ def api_manage_fund():
         evidence_note=evidence_note,
         recorded_by=user.username,
         date=date_val,
-        student_id=int(student_id_val) if student_id_val and str(student_id_val).lower() != 'none' else None,
+        student_id=student.id if student else None,
         tags=tags
     )
     db.session.add(fund)
@@ -2573,6 +2716,12 @@ def update_fund_api(fund_id):
 
     fund = BatchFund.query.get_or_404(fund_id)
     data = request.get_json(silent=True) or request.form or {}
+    try:
+        classroom = _requested_fund_classroom_for_user(user, data)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not _is_fund_record_in_scope(fund.classroom_id, classroom):
+        return jsonify({"error": "Transaksi tidak termasuk kelas aktif"}), 403
     reason = (data.get('reason') or '').strip()
     if not reason:
         return jsonify({"error": "Alasan perubahan wajib diisi"}), 400
@@ -2598,6 +2747,9 @@ def update_fund_api(fund_id):
     student_id = fund.student_id
     if student_id_val is not None:
         student_id = None if str(student_id_val).lower() == 'none' or str(student_id_val).strip() == '' else int(student_id_val)
+    student = Student.query.get(student_id) if student_id else None
+    if student and classroom and student.classroom_id != classroom.id:
+        return jsonify({"error": "Member tidak termasuk kelas aktif"}), 403
 
     note = data.get('note')
 
@@ -2613,6 +2765,7 @@ def update_fund_api(fund_id):
     fund.type = type_val
     fund.category = category
     fund.student_id = student_id
+    fund.classroom_id = student.classroom_id if student else (fund.classroom_id or (classroom.id if classroom else None))
     fund.tags = tags or None
     if note is not None:
         fund.evidence_note = str(note).strip() or None
@@ -2642,6 +2795,12 @@ def delete_fund_api(fund_id):
         return jsonify({"error": "Unauthorized"}), 403
 
     fund = BatchFund.query.get_or_404(fund_id)
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not _is_fund_record_in_scope(fund.classroom_id, classroom):
+        return jsonify({"error": "Transaksi tidak termasuk kelas aktif"}), 403
     description = fund.description
     db.session.delete(fund)
     db.session.commit()
@@ -2661,7 +2820,14 @@ def duplicate_fund_api(fund_id):
         return jsonify({"error": "Unauthorized"}), 403
 
     fund = BatchFund.query.get_or_404(fund_id)
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    if not _is_fund_record_in_scope(fund.classroom_id, classroom):
+        return jsonify({"error": "Transaksi tidak termasuk kelas aktif"}), 403
     duplicated = BatchFund(
+        classroom_id=fund.classroom_id or (classroom.id if classroom else None),
         description=f"{fund.description} (Copy)",
         amount=fund.amount,
         type=fund.type,

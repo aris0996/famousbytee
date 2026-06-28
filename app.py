@@ -316,6 +316,32 @@ def _can_manage_gallery_content(role=None):
     )
 
 
+def _gallery_allowed_classrooms():
+    return _web_allowed_classrooms(
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
+
+
+def _requested_gallery_classroom():
+    return _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
+
+
+def _is_gallery_photo_in_allowed_scope(photo, classroom):
+    if not classroom:
+        return True
+    if photo.classroom_id == classroom.id:
+        return True
+    return bool(photo.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
+
+
 def _fund_allowed_classrooms():
     return _web_allowed_classrooms(
         'can_view_all_classrooms',
@@ -3478,11 +3504,7 @@ def manage_gallery():
             ((GalleryPhoto.status == 'Pending') & (GalleryPhoto.uploaded_by == current_user.id))
         ).order_by(GalleryPhoto.created_at.desc()).all()
 
-    classrooms = _web_allowed_classrooms(
-        'can_manage_gallery_multi_class',
-        'can_view_all_classrooms',
-        'can_access_multi_classroom',
-    )
+    classrooms = _gallery_allowed_classrooms()
     return render_template(
         'gallery.html',
         photos=photos,
@@ -3490,6 +3512,35 @@ def manage_gallery():
         active_classroom=active_classroom,
         gallery_can_moderate=_can_manage_gallery_content(),
     )
+
+@app.route('/gallery/edit/<int:id>', methods=['POST'])
+@login_required
+def edit_gallery(id):
+    photo = GalleryPhoto.query.get_or_404(id)
+    active_classroom = _requested_gallery_classroom()
+    can_manage = _can_manage_gallery_content()
+
+    if not can_manage and photo.uploaded_by != current_user.id:
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
+
+    if not _is_gallery_photo_in_allowed_scope(photo, active_classroom):
+        flash('Foto tidak termasuk kelas aktif.')
+        return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
+
+    caption = (request.form.get('caption') or '').strip()
+    if not caption:
+        flash('Caption foto wajib diisi.')
+        return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
+
+    photo.caption = caption
+    photo.tags = (request.form.get('tags') or '').strip()
+    if can_manage:
+        photo.is_public = 'is_public' in request.form
+
+    db.session.commit()
+    flash('Foto berhasil diperbarui.')
+    return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
 
 @app.route('/gallery/upload', methods=['POST'])
 @login_required
@@ -3554,6 +3605,9 @@ def delete_gallery(id):
     if not can_manage and photo.uploaded_by != current_user.id:
         flash('Akses ditolak.')
         return redirect(url_for('manage_gallery'))
+    if not _is_gallery_photo_in_allowed_scope(photo, _requested_gallery_classroom()):
+        flash('Foto tidak termasuk kelas aktif.')
+        return redirect(url_for('manage_gallery'))
     
     # Delete Actual Files
     try:
@@ -3579,6 +3633,9 @@ def approve_gallery(id):
         return redirect(url_for('manage_gallery'))
         
     photo = GalleryPhoto.query.get_or_404(id)
+    if not _is_gallery_photo_in_allowed_scope(photo, _requested_gallery_classroom()):
+        flash('Foto tidak termasuk kelas aktif.')
+        return redirect(url_for('manage_gallery'))
     photo.status = 'Published'
     db.session.commit()
     auto_recalculate_points()
@@ -3594,6 +3651,9 @@ def reject_gallery(id):
         return redirect(url_for('manage_gallery'))
         
     photo = GalleryPhoto.query.get_or_404(id)
+    if not _is_gallery_photo_in_allowed_scope(photo, _requested_gallery_classroom()):
+        flash('Foto tidak termasuk kelas aktif.')
+        return redirect(url_for('manage_gallery'))
     # Delete files directly on reject as per user request
     try:
         path = os.path.join(app.config['UPLOAD_FOLDER'], 'gallery', photo.filename)
@@ -3616,6 +3676,9 @@ def toggle_gallery_visibility(id):
         return redirect(url_for('manage_gallery'))
         
     p = GalleryPhoto.query.get_or_404(id)
+    if not _is_gallery_photo_in_allowed_scope(p, _requested_gallery_classroom()):
+        flash('Foto tidak termasuk kelas aktif.')
+        return redirect(url_for('manage_gallery'))
     p.is_public = not p.is_public
     db.session.commit()
     return redirect(url_for('manage_gallery'))
@@ -3714,7 +3777,7 @@ def init_db():
             from sqlalchemy import inspect
             inspector = inspect(db.engine)
             
-            with db.engine.connect() as conn:
+            with db.engine.begin() as conn:
                 # A. Sinkronisasi tabel 'user'
                 user_cols = [c['name'] for c in inspector.get_columns('user')]
                 if 'student_id' not in user_cols:

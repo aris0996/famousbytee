@@ -5,7 +5,7 @@
         <div class="header-content">
             <h1 class="premium-title">{{ 'Manajemen Kas' if current_user.role.can_manage_fund else 'Keuangan Kelas' }}
             </h1>
-            <p class="subtitle">Kelola transparansi dan iuran kelas dengan kontrol penuh.</p>
+            <p class="subtitle">Kelola transparansi dan iuran kelas dengan kontrol penuh untuk {{ active_classroom.name if active_classroom else '-' }}{% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}.</p>
         </div>
         {% if current_user.role.can_manage_fund %}
         <div class="header-actions">
@@ -18,6 +18,26 @@
         </div>
         {% endif %}
     </header>
+
+    {% if current_user.role.can_manage_roles or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom or current_user.role.can_switch_classroom_context or current_user.role.can_view_classroom_reports %}
+    <form method="GET" action="{{ url_for('manage_fund') }}" class="section-card" style="margin-bottom: 1rem; padding: 1rem 1.15rem;">
+        <div class="filter-grid" style="grid-template-columns: minmax(0, 260px) minmax(0, 1fr) auto auto;">
+            <div>
+                <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Kelas Aktif</label>
+                <select name="classroom_id" class="form-control">
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <input type="date" name="start_date" class="form-control" value="{{ request.args.get('start_date', '') }}">
+            <input type="date" name="end_date" class="form-control" value="{{ request.args.get('end_date', '') }}">
+            <button type="submit" class="btn btn-primary">Terapkan</button>
+        </div>
+    </form>
+    {% endif %}
 
     <!-- Unified Stats Section (Reduced size) -->
     <div class="stats-overview-mini">
@@ -60,11 +80,12 @@
 
         <div id="advanced-filter" class="advanced-filter-panel" style="display: none;">
             <form method="GET" class="filter-grid">
+                <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
                 <input type="date" name="start_date" class="form-control"
                     value="{{ request.args.get('start_date', '') }}">
                 <input type="date" name="end_date" class="form-control" value="{{ request.args.get('end_date', '') }}">
                 <button type="submit" class="btn btn-primary">Apply Filter</button>
-                <a href="{{ url_for('manage_fund') }}" class="btn btn-outline">Reset</a>
+                <a href="{{ url_for('manage_fund', classroom_id=active_classroom.id if active_classroom else None) }}" class="btn btn-outline">Reset</a>
             </form>
         </div>
 
@@ -86,6 +107,7 @@
                                 <div class="primary-text">{{ f.description }}</div>
                                 <div class="meta-row">
                                     <span class="tag-cat">{{ f.category }}</span>
+                                    <span class="tag-date">{{ f.classroom.name if f.classroom else 'Legacy Default' }}</span>
                                     {% if f.tags %}<span class="tag-meta">{{ f.tags }}</span>{% endif %}
                                     <span class="tag-date">{{ f.date.strftime('%d %b %Y') }}</span>
                                 </div>
@@ -225,6 +247,7 @@
             <h2>Tambah Periode Kas</h2><button onclick="document.getElementById('modal-period').style.display='none'"><i data-lucide="x"></i></button>
         </div>
         <form method="POST" action="{{ url_for('create_fund_period') }}">
+            <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             <div class="body">
                 <div class="f-group"><label>Nama Periode</label><input type="text" name="title" class="form-control" placeholder="Contoh: Semester Ganjil 2026"></div>
                 <div class="f-row">
@@ -247,6 +270,7 @@
             <h2>Edit Periode Kas</h2><button onclick="document.getElementById('modal-edit-period').style.display='none'"><i data-lucide="x"></i></button>
         </div>
         <form id="edit-period-form" method="POST">
+            <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             <div class="body">
                 <div class="f-group"><label>Nama Periode</label><input type="text" name="title" id="edit-period-title" class="form-control"></div>
                 <div class="f-row">
@@ -269,6 +293,7 @@
                     data-lucide="x"></i></button>
         </div>
         <form method="POST" action="{{ url_for('batch_add_fund') }}">
+            <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             <div class="body">
                 <div class="batch-header">
                     <input type="text" name="common_desc" class="form-control" value="Iuran Kas Kelas">
@@ -297,6 +322,7 @@
                     data-lucide="x"></i></button>
         </div>
         <form method="POST">
+            <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             <div class="body">
                 <div class="f-row">
                     <select name="type" class="form-control">
@@ -344,6 +370,8 @@
                     <input type="number" name="amount" id="edit-fund-amount" class="form-control">
                     <input type="text" name="tags" id="edit-fund-tags" class="form-control" placeholder="#Tag">
                 </div>
+                <input type="hidden" name="type" id="edit-fund-type">
+                <input type="hidden" name="category" id="edit-fund-category">
                 <div class="audit-note-box"><label>ALASAN PERUBAHAN</label><textarea name="reason" class="form-control"
                         required></textarea></div>
             </div>
@@ -1374,6 +1402,8 @@
         document.getElementById('edit-fund-desc').value = desc;
         document.getElementById('edit-fund-amount').value = amount;
         document.getElementById('edit-fund-tags').value = tags;
+        document.getElementById('edit-fund-type').value = type;
+        document.getElementById('edit-fund-category').value = category;
         document.getElementById('modal-edit-fund').style.display = 'flex';
         lucide.createIcons();
     }
