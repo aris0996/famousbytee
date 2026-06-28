@@ -61,6 +61,7 @@
     .waha-pill.ok { background:#dcfce7; color:#166534; }
     .waha-pill.off { background:#f1f5f9; color:#475569; }
     .waha-pill.warn { background:#fef3c7; color:#92400e; }
+    .waha-pill.error { background:#fee2e2; color:#b91c1c; }
     .notify-history table td { vertical-align: top; }
     @media (max-width: 920px) {
         .notify-split { grid-template-columns: 1fr; }
@@ -498,6 +499,11 @@ async function loadWahaGroups() {
         const items = data.items || [];
         if (!items.length) {
             select.innerHTML = '<option value="">Tidak ada grup ditemukan</option>';
+            if (manual && manual.value) {
+                select.value = manual.value;
+            }
+            const bindingStatus = document.getElementById('binding-status');
+            if (bindingStatus) bindingStatus.innerText = data.error || 'WAHA belum mengembalikan grup. Pastikan session login dan base URL benar.';
             return;
         }
         select.innerHTML = '<option value="">Pilih grup WhatsApp</option>' + items.map(item => {
@@ -509,6 +515,13 @@ async function loadWahaGroups() {
         }
     } catch (error) {
         select.innerHTML = '<option value="">Gagal memuat grup</option>';
+        if (manual && manual.value) {
+            select.value = manual.value;
+        }
+        const bindingStatus = document.getElementById('binding-status');
+        if (bindingStatus) {
+            bindingStatus.innerText = error.message || 'Gagal memuat grup WAHA.';
+        }
         console.error(error);
     }
 }
@@ -543,7 +556,7 @@ async function refreshWahaSessions() {
             return;
         }
         select.innerHTML = '<option value="">Pilih session aktif</option>' + items.map(item => {
-            return `<option value="${item.name}">${item.name} - ${item.status || 'unknown'}</option>`;
+            return `<option value="${item.name}">${item.name} - ${normalizeWahaStatusText(item.status)}</option>`;
         }).join('');
         if (status) status.innerText = `Ditemukan ${items.length} session.`;
     } catch (error) {
@@ -589,14 +602,16 @@ async function refreshWahaDashboard() {
     const board = document.getElementById('waha-dashboard');
     if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard WAHA...</div>';
     try {
-        const data = await apiFetch('{{ url_for("notification_waha_dashboard_api") }}');
+        const data = await apiFetch('{{ url_for("api.notification_waha_dashboard_api") }}');
         const workers = data.workers || [];
         const sessions = data.sessions || [];
+        const workerError = data.worker_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.worker_error}</div>` : '';
+        const sessionError = data.session_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.session_error}</div>` : '';
         const workerHtml = workers.length ? workers.map(worker => `
             <div class="waha-item">
                 <h4>${worker.name}</h4>
                 <div class="notify-mini">API: ${worker.api || '-'}</div>
-                <div style="margin-top:.45rem;"><span class="waha-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : 'warn'}">${worker.status || 'unknown'}</span></div>
+                <div style="margin-top:.45rem;"><span class="waha-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : worker.status === 'offline' || worker.status === 'error' ? 'error' : 'warn'}">${normalizeWahaStatusText(worker.status)}</span></div>
                 <div class="notify-mini" style="margin-top:.45rem;">Info: ${worker.info || '-'}</div>
                 <div class="notify-mini">Sessions: ${worker.sessions || 0}</div>
             </div>
@@ -609,7 +624,7 @@ async function refreshWahaDashboard() {
                         <h4>${session.name}</h4>
                         <div class="notify-mini">Account: ${session.account || '-'}</div>
                     </div>
-                    <span class="waha-pill ${String(session.status).toLowerCase().includes('work') ? 'ok' : 'warn'}">${session.status || 'unknown'}</span>
+                    <span class="waha-pill ${sessionStatusClass(session.status)}">${normalizeWahaStatusText(session.status)}</span>
                 </div>
                 <div class="notify-mini" style="margin-top:.45rem;">Server: ${session.server || '-'}</div>
                 <div class="notify-actions" style="margin-top:.75rem;">
@@ -621,13 +636,32 @@ async function refreshWahaDashboard() {
 
         board.innerHTML = `
             <div class="waha-grid">
-                <div class="waha-item"><h4>Workers</h4><div class="waha-grid" style="grid-template-columns:1fr;">${workerHtml}</div></div>
-                <div class="waha-item"><h4>Sessions</h4><div class="waha-grid" style="grid-template-columns:1fr;">${sessionHtml}</div></div>
+                <div class="waha-item"><h4>Workers</h4>${workerError}<div class="waha-grid" style="grid-template-columns:1fr;">${workerHtml}</div></div>
+                <div class="waha-item"><h4>Sessions</h4>${sessionError}<div class="waha-grid" style="grid-template-columns:1fr;">${sessionHtml}</div></div>
             </div>
         `;
     } catch (error) {
         if (board) board.innerHTML = `<div class="notify-output" style="color:#ef4444;">${error.message}</div>`;
     }
+}
+
+function normalizeWahaStatusText(status) {
+    const raw = String(status || '').trim();
+    const lower = raw.toLowerCase();
+    if (!raw) return 'unknown';
+    if (['working', 'connected', 'ok', 'online', 'ready'].includes(lower)) return 'connected';
+    if (['disconnected', 'offline', 'closed', 'stopped', 'failed'].includes(lower)) return 'disconnected';
+    if (lower.includes('qr')) return 'belum login';
+    if (lower.includes('auth') || lower.includes('unauth') || lower.includes('401') || lower.includes('403')) return 'belum login';
+    return raw;
+}
+
+function sessionStatusClass(status) {
+    const raw = String(status || '').toLowerCase();
+    if (['working', 'connected', 'ok', 'online', 'ready'].some(s => raw.includes(s))) return 'ok';
+    if (['disconnected', 'offline', 'closed', 'stopped', 'failed'].some(s => raw.includes(s))) return 'error';
+    if (raw.includes('qr') || raw.includes('auth') || raw.includes('unauth') || raw.includes('401') || raw.includes('403')) return 'warn';
+    return 'warn';
 }
 
 function useSessionName(sessionName) {

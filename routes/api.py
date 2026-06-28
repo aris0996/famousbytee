@@ -1612,12 +1612,19 @@ def notification_bot_groups_api(bot_id):
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
     from app import _waha_request, _normalize_waha_scalar, _normalize_waha_chat_id
-    result = _waha_request('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
-    if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal memuat grup WAHA')}), 400
-
-    raw_data = result.get('data') or []
-    chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
+    result = _waha_request('GET', f'/api/{bot.session_name}/groups', base_url_override=bot.base_url or None)
+    raw_data = []
+    chats = []
+    if result.get('ok'):
+        raw_data = result.get('data') or []
+        chats = raw_data if isinstance(raw_data, list) else raw_data.get('groups', raw_data.get('chats', []))
+    if not chats:
+        fallback = _waha_request('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
+        if fallback.get('ok'):
+            raw_data = fallback.get('data') or []
+            chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
+        elif not result.get('ok'):
+            return jsonify({'ok': False, 'error': result.get('error', fallback.get('error', 'Gagal memuat grup WAHA'))}), 400
     normalized = []
     for item in chats:
         if not isinstance(item, dict):
@@ -1649,6 +1656,8 @@ def notification_waha_dashboard_api():
         'base_url': base_url or '',
         'workers': [],
         'sessions': [],
+        'worker_error': '',
+        'session_error': '',
     }
 
     workers_result = _waha_request('GET', '/api/workers', base_url_override=base_url)
@@ -1662,6 +1671,8 @@ def notification_waha_dashboard_api():
             'info': _normalize_waha_scalar(item.get('info') or item.get('version') or item.get('build') or ''),
             'sessions': item.get('sessions') or item.get('sessionCount') or item.get('workingSessions') or 0,
         } for item in workers if isinstance(item, dict)]
+    else:
+        dashboard['worker_error'] = workers_result.get('error', 'Gagal memuat worker WAHA')
 
     sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
     if sessions_result.get('ok'):
@@ -1674,6 +1685,8 @@ def notification_waha_dashboard_api():
             'server': _normalize_waha_scalar(item.get('server') or item.get('worker') or item.get('engine') or 'default'),
             'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
         } for item in sessions if isinstance(item, dict)]
+    else:
+        dashboard['session_error'] = sessions_result.get('error', 'Gagal memuat session WAHA')
 
     return jsonify(dashboard)
 

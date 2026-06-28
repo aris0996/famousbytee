@@ -407,6 +407,8 @@ def _waha_request(method, path, payload=None, base_url_override=None, api_key_ov
     base_url = (base_url_override if base_url_override is not None else get_setting_value('waha_base_url', '')).strip().rstrip('/')
     if not base_url:
         return {'ok': False, 'error': 'WAHA base URL belum diatur'}
+    if not base_url.startswith(('http://', 'https://')):
+        return {'ok': False, 'error': 'WAHA base URL harus diawali http:// atau https://'}
 
     url = f"{base_url}{path}"
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
@@ -418,7 +420,17 @@ def _waha_request(method, path, payload=None, base_url_override=None, api_key_ov
             return {'ok': True, 'status': resp.status, 'data': json.loads(raw) if raw else None}
     except urllib_error.HTTPError as e:
         detail = e.read().decode('utf-8', errors='ignore')
-        return {'ok': False, 'error': f'HTTP {e.code}: {detail[:180]}'}
+        detail_text = (detail or '').strip()
+        if e.code in (401, 403):
+            return {'ok': False, 'error': f'WAHA menolak akses (HTTP {e.code}). Periksa API key/session login.'}
+        if e.code == 404:
+            return {'ok': False, 'error': 'WAHA endpoint tidak ditemukan. Cek base URL dan versi WAHA.'}
+        if e.code >= 500:
+            return {'ok': False, 'error': f'WAHA error server (HTTP {e.code}). Cek worker/session di WAHA.'}
+        return {'ok': False, 'error': f'HTTP {e.code}: {detail_text[:180]}' if detail_text else f'HTTP {e.code}: Permintaan WAHA gagal'}
+    except urllib_error.URLError as e:
+        reason = getattr(e, 'reason', None)
+        return {'ok': False, 'error': f'Gagal konek ke WAHA: {reason}' if reason else 'Gagal konek ke WAHA'}
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
@@ -4263,6 +4275,7 @@ def get_waha_sessions():
         normalized.append({
             'name': _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
             'status': _normalize_waha_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or '-'),
+            'status_reason': _normalize_waha_scalar(item.get('error') or item.get('message') or item.get('reason') or ''),
             'me': _normalize_waha_scalar(item.get('me') or item.get('meId') or item.get('phone') or '-'),
             'engine': _normalize_waha_scalar(item.get('engine') or item.get('type') or '-'),
             'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
@@ -4284,6 +4297,8 @@ def get_waha_dashboard():
         'session_count': 0,
         'worker_count': 0,
         'base_url': base_url or '',
+        'worker_error': '',
+        'session_error': '',
     }
 
     workers_result = _waha_request('GET', '/api/workers', base_url_override=base_url)
@@ -4303,6 +4318,8 @@ def get_waha_dashboard():
             })
         payload['workers'] = normalized_workers
         payload['worker_count'] = len(normalized_workers)
+    else:
+        payload['worker_error'] = workers_result.get('error', 'Gagal memuat worker WAHA')
 
     sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
     if sessions_result.get('ok'):
@@ -4321,6 +4338,8 @@ def get_waha_dashboard():
             })
         payload['sessions'] = normalized_sessions
         payload['session_count'] = len(normalized_sessions)
+    else:
+        payload['session_error'] = sessions_result.get('error', 'Gagal memuat session WAHA')
 
     return jsonify(payload)
 
@@ -4365,11 +4384,18 @@ def get_waha_groups():
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session WAHA belum diatur'}), 400
     result = _waha_request('GET', f'/api/{session_name}/groups')
-    if not result.get('ok'):
-        return jsonify(result), 400
-
-    raw_data = result.get('data') or []
-    groups = raw_data if isinstance(raw_data, list) else raw_data.get('groups', [])
+    raw_data = []
+    groups = []
+    if result.get('ok'):
+        raw_data = result.get('data') or []
+        groups = raw_data if isinstance(raw_data, list) else raw_data.get('groups', raw_data.get('chats', []))
+    if not groups:
+        fallback = _waha_request('GET', f'/api/{session_name}/chats')
+        if fallback.get('ok'):
+            raw_data = fallback.get('data') or []
+            groups = raw_data if isinstance(raw_data, list) else fallback.get('data', {}).get('chats', [])
+        elif not result.get('ok'):
+            return jsonify({'ok': False, 'error': result.get('error', fallback.get('error', 'Gagal memuat grup WAHA'))}), 400
     normalized = []
     for item in groups:
         if not isinstance(item, dict):
