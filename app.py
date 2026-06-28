@@ -16,6 +16,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from urllib import request as urllib_request, error as urllib_error
+from sqlalchemy.exc import OperationalError
 
 import firebase_admin
 from firebase_admin import credentials, messaging
@@ -375,9 +376,24 @@ def _normalize_waha_chat_identifier(value):
 
 def get_fund_periods(classroom_id=None):
     query = FundPeriod.query.filter_by(is_active=True)
-    if classroom_id:
-        query = query.filter((FundPeriod.classroom_id == classroom_id) | (FundPeriod.classroom_id.is_(None)))
-    return query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    try:
+        if classroom_id:
+            query = query.filter(
+                (FundPeriod.classroom_id == classroom_id) |
+                (FundPeriod.classroom_id.is_(None))
+            )
+        return query.order_by(FundPeriod.start_date.asc(), FundPeriod.id.asc()).all()
+    except OperationalError as exc:
+        message = str(exc).lower()
+        if 'fund_period.classroom_id' not in message and 'unknown column' not in message:
+            raise
+        app.logger.warning(
+            "fund_period.classroom_id belum tersedia di database. Menggunakan fallback periode global sementara."
+        )
+        return FundPeriod.query.filter_by(is_active=True).order_by(
+            FundPeriod.start_date.asc(),
+            FundPeriod.id.asc()
+        ).all()
 
 def _count_weekdays_between(start_date, end_date):
     total = 0
@@ -1661,9 +1677,6 @@ def auto_recalculate_points():
             dirty = True
     if dirty:
         db.session.commit()
-
-with app.app_context():
-    auto_recalculate_points()
 
 
 @app.route('/announcements/manage')
@@ -4366,6 +4379,8 @@ def get_leaderboard_detail(user_id):
 # Inisialisasi database saat aplikasi dinyalakan (WSGI-safe)
 try:
     init_db()
+    with app.app_context():
+        auto_recalculate_points()
     app.logger.info('Database initialization completed successfully.')
 except Exception as _init_err:
     app.logger.critical(f'FATAL: Database initialization failed: {_init_err}\n'
