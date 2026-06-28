@@ -52,6 +52,9 @@
                     </td>
                     <td style="padding: 1rem;">
                         <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">{{ a.date_posted.strftime('%d %b %Y') }}</div>
+                        <div style="font-size: 0.76rem; color: #4338ca; font-weight: 700; margin-top: 0.25rem;">
+                            {{ a.classroom.name if a.classroom else 'Publik' }}{% if a.classroom and a.classroom.batch %} - {{ a.classroom.batch }}{% endif %}
+                        </div>
                         <span class="status-badge" style="background: {{ '#dcfce7; color: #166534' if a.is_public else '#fee2e2; color: #991b1b' }}; font-size: 0.65rem; padding: 2px 8px;">
                             {{ 'Publik' if a.is_public else 'Internal' }}
                         </span>
@@ -86,6 +89,9 @@
                 <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">{{ a.date_posted.strftime('%d %b %Y') }}</span>
             </div>
             <h4 style="margin: 0 0 0.5rem 0; font-weight: 800;">{{ a.title }}</h4>
+            <div style="font-size: 0.78rem; color: #4338ca; font-weight: 700; margin-bottom: 0.5rem;">
+                {{ a.classroom.name if a.classroom else 'Publik' }}{% if a.classroom and a.classroom.batch %} - {{ a.classroom.batch }}{% endif %}
+            </div>
             <p style="margin: 0; font-size: 0.85rem; color: #64748b; line-height: 1.5;">{{ a.content[:100] }}...</p>
             
             <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid #f1f5f9; padding-top: 0.75rem;">
@@ -270,6 +276,18 @@ function openEditAnn(id, title, category, pinned, ispublic, content) {
             </button>
         </div>
         <form method="POST" style="padding: 2rem;">
+            {% if current_user.role.can_manage_roles or current_user.role.can_manage_announcements_multi_class or current_user.role.can_view_all_classrooms %}
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <label>Pilih Kelas</label>
+                <select name="classroom_id" class="form-control" required>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}" {% if active_classroom and classroom.id == active_classroom.id %}selected{% endif %}>
+                        {{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
             <div style="display: flex; flex-wrap: wrap; gap: 15px;">
                 <div class="form-group" style="flex: 1; min-width: 200px;">
                     <label>Kategori</label>

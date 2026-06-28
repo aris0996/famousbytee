@@ -4,6 +4,11 @@
     <div>
         <h1 style="font-weight: 900; letter-spacing: -1.5px; font-size: 2.5rem;">{{ 'Manajemen Tugas' if current_user.role.can_manage_assignments else 'Daftar Tugas' }}</h1>
         <p style="color: var(--text-muted);">{{ 'Kelola daftar tugas dan tenggat waktu untuk seluruh mahasiswa.' if current_user.role.can_manage_assignments else 'Lihat daftar tugas dan tenggat waktu terbaru.' }}</p>
+        <p style="margin: 0.4rem 0 0; color: var(--text-muted);">
+            Fokus data saat ini:
+            <strong>{{ active_classroom.name if active_classroom else '-' }}</strong>
+            {% if active_classroom and active_classroom.batch %} - {{ active_classroom.batch }}{% endif %}
+        </p>
     </div>
 </header>
 
@@ -25,7 +30,7 @@
             <i data-lucide="plus-circle" style="color: var(--primary);"></i> Tambah Tugas
         </h3>
         <form action="{{ url_for('manage_assignments') }}" method="POST">
-            {% if current_user.role.can_manage_roles %}
+            {% if current_user.role.can_manage_roles or current_user.role.can_manage_assignments_multi_class or current_user.role.can_view_all_classrooms %}
             <div class="form-group">
                 <label>Pilih Kelas</label>
                 <select name="classroom_id" class="form-control" required>
@@ -81,6 +86,10 @@
                             </div>
                             <h4 style="font-weight: 800; font-size: 1.1rem; color: var(--text-main); margin-bottom: 6px;">{{ a.title }}</h4>
                             <div style="display: flex; gap: 20px; font-size: 0.85rem; color: #64748b; font-weight: 600;">
+                                <div style="display: flex; align-items: center; gap: 6px;">
+                                    <i data-lucide="building-2" style="width: 14px;"></i>
+                                    {{ a.classroom.name if a.classroom else '-' }}{% if a.classroom and a.classroom.batch %} - {{ a.classroom.batch }}{% endif %}
+                                </div>
                                 <div style="display: flex; align-items: center; gap: 6px;">
                                     <i data-lucide="calendar" style="width: 14px;"></i>
                                     {{ a.deadline.strftime('%A, %d %B %Y') }}

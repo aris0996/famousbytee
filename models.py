@@ -107,23 +107,6 @@ class ClassRoom(db.Model):
     schedules = db.relationship('Schedule', backref='classroom', lazy=True)
 
 class Student(db.Model):
-
-class PhotoComment(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    photo_id = db.Column(db.Integer, db.ForeignKey('gallery_photo.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    user = db.relationship('User', backref='comments_made', lazy=True)
-    body = db.Column(db.Text, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-class ClassRoom(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String(50), unique=True, nullable=False) # e.g., 2A, 2B
-    batch = db.Column(db.String(50)) # e.g., 2024
-    students = db.relationship('Student', backref='classroom', lazy=True)
-    schedules = db.relationship('Schedule', backref='classroom', lazy=True)
-
-class Student(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nim = db.Column(db.String(20), unique=True, nullable=False)
     full_name = db.Column(db.String(100), nullable=False)

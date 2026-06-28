@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
-from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
+from flask_login import current_user
 from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding
 from datetime import datetime, timedelta
 import os
@@ -140,6 +141,23 @@ def _allowed_notification_classrooms_for_user(user):
     if user.role and _can_manage_notification_across_classes(user.role):
         return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
     return [current] if current else []
+
+
+def _api_request_user(require_api_access=False):
+    verify_jwt_in_request(optional=True)
+    identity = get_jwt_identity()
+    user = User.query.get(int(identity)) if identity else None
+
+    if not user and current_user.is_authenticated:
+        user = current_user
+
+    if not user:
+        return None
+
+    if require_api_access and not getattr(user.role, 'can_use_api', False):
+        return None
+
+    return user
 
 @api_bp.route('/app/releases/windows/latest', methods=['GET'])
 def latest_windows_release():
@@ -1257,11 +1275,12 @@ def delete_schedule_template_api(template_id):
     return jsonify({"status": "success"})
 
 @api_bp.route('/notifications/preferences', methods=['GET'])
-@jwt_required()
 def get_notification_preferences():
     """Get notification preferences for schedule management"""
     from app import get_classroom_notification_policy
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     classroom = _user_classroom(user)
     policy = get_classroom_notification_policy(classroom.id if classroom else None)
     return jsonify({
@@ -1271,12 +1290,12 @@ def get_notification_preferences():
     })
 
 @api_bp.route('/notifications/preferences', methods=['POST'])
-@jwt_required()
 def update_notification_preferences():
     """Update notification preferences for schedule management"""
     from app import get_classroom_notification_policy
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     
     if not user.role.can_manage_schedule:
         return jsonify({"error": "Unauthorized"}), 403
@@ -1303,9 +1322,10 @@ def update_notification_preferences():
 
 
 @api_bp.route('/notifications/classrooms/<int:classroom_id>/policy', methods=['GET', 'PUT'])
-@jwt_required()
 def classroom_notification_policy_api(classroom_id):
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -1349,9 +1369,10 @@ def classroom_notification_policy_api(classroom_id):
 
 
 @api_bp.route('/notifications/classrooms/<int:classroom_id>/whatsapp-binding', methods=['GET', 'PUT'])
-@jwt_required()
 def classroom_whatsapp_binding_api(classroom_id):
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.can_manage_whatsapp:
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -1402,9 +1423,10 @@ def classroom_whatsapp_binding_api(classroom_id):
 
 
 @api_bp.route('/notifications/bots', methods=['GET', 'POST'])
-@jwt_required()
 def notification_bots_api():
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.can_manage_whatsapp:
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -1440,9 +1462,10 @@ def notification_bots_api():
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>', methods=['PUT'])
-@jwt_required()
 def update_notification_bot_api(bot_id):
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.can_manage_whatsapp:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
@@ -1462,9 +1485,10 @@ def update_notification_bot_api(bot_id):
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>/health', methods=['GET'])
-@jwt_required()
 def notification_bot_health_api(bot_id):
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.can_manage_whatsapp:
         return jsonify({"error": "Unauthorized"}), 403
     from app import _waha_request, _normalize_waha_scalar

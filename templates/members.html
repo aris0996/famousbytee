@@ -20,7 +20,7 @@
             <i data-lucide="user-plus" style="color: var(--primary);"></i> Tambah Anggota
         </h3>
         <form method="POST">
-            {% if current_user.role.can_manage_roles %}
+            {% if current_user.role.can_manage_roles or current_user.role.can_manage_students_multi_class or current_user.role.can_assign_users_to_classroom or current_user.role.can_move_users_between_classrooms or current_user.role.can_view_all_classrooms %}
             <div class="form-group">
                 <label>Pilih Kelas</label>
                 <select name="classroom_id" class="form-control" required>
@@ -154,7 +154,7 @@
             Format: <strong>NIM ; Nama ; Status</strong> (Pisahkan dengan titik koma atau koma).
         </p>
         <form action="{{ url_for('bulk_add_members') }}" method="POST">
-            {% if current_user.role.can_manage_roles %}
+            {% if current_user.role.can_manage_roles or current_user.role.can_manage_students_multi_class or current_user.role.can_assign_users_to_classroom or current_user.role.can_move_users_between_classrooms or current_user.role.can_view_all_classrooms %}
             <div class="form-group">
                 <label>Pilih Kelas</label>
                 <select name="classroom_id" class="form-control" required>
@@ -186,7 +186,7 @@
                 <label>Label Kelas Saat Ini</label>
                 <input type="text" id="edit-classroom-label" class="form-control" readonly>
             </div>
-            {% if current_user.role.can_manage_roles %}
+            {% if current_user.role.can_manage_roles or current_user.role.can_manage_students_multi_class or current_user.role.can_assign_users_to_classroom or current_user.role.can_move_users_between_classrooms or current_user.role.can_view_all_classrooms %}
             <div class="form-group">
                 <label>Pilih Kelas</label>
                 <select name="classroom_id" id="edit-classroom" class="form-control" required>

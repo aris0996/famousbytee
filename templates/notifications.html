@@ -337,15 +337,24 @@ function showNotifyTab(name) {
 }
 
 async function apiFetch(url, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {})
+    };
+    if (PAGE_TOKEN) {
+        headers['Authorization'] = `Bearer ${PAGE_TOKEN}`;
+    }
+
     const response = await fetch(url, {
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${PAGE_TOKEN}`,
-            ...(options.headers || {})
-        },
+        headers,
         ...options,
     });
-    const data = await response.json();
+    let data = {};
+    try {
+        data = await response.json();
+    } catch (error) {
+        data = { error: 'Respons server tidak terbaca.' };
+    }
     if (!response.ok) {
         throw new Error(data.error || data.msg || 'Permintaan gagal');
     }

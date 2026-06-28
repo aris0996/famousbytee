@@ -388,6 +388,48 @@ def _count_weekdays_between(start_date, end_date):
         current += timedelta(days=1)
     return total
 
+
+def _default_classroom():
+    return ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+
+
+def _active_classroom_for_user(user=None):
+    user = user or current_user
+    classroom = getattr(user, 'classroom', None) or (user.student.classroom if getattr(user, 'student', None) else None)
+    return classroom or _default_classroom()
+
+
+def _has_any_classroom_scope(*flags):
+    role = current_user.role
+    return bool(
+        role.can_manage_roles or
+        any(getattr(role, flag, False) for flag in flags)
+    )
+
+
+def _web_allowed_classrooms(*flags):
+    active_classroom = _active_classroom_for_user()
+    if _has_any_classroom_scope(*flags):
+        return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    return [active_classroom] if active_classroom else []
+
+
+def _requested_classroom(form_key='classroom_id', fallback=None, *flags):
+    fallback = fallback or _active_classroom_for_user()
+    requested_id = request.form.get(form_key) or request.args.get(form_key)
+    allowed = _web_allowed_classrooms(*flags)
+    allowed_ids = {item.id for item in allowed}
+    if requested_id not in (None, ''):
+        try:
+            classroom_id = int(requested_id)
+        except Exception:
+            return fallback
+        if classroom_id in allowed_ids:
+            classroom = ClassRoom.query.get(classroom_id)
+            if classroom:
+                return classroom
+    return fallback
+
 def _waha_headers(api_key_override=None):
     api_key = (api_key_override if api_key_override is not None else get_setting_value('waha_api_key', '')).strip()
     headers = {'Content-Type': 'application/json'}
@@ -1512,6 +1554,33 @@ with app.app_context():
                     'can_view_classroom_reports': False, 'can_export_classroom_data': False
                 }
             }
+        }
+
+        for role_name, role_config in role_data.items():
+            role = Role.query.filter_by(name=role_name).first()
+            if not role:
+                role = Role(name=role_name)
+                db.session.add(role)
+
+            role.description = role_config.get('description', role.description)
+            for key, value in role_config.get('perms', {}).items():
+                if hasattr(role, key):
+                    setattr(role, key, value)
+
+        db.session.commit()
+
+    sync_roles()
+
+
+def get_fund_target(classroom_id=None):
+    today = datetime.now().date()
+    periods = get_fund_periods(classroom_id)
+    if periods:
+        total = 0
+        for period in periods:
+            effective_end = min(today, period.end_date) if period.end_date else today
+            if effective_end < period.start_date:
+                continue
             total += _count_weekdays_between(period.start_date, effective_end) * (period.daily_rate or 0)
         return total
 
@@ -1740,17 +1809,25 @@ def manage_members():
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
 
-    all_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    all_classrooms = _web_allowed_classrooms(
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
+    active_classroom = _active_classroom_for_user()
     
     if request.method == 'POST':
-        classroom = active_classroom
-        if current_user.role.can_manage_roles:
-            classroom_id = request.form.get('classroom_id')
-            if classroom_id:
-                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
+        classroom = _requested_classroom(
+            'classroom_id',
+            active_classroom,
+            'can_manage_students_multi_class',
+            'can_assign_users_to_classroom',
+            'can_move_users_between_classrooms',
+            'can_view_all_classrooms',
+        )
         new_m = Student(
             nim=request.form['nim'], 
             full_name=request.form['full_name'], 
@@ -1762,13 +1839,24 @@ def manage_members():
         log_activity("Tambah Member", f"NIM: {new_m.nim}, Nama: {new_m.full_name}")
         return redirect(url_for('manage_members'))
     
-    if current_user.role.can_manage_roles and request.args.get('classroom_id'):
-        classroom = ClassRoom.query.get(int(request.args.get('classroom_id')))
-        if classroom:
-            active_classroom = classroom
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        active_classroom,
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
 
     members_query = Student.query
-    if active_classroom:
+    if active_classroom and not _has_any_classroom_scope(
+        'can_manage_students_multi_class',
+        'can_view_all_classrooms',
+    ):
+        members_query = members_query.filter_by(classroom_id=active_classroom.id)
+    elif active_classroom and request.args.get('classroom_id'):
         members_query = members_query.filter_by(classroom_id=active_classroom.id)
     members = members_query.order_by(Student.full_name.asc()).all()
     return render_template('members.html', students=members, classrooms=all_classrooms, active_classroom=active_classroom)
@@ -1778,13 +1866,14 @@ def manage_members():
 def bulk_add_members():
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
     data = request.form.get('bulk_data')
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+    )
     
     added_count = 0
     lines = data.strip().split('\n')
@@ -1814,13 +1903,26 @@ def bulk_add_members():
 def edit_member(id):
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
     m = Student.query.get_or_404(id)
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+    )}
+    if allowed_ids and m.classroom_id not in allowed_ids:
+        flash('Akses edit member ditolak untuk kelas tersebut.')
+        return redirect(url_for('manage_members'))
     old_name = m.full_name
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            classroom = ClassRoom.query.get(int(classroom_id))
-            if classroom:
-                m.classroom_id = classroom.id
+    classroom = _requested_classroom(
+        'classroom_id',
+        m.classroom or _active_classroom_for_user(),
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+    )
+    if classroom:
+        m.classroom_id = classroom.id
     m.nim = request.form['nim']
     m.full_name = request.form['full_name']
     m.status = request.form['status']
@@ -1834,6 +1936,15 @@ def edit_member(id):
 def delete_member(id):
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
     m = Student.query.get_or_404(id)
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_students_multi_class',
+        'can_assign_users_to_classroom',
+        'can_move_users_between_classrooms',
+        'can_view_all_classrooms',
+    )}
+    if allowed_ids and m.classroom_id not in allowed_ids:
+        flash('Akses hapus member ditolak untuk kelas tersebut.')
+        return redirect(url_for('manage_members'))
     log_activity("Hapus Member", f"NIM: {m.nim}, Nama: {m.full_name}")
     db.session.delete(m)
     db.session.commit()
@@ -1842,20 +1953,31 @@ def delete_member(id):
 @app.route('/schedule', methods=['GET', 'POST'])
 @login_required
 def manage_schedule():
-    all_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    all_classrooms = _web_allowed_classrooms(
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     if request.method == 'POST' and not current_user.role.can_manage_schedule:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        classroom = active_classroom
-        if current_user.role.can_manage_roles:
-            classroom_id = request.form.get('classroom_id')
-            if classroom_id:
-                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
+        classroom = _requested_classroom(
+            'classroom_id',
+            active_classroom,
+            'can_manage_schedule_multi_class',
+            'can_view_all_classrooms',
+        )
         # Single Add logic (remains as is)
         sched = Schedule(
             classroom_id=classroom.id if classroom else None, 
@@ -1912,13 +2034,12 @@ def create_schedule_preset():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     name = (request.form.get('name') or '').strip()
     subject = (request.form.get('subject') or '').strip()
     if not name or not subject:
@@ -1945,9 +2066,12 @@ def update_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     preset = SchedulePreset.query.get_or_404(preset_id)
     if class_fb and preset.classroom_id not in (class_fb.id, None):
         return redirect(url_for('manage_schedule') + '#presets')
@@ -1972,9 +2096,12 @@ def delete_schedule_preset(preset_id):
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     preset = SchedulePreset.query.get_or_404(preset_id)
     if class_fb and preset.classroom_id not in (class_fb.id, None):
         return redirect(url_for('manage_schedule') + '#presets')
@@ -2177,19 +2304,25 @@ def delete_schedule_template(template_id):
 @app.route('/assignments', methods=['GET', 'POST'])
 @login_required
 def manage_assignments():
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_assignments_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     if request.method == 'POST' and not current_user.role.can_manage_assignments:
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
-        classroom = active_classroom
-        if current_user.role.can_manage_roles:
-            classroom_id = request.form.get('classroom_id')
-            if classroom_id:
-                classroom = ClassRoom.query.get(int(classroom_id)) or classroom
+        classroom = _requested_classroom(
+            'classroom_id',
+            active_classroom,
+            'can_manage_assignments_multi_class',
+            'can_view_all_classrooms',
+        )
         a = Assignment(
             title=request.form['title'],
             subject=request.form['subject'],
@@ -2214,12 +2347,24 @@ def manage_assignments():
         return redirect(url_for('manage_assignments'))
     
     assignments_query = Assignment.query
-    if active_classroom:
+    if active_classroom and not _has_any_classroom_scope(
+        'can_manage_assignments_multi_class',
+        'can_view_all_classrooms',
+    ):
+        assignments_query = assignments_query.filter(
+            (Assignment.classroom_id == active_classroom.id) | (Assignment.classroom_id.is_(None))
+        )
+    elif active_classroom and request.args.get('classroom_id'):
         assignments_query = assignments_query.filter(
             (Assignment.classroom_id == active_classroom.id) | (Assignment.classroom_id.is_(None))
         )
     assignments = assignments_query.order_by(Assignment.deadline.asc()).all()
-    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    classrooms = _web_allowed_classrooms(
+        'can_manage_assignments_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     return render_template('assignments.html', assignments=assignments, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/assignments/delete/<int:id>')
@@ -2227,6 +2372,13 @@ def manage_assignments():
 def delete_assignment(id):
     if not current_user.role.can_manage_assignments: return redirect(url_for('dashboard'))
     a = Assignment.query.get_or_404(id)
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_assignments_multi_class',
+        'can_view_all_classrooms',
+    )}
+    if a.classroom_id not in allowed_ids and a.classroom_id is not None:
+        flash('Akses hapus tugas ditolak untuk kelas tersebut.')
+        return redirect(url_for('manage_assignments'))
     log_activity("Hapus Tugas", f"Judul: {a.title}")
     db.session.delete(a)
     db.session.commit()
@@ -2238,13 +2390,12 @@ def delete_assignment(id):
 @login_required
 def schedule_batch():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     
     if 'file' not in request.files: return redirect(url_for('manage_schedule'))
     file = request.files['file']
@@ -2293,13 +2444,12 @@ def schedule_batch():
 def bulk_add_schedule():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     data = request.form.get('bulk_data')
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     
     added_count = 0
     lines = data.strip().split('\n')
@@ -2332,12 +2482,21 @@ def bulk_add_schedule():
 def edit_schedule(id):
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     s = Schedule.query.get_or_404(id)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            classroom = ClassRoom.query.get(int(classroom_id))
-            if classroom:
-                s.classroom_id = classroom.id
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )}
+    if s.classroom_id not in allowed_ids and s.classroom_id is not None:
+        flash('Akses edit jadwal ditolak untuk kelas tersebut.')
+        return redirect(url_for('manage_schedule'))
+    classroom = _requested_classroom(
+        'classroom_id',
+        s.classroom or _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
+    if classroom:
+        s.classroom_id = classroom.id
     s.day = request.form['day']
     s.time_start = request.form['time_start']
     s.time_end = request.form['time_end']
@@ -2364,6 +2523,13 @@ def edit_schedule(id):
 def delete_schedule(id):
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
     s = Schedule.query.get_or_404(id)
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )}
+    if s.classroom_id not in allowed_ids and s.classroom_id is not None:
+        flash('Akses hapus jadwal ditolak untuk kelas tersebut.')
+        return redirect(url_for('manage_schedule'))
     subject_name = s.subject
     log_activity("Hapus Jadwal", f"Matkul: {s.subject}")
     db.session.delete(s)
@@ -2384,9 +2550,12 @@ def delete_schedule(id):
 @login_required
 def download_schedule_template():
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
     
     # Headers dengan ID untuk pendeteksian UPDATE
@@ -2417,9 +2586,12 @@ def manage_announcements():
         return redirect(url_for('dashboard'))
         
     if request.method == 'POST':
-        active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-        if not active_classroom:
-            active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+        active_classroom = _requested_classroom(
+            'classroom_id',
+            _active_classroom_for_user(),
+            'can_manage_announcements_multi_class',
+            'can_view_all_classrooms',
+        )
         ann = Announcement(
             classroom_id=active_classroom.id if active_classroom else None,
             title=request.form['title'], 
@@ -2438,16 +2610,33 @@ def manage_announcements():
         log_activity("Tambah Pengumuman", f"Judul: {ann.title} (Publik: {ann.is_public})")
         return redirect(url_for('manage_announcements'))
     
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     announcements_query = Announcement.query
-    if active_classroom:
+    if active_classroom and not _has_any_classroom_scope(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+    ):
+        announcements_query = announcements_query.filter(
+            (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
+        )
+    elif active_classroom and request.args.get('classroom_id'):
         announcements_query = announcements_query.filter(
             (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
         )
     announcements = announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
-    classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
+    classrooms = _web_allowed_classrooms(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
     return render_template('announcements.html', announcements=announcements, classrooms=classrooms, active_classroom=active_classroom)
 
 @app.route('/announcements/edit/<int:id>', methods=['POST'])
@@ -2455,8 +2644,11 @@ def manage_announcements():
 def edit_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if active_classroom and ann.classroom_id not in (active_classroom.id, None):
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+    )}
+    if ann.classroom_id not in allowed_ids and ann.classroom_id is not None:
         flash('Akses ditolak.')
         return redirect(url_for('manage_announcements'))
     ann.title = request.form['title']
@@ -2474,8 +2666,11 @@ def edit_announcement(id):
 def delete_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if active_classroom and ann.classroom_id not in (active_classroom.id, None):
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+    )}
+    if ann.classroom_id not in allowed_ids and ann.classroom_id is not None:
         flash('Akses ditolak.')
         return redirect(url_for('manage_announcements'))
     log_activity("Hapus Pengumuman", f"Judul: {ann.title}")
@@ -2909,6 +3104,13 @@ def manage_classes():
         if class_id:
             classroom = ClassRoom.query.get(int(class_id))
             if classroom:
+                duplicate = ClassRoom.query.filter(
+                    db.func.lower(ClassRoom.name) == name.lower(),
+                    ClassRoom.id != classroom.id
+                ).first()
+                if duplicate:
+                    flash('Nama kelas sudah dipakai kelas lain.')
+                    return redirect(url_for('manage_classes'))
                 classroom.name = name
                 classroom.batch = batch
                 db.session.commit()
