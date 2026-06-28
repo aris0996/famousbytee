@@ -4270,6 +4270,61 @@ def get_waha_sessions():
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized)})
 
 
+@app.route('/notifications/waha/dashboard')
+@login_required
+def get_waha_dashboard():
+    if not current_user.role.can_manage_whatsapp:
+        return jsonify({'error': 'Unauthorized'}), 403
+
+    base_url = get_setting_value('waha_base_url', '').strip() or None
+    payload = {
+        'ok': True,
+        'workers': [],
+        'sessions': [],
+        'session_count': 0,
+        'worker_count': 0,
+        'base_url': base_url or '',
+    }
+
+    workers_result = _waha_request('GET', '/api/workers', base_url_override=base_url)
+    if workers_result.get('ok'):
+        raw_workers = workers_result.get('data') or []
+        workers = raw_workers if isinstance(raw_workers, list) else raw_workers.get('workers', raw_workers.get('data', []))
+        normalized_workers = []
+        for item in workers or []:
+            if not isinstance(item, dict):
+                continue
+            normalized_workers.append({
+                'name': _normalize_waha_scalar(item.get('name') or item.get('id') or 'worker'),
+                'api': _normalize_waha_scalar(item.get('api') or item.get('baseUrl') or base_url or ''),
+                'status': _normalize_waha_scalar(item.get('status') or item.get('state') or 'unknown'),
+                'info': _normalize_waha_scalar(item.get('info') or item.get('version') or item.get('build') or ''),
+                'sessions': item.get('sessions') or item.get('sessionCount') or item.get('workingSessions') or 0,
+            })
+        payload['workers'] = normalized_workers
+        payload['worker_count'] = len(normalized_workers)
+
+    sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
+    if sessions_result.get('ok'):
+        raw_sessions = sessions_result.get('data') or []
+        sessions = raw_sessions if isinstance(raw_sessions, list) else raw_sessions.get('sessions', [])
+        normalized_sessions = []
+        for item in sessions:
+            if not isinstance(item, dict):
+                continue
+            normalized_sessions.append({
+                'name': _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
+                'status': _normalize_waha_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or 'unknown'),
+                'account': _normalize_waha_scalar(item.get('me') or item.get('meId') or item.get('phone') or item.get('wid') or '-'),
+                'server': _normalize_waha_scalar(item.get('server') or item.get('worker') or item.get('engine') or 'default'),
+                'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
+            })
+        payload['sessions'] = normalized_sessions
+        payload['session_count'] = len(normalized_sessions)
+
+    return jsonify(payload)
+
+
 @app.route('/notifications/waha/session/<session_name>/qr')
 @login_required
 def get_waha_session_qr(session_name):

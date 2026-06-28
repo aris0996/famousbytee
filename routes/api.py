@@ -1633,6 +1633,50 @@ def notification_bot_groups_api(bot_id):
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': bot.session_name, 'bot_id': bot.id})
 
+
+@api_bp.route('/notifications/waha/dashboard', methods=['GET'])
+def notification_waha_dashboard_api():
+    user = _api_request_user()
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    if not user or not user.role.can_manage_whatsapp:
+        return jsonify({"error": "Unauthorized"}), 403
+    from app import get_setting_value, _waha_request, _normalize_waha_scalar
+    base_url = get_setting_value('waha_base_url', '').strip() or None
+
+    dashboard = {
+        'ok': True,
+        'base_url': base_url or '',
+        'workers': [],
+        'sessions': [],
+    }
+
+    workers_result = _waha_request('GET', '/api/workers', base_url_override=base_url)
+    if workers_result.get('ok'):
+        raw_workers = workers_result.get('data') or []
+        workers = raw_workers if isinstance(raw_workers, list) else raw_workers.get('workers', raw_workers.get('data', []))
+        dashboard['workers'] = [{
+            'name': _normalize_waha_scalar(item.get('name') or item.get('id') or 'worker'),
+            'api': _normalize_waha_scalar(item.get('api') or item.get('baseUrl') or base_url or ''),
+            'status': _normalize_waha_scalar(item.get('status') or item.get('state') or 'unknown'),
+            'info': _normalize_waha_scalar(item.get('info') or item.get('version') or item.get('build') or ''),
+            'sessions': item.get('sessions') or item.get('sessionCount') or item.get('workingSessions') or 0,
+        } for item in workers if isinstance(item, dict)]
+
+    sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
+    if sessions_result.get('ok'):
+        raw_sessions = sessions_result.get('data') or []
+        sessions = raw_sessions if isinstance(raw_sessions, list) else raw_sessions.get('sessions', [])
+        dashboard['sessions'] = [{
+            'name': _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
+            'status': _normalize_waha_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or 'unknown'),
+            'account': _normalize_waha_scalar(item.get('me') or item.get('meId') or item.get('phone') or item.get('wid') or '-'),
+            'server': _normalize_waha_scalar(item.get('server') or item.get('worker') or item.get('engine') or 'default'),
+            'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
+        } for item in sessions if isinstance(item, dict)]
+
+    return jsonify(dashboard)
+
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
 def send_schedule_whatsapp(id):
