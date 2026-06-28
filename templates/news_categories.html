@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .cat-head { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:flex-start; gap:16px; }
+    .cat-grid { display:grid; grid-template-columns: 1fr 1fr; gap:18px; align-items:start; }
+    .cat-list { display:flex; flex-direction:column; gap:10px; }
+    .cat-row {
+        display:flex; align-items:center; justify-content:space-between; gap:14px;
+        padding:14px 16px; background:#f8fafc; border:1px solid #eef2ff; border-radius:14px;
+    }
+    .cat-meta { display:flex; align-items:center; gap:12px; min-width:0; }
+    .cat-swatch { width:16px; height:16px; border-radius:4px; flex:0 0 auto; }
+    .cat-name { font-weight:800; }
+    .cat-path { font-size:.75rem; color:#64748b; font-family:monospace; }
+    .cat-actions { display:flex; gap:8px; align-items:center; }
+    .cat-actions button { border:none; background:none; cursor:pointer; padding:4px; }
+    .modal {
+        display:none; position:fixed; inset:0; background:rgba(15,23,42,.5);
+        align-items:center; justify-content:center; z-index:2000; padding:20px;
+    }
+    .modal .card { width:420px; max-width:100%; }
+    @media (max-width: 900px) { .cat-grid { grid-template-columns:1fr; } }
+</style>
+
+<header class="cat-head">
+    <div>
+        <h1>Kategori Berita</h1>
+        <p style="color:var(--text-muted); margin:.35rem 0 0;">Kelola pengelompokan berita agar daftar publik lebih rapi dan mudah difilter.</p>
+    </div>
+    <a href="{{ url_for('manage_news') }}" class="btn" style="background:#e2e8f0; color:#475569; text-decoration:none; display:flex; align-items:center; gap:8px;">
+        <i data-lucide="arrow-left" style="width:16px;"></i> Kembali ke Berita
+    </a>
+</header>
+
+{% with messages = get_flashed_messages() %}
+{% if messages %}{% for m in messages %}
+<div style="background:#eff6ff; color:#1d4ed8; padding:1rem; border-radius:12px; margin:1.25rem 0; border:1px solid #dbeafe; font-weight:500;">{{ m }}</div>
+{% endfor %}{% endif %}{% endwith %}
+
+<div class="cat-grid">
+    <div class="card">
+        <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:1rem; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="plus-circle" style="width:18px; color:var(--primary);"></i> Tambah Kategori Baru
+        </h3>
+        <form method="POST">
+            <input type="hidden" name="action" value="add">
+            <div class="form-group">
+                <label>Nama Kategori</label>
+                <input type="text" name="name" class="form-control" placeholder="Contoh: Akademik" required>
+            </div>
+            <div class="form-group">
+                <label>Warna Badge</label>
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <input type="color" name="color" value="#4f46e5" style="width:52px; height:42px; border:none; border-radius:10px; cursor:pointer; padding:2px;">
+                    <span style="font-size:.85rem; color:var(--text-muted);">Dipakai sebagai warna label kategori di berita publik.</span>
+                </div>
+            </div>
+            <button type="submit" class="btn" style="display:inline-flex; align-items:center; gap:8px;">
+                <i data-lucide="plus" style="width:14px;"></i> Tambah Kategori
+            </button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:1rem; display:flex; align-items:center; gap:8px;">
+            <i data-lucide="tag" style="width:18px; color:var(--primary);"></i> Daftar Kategori ({{ categories|length }})
+        </h3>
+        {% if categories %}
+        <div class="cat-list">
+            {% for cat in categories %}
+            <div class="cat-row">
+                <div class="cat-meta">
+                    <span class="cat-swatch" style="background:{{ cat.color }};"></span>
+                    <div style="min-width:0;">
+                        <div class="cat-name">{{ cat.name }}</div>
+                        <div class="cat-path">/berita?kategori={{ cat.slug }}</div>
+                    </div>
+                    <span class="status-badge" style="font-size:.72rem; background:{{ cat.color }}18; color:{{ cat.color }};">
+                        {{ cat.articles|length }} artikel
+                    </span>
+                </div>
+                <div class="cat-actions">
+                    <button type="button" onclick="openEditCat('{{ cat.id }}', '{{ cat.name|e }}', '{{ cat.color }}')" title="Edit">
+                        <i data-lucide="edit-3" style="width:16px; color:var(--primary);"></i>
+                    </button>
+                    <form method="POST" style="display:inline;" onsubmit="return confirm('Hapus kategori ini? Artikel tidak akan terhapus.')">
+                        <input type="hidden" name="action" value="delete">
+                        <input type="hidden" name="cat_id" value="{{ cat.id }}">
+                        <button type="submit" title="Hapus">
+                            <i data-lucide="trash-2" style="width:16px; color:#ef4444;"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align:center; padding:2rem; color:var(--text-muted);">
+            <i data-lucide="tag" style="width:40px; display:block; margin:0 auto 0.75rem; opacity:.3;"></i>
+            <p style="margin:0;">Belum ada kategori. Tambahkan kategori pertama.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div id="modal-edit-cat" class="modal">
+    <div class="card">
+        <h3 style="font-size:1.05rem; font-weight:800; margin-bottom:1rem;">Edit Kategori</h3>
+        <form id="form-edit-cat" method="POST">
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" name="cat_id" id="edit-cat-id">
+            <div class="form-group">
+                <label>Nama Kategori</label>
+                <input type="text" name="name" id="edit-cat-name" class="form-control" required>
+            </div>
+            <div class="form-group">
+                <label>Warna Badge</label>
+                <input type="color" name="color" id="edit-cat-color" style="width:52px; height:42px; border:none; border-radius:10px; cursor:pointer; padding:2px;">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:1.2rem;">
+                <button type="submit" class="btn" style="flex:1;">Simpan</button>
+                <button type="button" onclick="document.getElementById('modal-edit-cat').style.display='none'" class="btn" style="flex:1; background:#e2e8f0; color:#475569;">Batal</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openEditCat(id, name, color) {
+    document.getElementById('edit-cat-id').value = id;
+    document.getElementById('edit-cat-name').value = name;
+    document.getElementById('edit-cat-color').value = color;
+    document.getElementById('modal-edit-cat').style.display = 'flex';
+}
+window.addEventListener('click', function(e) {
+    const modal = document.getElementById('modal-edit-cat');
+    if (e.target === modal) modal.style.display = 'none';
+});
+lucide.createIcons();
+</script>
+{% endblock %}
