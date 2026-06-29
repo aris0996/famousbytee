@@ -4677,13 +4677,22 @@ def leaderboard():
         'can_switch_classroom_context',
         'can_view_classroom_reports',
     )
-    query = User.query.filter(User.points > 0)
+    users_query = User.query.join(Role).outerjoin(Student, User.student_id == Student.id)
     if active_classroom:
-        query = query.filter(
+        users_query = users_query.filter(
             (User.classroom_id == active_classroom.id) |
-            User.student.has(Student.classroom_id == active_classroom.id)
+            (Student.classroom_id == active_classroom.id)
         )
-    top_users = query.order_by(User.points.desc()).limit(20).all()
+    all_users = users_query.all()
+    ranked_users = []
+    for user in all_users:
+        breakdown = calculate_user_points_breakdown(user)
+        if breakdown['total_points'] <= 0:
+            continue
+        setattr(user, '_leaderboard_points', breakdown['total_points'])
+        ranked_users.append((user, breakdown['total_points']))
+    ranked_users.sort(key=lambda item: item[1], reverse=True)
+    top_users = [item[0] for item in ranked_users[:20]]
     classrooms = _web_allowed_classrooms(
         'can_view_all_classrooms',
         'can_access_multi_classroom',
@@ -4748,19 +4757,24 @@ def get_leaderboard():
         'can_switch_classroom_context',
         'can_view_classroom_reports',
     )
-    query = User.query.filter(User.points > 0)
+    users_query = User.query.outerjoin(Student, User.student_id == Student.id)
     if active_classroom:
-        query = query.filter(
+        users_query = users_query.filter(
             (User.classroom_id == active_classroom.id) |
-            User.student.has(Student.classroom_id == active_classroom.id)
+            (Student.classroom_id == active_classroom.id)
         )
-    
-    # Top 20 users by points
-    top_users = query.order_by(User.points.desc()).limit(20).all()
+    ranked = []
+    for user in users_query.all():
+        breakdown = calculate_user_points_breakdown(user)
+        if breakdown['total_points'] > 0:
+            setattr(user, '_leaderboard_points', breakdown['total_points'])
+            ranked.append((user, breakdown['total_points']))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+    top_users = [item[0] for item in ranked[:20]]
     return jsonify([{
         "id": u.id,
         "full_name": (u.student.full_name if u.student and u.student.full_name else u.full_name) or u.username,
-        "points": u.points or 0,
+        "points": getattr(u, '_leaderboard_points', calculate_user_points_breakdown(u)['total_points']),
         "role": u.role.name,
         "nim": u.student.nim if u.student else "-"
     } for u in top_users])

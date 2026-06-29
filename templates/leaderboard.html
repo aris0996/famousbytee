@@ -50,7 +50,7 @@
                 </thead>
                 <tbody>
                     {% for u in users %}
-                    {% set total_points = u.points or 0 %}
+                    {% set total_points = u._leaderboard_points if u._leaderboard_points is defined else (u.points or 0) %}
                     {% set row_classroom = u.classroom or (u.student.classroom if u.student and u.student.classroom else none) %}
                     <tr style="{{ 'background: #fffbeb;' if loop.index == 1 else 'background: white;' }}">
                         <td style="text-align: center; padding: 1rem 0.75rem;">
@@ -127,7 +127,7 @@
                 </div>
                 <div style="padding: 0.9rem; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0;">
                     <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 800; margin-bottom: 0.25rem;">Poin Tertinggi</div>
-                    <div style="font-size: 1.2rem; font-weight: 900; color: #4338ca;">{{ users[0].points if users else 0 }}</div>
+                    <div style="font-size: 1.2rem; font-weight: 900; color: #4338ca;">{{ users[0]._leaderboard_points if users and users[0]._leaderboard_points is defined else (users[0].points if users else 0) }}</div>
                 </div>
             </div>
         </section>
