@@ -129,10 +129,7 @@ def _classroom_from_request(data, fallback_classroom, allowed_ids):
 def _can_manage_notification_across_classes(role):
     return bool(
         getattr(role, 'can_manage_roles', False) or
-        getattr(role, 'can_manage_notifications_multi_class', False) or
-        getattr(role, 'can_access_multi_classroom', False) or
-        getattr(role, 'can_view_all_classrooms', False) or
-        getattr(role, 'can_switch_classroom_context', False)
+        getattr(role, 'can_manage_notifications_multi_class', False)
     )
 
 
@@ -1066,15 +1063,17 @@ def manage_schedules():
         db.session.add(s)
         db.session.commit()
         
-        from app import send_multichannel_notification
-        send_multichannel_notification(
-            "Jadwal Baru Ditambahkan",
-            f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
-            sender_id=user.id,
-            allow_whatsapp=False,
-            classroom_id=s.classroom_id,
-            category='schedule',
-        )
+        preferences = get_notification_preferences_for_classroom(s.classroom_id)
+        if preferences['schedule_notify_on_create']:
+            from app import send_multichannel_notification
+            send_multichannel_notification(
+                "Jadwal Baru Ditambahkan",
+                f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
+                sender_id=user.id,
+                allow_whatsapp=True,
+                classroom_id=s.classroom_id,
+                category='schedule',
+            )
         
         return jsonify({"status": "success", "id": s.id})
 
@@ -1107,18 +1106,21 @@ def modify_schedule(id):
     
     if request.method == 'DELETE':
         subject_name = s.subject
+        classroom_id = s.classroom_id
         db.session.delete(s)
         db.session.commit()
-        
-        from app import send_multichannel_notification
-        send_multichannel_notification(
-            "Jadwal Dihapus",
-            f"Jadwal {subject_name} telah dihapus dari sistem.",
-            sender_id=user.id,
-            allow_whatsapp=False,
-            classroom_id=s.classroom_id,
-            category='schedule',
-        )
+
+        preferences = get_notification_preferences_for_classroom(classroom_id)
+        if preferences['schedule_notify_on_delete']:
+            from app import send_multichannel_notification
+            send_multichannel_notification(
+                "Jadwal Dihapus",
+                f"Jadwal {subject_name} telah dihapus dari sistem.",
+                sender_id=user.id,
+                allow_whatsapp=True,
+                classroom_id=classroom_id,
+                category='schedule',
+            )
         
         return jsonify({"status": "success"})
         
@@ -1133,15 +1135,17 @@ def modify_schedule(id):
         
         db.session.commit()
         
-        from app import send_multichannel_notification
-        send_multichannel_notification(
-            "Jadwal Diperbarui",
-            f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
-            sender_id=user.id,
-            allow_whatsapp=False,
-            classroom_id=s.classroom_id,
-            category='schedule',
-        )
+        preferences = get_notification_preferences_for_classroom(s.classroom_id)
+        if preferences['schedule_notify_on_edit']:
+            from app import send_multichannel_notification
+            send_multichannel_notification(
+                "Jadwal Diperbarui",
+                f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
+                sender_id=user.id,
+                allow_whatsapp=True,
+                classroom_id=s.classroom_id,
+                category='schedule',
+            )
         
         return jsonify({"status": "success"})
 
@@ -1444,10 +1448,22 @@ def get_notification_preferences():
         return jsonify({"error": "Unauthorized"}), 401
     classroom = _user_classroom(user)
     policy = get_classroom_notification_policy(classroom.id if classroom else None)
+
+    def preference(name, default):
+        if not classroom:
+            return default
+        setting = SystemSetting.query.filter_by(
+            key=f'notify_schedule_{name}_{classroom.id}'
+        ).first()
+        if not setting:
+            return default
+        return str(setting.value).strip().lower() == 'true'
+
+    master_enabled = policy.schedule_enabled if policy else True
     return jsonify({
-        'schedule_notify_on_create': policy.schedule_enabled if policy else True,
-        'schedule_notify_on_edit': policy.schedule_enabled if policy else True,
-        'schedule_notify_on_delete': policy.schedule_enabled if policy else True,
+        'schedule_notify_on_create': preference('create', master_enabled),
+        'schedule_notify_on_edit': preference('edit', False),
+        'schedule_notify_on_delete': preference('delete', master_enabled),
     })
 
 @api_bp.route('/notifications/preferences', methods=['POST'])
@@ -1458,10 +1474,10 @@ def update_notification_preferences():
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
     
-    if not user.role.can_manage_schedule:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not (user.role.can_manage_schedule and user.role.can_manage_notifications):
+        return jsonify({"error": "Perlu izin kelola jadwal dan notifikasi"}), 403
     
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     
     classroom = _user_classroom(user)
     if not classroom:
@@ -1471,15 +1487,51 @@ def update_notification_preferences():
         policy = ClassroomNotificationConfig(classroom_id=classroom.id)
         db.session.add(policy)
 
-    schedule_enabled = bool(
-        data.get('schedule_notify_on_create', policy.schedule_enabled) or
-        data.get('schedule_notify_on_edit', policy.schedule_enabled) or
-        data.get('schedule_notify_on_delete', policy.schedule_enabled)
-    )
-    policy.schedule_enabled = schedule_enabled
+    allowed_keys = {
+        'schedule_notify_on_create': 'create',
+        'schedule_notify_on_edit': 'edit',
+        'schedule_notify_on_delete': 'delete',
+    }
+    for request_key, setting_suffix in allowed_keys.items():
+        if request_key not in data:
+            continue
+        value = data[request_key]
+        enabled = str(value).strip().lower() == 'true' if isinstance(value, str) else bool(value)
+        setting_key = f'notify_schedule_{setting_suffix}_{classroom.id}'
+        setting = SystemSetting.query.filter_by(key=setting_key).first()
+        if setting:
+            setting.value = 'true' if enabled else 'false'
+        else:
+            db.session.add(SystemSetting(
+                key=setting_key,
+                value='true' if enabled else 'false',
+                description=f'Notifikasi jadwal {setting_suffix} untuk kelas {classroom.name}',
+            ))
+
+    values = get_notification_preferences_for_classroom(classroom.id, data)
+    policy.schedule_enabled = any(values.values())
     policy.updated_by = user.id
     db.session.commit()
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", **values})
+
+
+def get_notification_preferences_for_classroom(classroom_id, overrides=None):
+    overrides = overrides or {}
+    result = {}
+    defaults = {'create': True, 'edit': False, 'delete': True}
+    for suffix, default in defaults.items():
+        request_key = f'schedule_notify_on_{suffix}'
+        if request_key in overrides:
+            raw = overrides[request_key]
+            result[request_key] = str(raw).strip().lower() == 'true' if isinstance(raw, str) else bool(raw)
+            continue
+        setting = SystemSetting.query.filter_by(
+            key=f'notify_schedule_{suffix}_{classroom_id}'
+        ).first()
+        result[request_key] = (
+            str(setting.value).strip().lower() == 'true' if setting else default
+        )
+    return result
 
 
 @api_bp.route('/notifications/classrooms/<int:classroom_id>/policy', methods=['GET', 'PUT'])
@@ -1885,8 +1937,8 @@ def send_schedule_whatsapp(id):
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
-    if not user.role.can_manage_schedule:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not (user.role.can_manage_schedule and user.role.can_manage_whatsapp):
+        return jsonify({"error": "Perlu izin kelola jadwal dan WhatsApp"}), 403
     
     schedule = Schedule.query.get_or_404(id)
     
@@ -1921,8 +1973,8 @@ def send_daily_summary_on_demand():
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
-    if not user.role.can_manage_schedule and not user.role.can_manage_whatsapp:
-        return jsonify({"error": "Unauthorized"}), 403
+    if not (user.role.can_manage_schedule and user.role.can_manage_whatsapp):
+        return jsonify({"error": "Perlu izin kelola jadwal dan WhatsApp"}), 403
     
     data = request.get_json() or {}
     target_date_str = data.get('target_date')  # Optional: YYYY-MM-DD format

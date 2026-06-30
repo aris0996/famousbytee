@@ -63,6 +63,11 @@
     .waha-pill.warn { background:#fef3c7; color:#92400e; }
     .waha-pill.error { background:#fee2e2; color:#b91c1c; }
     .notify-history table td { vertical-align: top; }
+    .notify-guide { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
+    .notify-step { padding:.9rem; border:1px solid #dbeafe; border-radius:12px; background:#eff6ff; color:#1e3a8a; }
+    .notify-step strong { display:block; margin-bottom:.25rem; }
+    .notify-advanced { margin-top:1rem; border:1px dashed #cbd5e1; border-radius:12px; padding:.85rem; }
+    .notify-advanced > summary { cursor:pointer; font-weight:800; color:#475569; }
     @media (max-width: 920px) {
         .notify-split { grid-template-columns: 1fr; }
     }
@@ -72,8 +77,8 @@
     <section class="notify-panel">
         <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
             <div>
-                <h1 class="notify-section-title">Manajemen Notifikasi Multi Kelas</h1>
-                <p class="notify-muted" style="margin:0;">Policy notifikasi kelas, binding target WhatsApp, dan mesin bot dipisahkan agar tidak saling tercampur.</p>
+                <h1 class="notify-section-title">Pusat Notifikasi</h1>
+                <p class="notify-muted" style="margin:0;">Atur pesan aplikasi dan WhatsApp kelas dari satu halaman.</p>
             </div>
             <div class="notify-actions">
                 {% if current_user.role.can_manage_notifications %}
@@ -90,6 +95,22 @@
                 </button>
                 {% endif %}
             </div>
+        </div>
+    </section>
+
+    <section class="notify-guide">
+        <div class="notify-step"><strong>1. Pilih kelas</strong>Pastikan kelas yang akan menerima pesan sudah benar.</div>
+        <div class="notify-step"><strong>2. Pilih saluran</strong>Aktifkan notifikasi aplikasi, WhatsApp, atau keduanya.</div>
+        <div class="notify-step"><strong>3. Hubungkan grup</strong>Pilih koneksi dan grup WhatsApp tujuan.</div>
+        <div class="notify-step"><strong>4. Uji kirim</strong>Kirim pesan percobaan sebelum digunakan.</div>
+    </section>
+
+    <section class="notify-card">
+        <strong>Hak akses Anda</strong>
+        <div class="notify-mini" style="margin-top:.35rem;">
+            Kirim notifikasi: {{ 'Diizinkan' if current_user.role.can_manage_notifications else 'Tidak diizinkan' }} ·
+            Atur WhatsApp: {{ 'Diizinkan' if current_user.role.can_manage_whatsapp else 'Tidak diizinkan' }} ·
+            Lintas kelas: {{ 'Diizinkan' if can_manage_multi_notifications else 'Hanya kelas sendiri' }}
         </div>
     </section>
 
@@ -117,10 +138,10 @@
     </section>
 
     <nav class="notify-tabs">
-        <button class="notify-tab-btn active" data-tab="policy" onclick="showNotifyTab('policy')">Kebijakan Notifikasi</button>
-        <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Binding WhatsApp per Kelas</button>
+        <button class="notify-tab-btn active" data-tab="policy" onclick="showNotifyTab('policy')">Pengaturan Kelas</button>
+        <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Grup WhatsApp</button>
         {% if current_user.role.can_manage_whatsapp %}
-        <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Bot WhatsApp</button>
+        <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Koneksi WhatsApp</button>
         {% endif %}
         <button class="notify-tab-btn" data-tab="history" onclick="showNotifyTab('history')">Riwayat</button>
     </nav>
@@ -128,8 +149,8 @@
     <section id="notify-tab-policy" class="notify-tab active">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Kebijakan Notifikasi Kelas</h2>
-                <p class="notify-muted">Anda sedang mengatur aturan kelas: channel aktif dan kategori notifikasi.</p>
+                <h2 class="notify-section-title">Notifikasi untuk Kelas</h2>
+                <p class="notify-muted">Pilih cara dan jenis informasi yang boleh dikirim ke kelas ini.</p>
                 <div class="form-group" style="margin-top:1rem;">
                     <label>Pilih Kelas</label>
                     <select id="policy-classroom" class="form-control" onchange="loadPolicy()">
@@ -143,7 +164,7 @@
                     <label class="notify-row"><input type="checkbox" id="policy-whatsapp"> WhatsApp aktif</label>
                 </div>
                 <div class="form-group" style="margin-top:1rem;">
-                    <label>Channel Default</label>
+                    <label>Cara Pengiriman Utama</label>
                     <select id="policy-channel" class="form-control">
                         <option value="push">Push saja</option>
                         <option value="whatsapp">WhatsApp saja</option>
@@ -173,8 +194,8 @@
     <section id="notify-tab-binding" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Binding Target WhatsApp Kelas</h2>
-                <p class="notify-muted">Anda sedang mengatur target WA kelas: bot mana dan chat mana yang dipakai oleh kelas aktif.</p>
+                <h2 class="notify-section-title">Grup WhatsApp Kelas</h2>
+                <p class="notify-muted">Hubungkan satu kelas dengan grup WhatsApp tujuan.</p>
                 <div class="form-group" style="margin-top:1rem;">
                     <label>Pilih Kelas</label>
                     <select id="binding-classroom" class="form-control" onchange="loadBinding()">
@@ -184,7 +205,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Pilih Bot</label>
+                    <label>Pilih Koneksi WhatsApp</label>
                     <select id="binding-bot" class="form-control" onchange="loadWahaGroups()">
                         <option value="">Pilih bot</option>
                         {% for bot in bots %}
@@ -208,12 +229,12 @@
                 </div>
                 <div class="notify-actions">
                     <button class="btn" type="button" onclick="saveBinding()">Simpan Binding</button>
-                    <button class="btn" type="button" style="background:#1e293b;" onclick="openBotHealth()">Cek Status Bot</button>
+                    <button class="btn" type="button" style="background:#1e293b;" onclick="openBotHealth()">Cek Koneksi</button>
                     <span id="binding-status" class="notify-mini"></span>
                 </div>
             </div>
             <div class="notify-card">
-                <h3 style="margin:0;">Status Binding</h3>
+                <h3 style="margin:0;">Status Grup Tujuan</h3>
                 <div id="binding-summary" class="notify-output" style="margin-top:1rem;">Memuat...</div>
             </div>
         </div>
@@ -223,15 +244,15 @@
     <section id="notify-tab-bots" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Mesin Bot WhatsApp</h2>
-                <p class="notify-muted">Bagian ini khusus koneksi teknis bot. Jangan dipakai untuk mengatur policy kelas.</p>
+                <h2 class="notify-section-title">Koneksi WhatsApp</h2>
+                <p class="notify-muted">Biasanya cukup isi alamat layanan dan kunci akses sekali saja.</p>
                 <form method="POST" action="{{ url_for('save_waha_config') }}" class="notify-card" style="margin-top:1rem;">
-                    <div class="form-group"><label>Base URL WAHA</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}"></div>
-                    <div class="form-group"><label>API Key WAHA</label><input type="text" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'Masukkan API key baru' }}"></div>
+                    <div class="form-group"><label>Alamat Layanan WhatsApp</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="Contoh: https://wa.domainanda.id"></div>
+                    <div class="form-group"><label>Kunci Akses</label><input type="password" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'Masukkan kunci akses' }}"></div>
                     <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
                     <div class="notify-actions" style="justify-content:space-between;">
-                        <button type="submit" class="btn">Simpan Mesin WAHA</button>
-                        <button type="button" class="btn" style="background:#1e293b;" onclick="refreshWahaDashboard()">Refresh Dashboard</button>
+                        <button type="submit" class="btn">Simpan Koneksi</button>
+                        <button type="button" class="btn" style="background:#1e293b;" onclick="refreshWahaDashboard()">Cek Koneksi</button>
                     </div>
                 </form>
                 <div class="notify-card" style="margin-top:1rem;">
@@ -239,23 +260,23 @@
                     <div class="notify-card" style="margin-bottom:1rem; background:#f8fafc;">
                         <div class="notify-grid" style="grid-template-columns:1fr 160px 160px; align-items:end;">
                             <div class="form-group">
-                                <label>Buat Session Baru</label>
+                                <label>Nama Koneksi Baru</label>
                                 <input type="text" id="waha-new-session-name" class="form-control" placeholder="session-kelas-b">
                             </div>
                             <div class="form-group">
-                                <label>Base URL</label>
+                                <label>Alamat Layanan</label>
                                 <input type="text" id="waha-new-session-baseurl" class="form-control" value="{{ settings.waha_base_url }}">
                             </div>
                             <div class="notify-actions">
-                                <button class="btn" type="button" style="background:#16a34a;" onclick="createWahaSession()">Buat Session</button>
+                                <button class="btn" type="button" style="background:#16a34a;" onclick="createWahaSession()">Buat Koneksi</button>
                             </div>
                         </div>
                         <div class="notify-toolbar">
                             <select id="waha-session-live" class="form-control" style="min-width:240px;">
-                                <option value="">Muat session aktif dari WAHA</option>
+                                <option value="">Pilih koneksi WhatsApp</option>
                             </select>
-                            <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Session</button>
-                            <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Pakai Session</button>
+                            <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Koneksi</button>
+                            <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Gunakan</button>
                         </div>
                         <div id="waha-session-status" class="notify-mini" style="margin-top:.6rem;">Session live akan muncul di sini.</div>
                         <div id="waha-session-qr" style="display:none; margin-top:1rem; text-align:center;">
@@ -263,14 +284,16 @@
                             <img id="waha-session-qr-img" src="" alt="QR WAHA" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
                         </div>
                         <div class="notify-actions" style="margin-top:.75rem;">
-                            <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan / Update QR</button>
+                            <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan QR</button>
                             <button class="btn" type="button" style="background:#0f172a;" onclick="refreshSelectedSessionScreenshot()">Screenshot QR</button>
-                            <button class="btn" type="button" style="background:#0ea5e9;" onclick="startSelectedSession()">Start</button>
-                            <button class="btn" type="button" style="background:#f97316;" onclick="restartSelectedSession()">Restart</button>
-                            <button class="btn" type="button" style="background:#ef4444;" onclick="stopSelectedSession()">Stop</button>
+                            <button class="btn" type="button" style="background:#0ea5e9;" onclick="startSelectedSession()">Aktifkan</button>
+                            <button class="btn" type="button" style="background:#f97316;" onclick="restartSelectedSession()">Hubungkan Ulang</button>
+                            <button class="btn" type="button" style="background:#ef4444;" onclick="stopSelectedSession()">Nonaktifkan</button>
                         </div>
                     </div>
-                    <div class="notify-grid">
+                    <details class="notify-advanced">
+                    <summary>Pengaturan teknis lanjutan</summary>
+                    <div class="notify-grid" style="margin-top:1rem;">
                         <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
                         <div class="form-group"><label>Session Name</label><input type="text" id="bot-session" class="form-control" placeholder="session-kelas-a"></div>
                         <div class="form-group"><label>Base URL Override</label><input type="text" id="bot-base-url" class="form-control" placeholder="Opsional"></div>
@@ -280,13 +303,17 @@
                         <button class="btn" type="button" onclick="saveBot()">Simpan Bot</button>
                         <span id="bot-status-text" class="notify-mini"></span>
                     </div>
+                    </details>
                 </div>
-                <div class="notify-card" style="margin-top:1rem;">
-                    <h3 style="margin-top:0;">WAHA Dashboard</h3>
+                <details class="notify-advanced">
+                    <summary>Diagnostik layanan</summary>
+                    <div class="notify-card" style="margin-top:1rem;">
+                    <h3 style="margin-top:0;">Status Teknis</h3>
                     <div id="waha-dashboard" class="waha-board">
-                        <div class="notify-output">Memuat dashboard WAHA...</div>
+                        <div class="notify-output">Klik “Cek Koneksi” untuk memuat status.</div>
                     </div>
-                </div>
+                    </div>
+                </details>
             </div>
             <div class="notify-card">
                 <h3 style="margin:0;">Daftar Bot</h3>

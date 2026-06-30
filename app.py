@@ -4204,10 +4204,7 @@ def manage_notifications():
 
     can_manage_multi = (
         current_user.role.can_manage_roles or
-        getattr(current_user.role, 'can_manage_notifications_multi_class', False) or
-        getattr(current_user.role, 'can_access_multi_classroom', False) or
-        getattr(current_user.role, 'can_view_all_classrooms', False) or
-        getattr(current_user.role, 'can_switch_classroom_context', False)
+        getattr(current_user.role, 'can_manage_notifications_multi_class', False)
     )
     allowed_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all() if can_manage_multi else ([active_classroom] if active_classroom else [])
 
