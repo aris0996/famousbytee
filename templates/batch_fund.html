@@ -132,8 +132,7 @@
                                     <button class="edit"
                                         onclick="openEditFund('{{ f.id }}', `{{ f.description|replace('`','\\`') }}`, '{{ f.amount }}', '{{ f.type }}', '{{ f.category }}', '{{ f.tags or '' }}')"><i
                                             data-lucide="edit-3"></i></button>
-                                    <a href="{{ url_for('delete_fund', id=f.id) }}" class="del"
-                                        onclick="return confirm('Hapus?')"><i data-lucide="trash-2"></i></a>
+                                    <form method="POST" action="{{ url_for('delete_fund', id=f.id) }}" style="display:inline;" onsubmit="return confirm('Hapus?')"><button type="submit" class="del" style="border:0; background:none; cursor:pointer;"><i data-lucide="trash-2"></i></button></form>
                                 </div>
                             </td>
                             {% endif %}
@@ -180,7 +179,7 @@
                 {% if current_user.role.can_manage_fund %}
                 <div class="period-actions">
                     <button class="btn-sm btn-outline" onclick="openEditPeriod('{{ period.id }}', '{{ period.title|replace('\'','\\\'') }}', '{{ period.start_date.strftime('%Y-%m-%d') }}', '{{ period.end_date.strftime('%Y-%m-%d') }}', '{{ period.daily_rate }}', {{ 'true' if period.is_active else 'false' }})">Edit</button>
-                    <a href="{{ url_for('delete_fund_period', id=period.id) }}" class="btn-sm btn-outline period-delete-btn" onclick="return confirm('Hapus periode ini?')">Hapus</a>
+                    <form method="POST" action="{{ url_for('delete_fund_period', id=period.id) }}" style="display:inline;" onsubmit="return confirm('Hapus periode ini?')"><button type="submit" class="btn-sm btn-outline period-delete-btn">Hapus</button></form>
                 </div>
                 {% endif %}
             </div>

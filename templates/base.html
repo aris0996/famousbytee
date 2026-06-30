@@ -7,12 +7,13 @@
     <title>{{ site_settings.get('web_title', 'Portal Kelas Famousbytee.b') }}</title>
     <meta name="description" content="{{ site_settings.get('web_desc', 'Portal Resmi Kelas Famousbytee.b') }}">
     <meta name="keywords" content="{{ site_settings.get('seo_keywords', 'famousbytee, portal, kelas') }}">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
         :root {
             --primary: #4361ee;
@@ -609,9 +610,11 @@
             {% endif %}
         </nav>
             {% if current_user.is_authenticated %}
-            <a href="{{ url_for('logout') }}" class="btn-logout">
-                <i data-lucide="log-out"></i> <span>Logout</span>
-            </a>
+            <form method="POST" action="{{ url_for('logout') }}">
+                <button type="submit" class="btn-logout" style="border:0; width:100%; cursor:pointer;">
+                    <i data-lucide="log-out"></i> <span>Logout</span>
+                </button>
+            </form>
             {% endif %}
     </aside>
     <div class="sidebar-overlay" onclick="toggleMobileNav()"></div>
@@ -649,6 +652,29 @@
         if (localStorage.getItem('sidebarMinimized') === 'true') {
             document.getElementById('sidebar').classList.add('minimized');
         }
+
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+        document.querySelectorAll('form').forEach((form) => {
+            const method = (form.getAttribute('method') || 'GET').toUpperCase();
+            if (method === 'GET' || form.querySelector('input[name="_csrf_token"]')) return;
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = '_csrf_token';
+            input.value = csrfToken;
+            form.appendChild(input);
+        });
+
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = (resource, options = {}) => {
+            const method = (options.method || 'GET').toUpperCase();
+            const target = typeof resource === 'string' ? resource : resource.url;
+            const sameOrigin = new URL(target, window.location.href).origin === window.location.origin;
+            if (sameOrigin && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
+                options.headers = new Headers(options.headers || {});
+                options.headers.set('X-CSRF-Token', csrfToken);
+            }
+            return nativeFetch(resource, options);
+        };
 
         lucide.createIcons();
     </script>

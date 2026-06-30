@@ -1,6 +1,6 @@
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask, render_template, redirect, url_for, request, flash
+from flask import Flask, render_template, redirect, url_for, request, flash, session, abort
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
@@ -15,6 +15,11 @@ from flask import send_from_directory, make_response
 from apscheduler.schedulers.background import BackgroundScheduler
 from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
+import secrets
+import hmac
+from collections import defaultdict, deque
+from threading import Lock
+from security_utils import hash_password, is_password_hash, verify_password
 from datetime import datetime, timedelta
 from urllib import request as urllib_request, error as urllib_error
 from sqlalchemy.exc import OperationalError
@@ -73,6 +78,36 @@ logging.basicConfig(level=logging.WARNING)
 app.logger.info('Famousbytee application starting up...')
 app.config.from_object(Config)
 
+_LOGIN_ATTEMPTS = defaultdict(deque)
+_LOGIN_ATTEMPTS_LOCK = Lock()
+_LOGIN_WINDOW_SECONDS = 15 * 60
+_LOGIN_MAX_ATTEMPTS = 10
+
+
+def _csrf_token():
+    token = session.get('_csrf_token')
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session['_csrf_token'] = token
+    return token
+
+
+def _login_rate_limited(client_ip):
+    now = _time.time()
+    with _LOGIN_ATTEMPTS_LOCK:
+        attempts = _LOGIN_ATTEMPTS[client_ip]
+        while attempts and now - attempts[0] > _LOGIN_WINDOW_SECONDS:
+            attempts.popleft()
+        if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+            return True
+        attempts.append(now)
+    return False
+
+
+def _clear_login_attempts(client_ip):
+    with _LOGIN_ATTEMPTS_LOCK:
+        _LOGIN_ATTEMPTS.pop(client_ip, None)
+
 _WAHA_RECENT_COMMANDS = {}
 _WAHA_COMMAND_DEDUP_WINDOW_SECONDS = 3  # Reduced from 12 to allow faster re-commands
 
@@ -84,6 +119,14 @@ import time as _time
 @app.before_request
 def _log_request_start():
     request._start_time = _time.time()
+
+    if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+        if request.path.startswith(('/api/', '/webhooks/')):
+            return None
+        expected = session.get('_csrf_token', '')
+        supplied = request.form.get('_csrf_token', '') or request.headers.get('X-CSRF-Token', '')
+        if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+            abort(400, description='Permintaan keamanan tidak valid. Muat ulang halaman dan coba lagi.')
 
 @app.after_request
 def _log_request_end(response):
@@ -97,6 +140,20 @@ def _log_request_end(response):
             response.status_code, duration,
             request.remote_addr
         )
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+    response.headers.setdefault('Permissions-Policy', 'camera=(), microphone=(), geolocation=()')
+    response.headers.setdefault('X-Frame-Options', 'DENY')
+    response.headers.setdefault('Cross-Origin-Opener-Policy', 'same-origin')
+    response.headers.setdefault(
+        'Content-Security-Policy',
+        "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; "
+        "form-action 'self'; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://unpkg.com; "
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://cdnjs.cloudflare.com"
+    )
+    if request.is_secure:
+        response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
     return response
 
 # Initialize Firebase Admin
@@ -179,6 +236,7 @@ def inject_global_template_data():
     return {
         'site_settings': _build_template_settings(),
         'datetime': datetime,
+        'csrf_token': _csrf_token,
     }
 
 def _normalize_waha_scalar(value):
@@ -1325,11 +1383,25 @@ try:
 except Exception as _sched_err:
     app.logger.error(f'Failed to start background scheduler: {_sched_err}')
 
-# Enable CORS for all routes (important for mobile/cross-origin requests)
-CORS(app)
+# Browser CORS is limited to explicitly trusted web origins. Native mobile
+# clients are unaffected because they do not use browser CORS enforcement.
+_cors_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        'CORS_ALLOWED_ORIGINS',
+        'https://famousbytee.arisdev.web.id',
+    ).split(',')
+    if origin.strip()
+]
+CORS(
+    app,
+    resources={r'/api/*': {'origins': _cors_origins}},
+    allow_headers=['Authorization', 'Content-Type'],
+    methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    supports_credentials=False,
+)
 
 # Initialize JWT
-app.config['JWT_SECRET_KEY'] = app.config.get('SECRET_KEY', 'super-secret-dev-key')
 jwt = JWTManager(app)
 
 # Register API Blueprint
@@ -1748,6 +1820,11 @@ def login():
         return redirect(url_for('dashboard'))
 
     if request.method == 'POST':
+        client_ip = request.remote_addr or 'unknown'
+        if _login_rate_limited(client_ip):
+            flash('Terlalu banyak percobaan login. Coba kembali beberapa menit lagi.')
+            return render_template('login.html'), 429
+
         username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
 
@@ -1764,33 +1841,32 @@ def login():
         ).first()
 
         if not user:
-            flash('Akun tidak ditemukan.')
+            flash('Username/NIM atau password salah.')
             return render_template('login.html')
 
-        stored_password = user.password or ''
-        is_valid = False
-        if stored_password:
-            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
-                is_valid = check_password_hash(stored_password, password)
-            else:
-                is_valid = (stored_password == password)
+        is_valid, needs_rehash = verify_password(user.password, password)
 
         if not is_valid:
             flash('Username/NIM atau password salah.')
             return render_template('login.html')
 
         if user.status != 'Active':
-            flash('Akun ini sedang tidak aktif.')
+            flash('Username/NIM atau password salah.')
             return render_template('login.html')
 
+        if needs_rehash:
+            user.password = hash_password(password)
+            db.session.commit()
+
         login_user(user, remember=True)
+        _clear_login_attempts(client_ip)
         flash(f'Selamat datang, {user.full_name or user.username}.')
         return redirect(url_for('dashboard'))
 
     return render_template('login.html')
 
 
-@app.route('/logout')
+@app.route('/logout', methods=['POST'])
 @login_required
 def logout():
     logout_user()
@@ -1913,7 +1989,7 @@ def dashboard():
                          time_diff=min_diff if min_diff != float('inf') else None,
                          read_ids=read_ids)
 
-@app.route('/announcements/read/<int:id>')
+@app.route('/announcements/read/<int:id>', methods=['POST'])
 @login_required
 def mark_announcement_read(id):
     try:
@@ -1938,7 +2014,7 @@ def profile():
         
         new_pass = request.form.get('new_password')
         if new_pass:
-            current_user.password = new_pass
+            current_user.password = hash_password(new_pass)
             
         db.session.commit()
         log_activity("Update Profil")
@@ -2078,7 +2154,7 @@ def edit_member(id):
     flash(f'Data {m.full_name} diperbarui.')
     return redirect(url_for('manage_members'))
 
-@app.route('/members/delete/<int:id>')
+@app.route('/members/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_member(id):
     if not current_user.role.can_manage_students: return redirect(url_for('dashboard'))
@@ -2514,7 +2590,7 @@ def manage_assignments():
     )
     return render_template('assignments.html', assignments=assignments, classrooms=classrooms, active_classroom=active_classroom)
 
-@app.route('/assignments/delete/<int:id>')
+@app.route('/assignments/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_assignment(id):
     if not current_user.role.can_manage_assignments: return redirect(url_for('dashboard'))
@@ -2665,7 +2741,7 @@ def edit_schedule(id):
     log_activity("Edit Jadwal", f"Matkul: {s.subject}")
     return redirect(url_for('manage_schedule'))
 
-@app.route('/schedule/delete/<int:id>')
+@app.route('/schedule/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_schedule(id):
     if not current_user.role.can_manage_schedule: return redirect(url_for('dashboard'))
@@ -2808,7 +2884,7 @@ def edit_announcement(id):
     flash('Pengumuman diperbarui.')
     return redirect(url_for('manage_announcements'))
 
-@app.route('/announcements/delete/<int:id>')
+@app.route('/announcements/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
@@ -3011,7 +3087,7 @@ def update_fund_period(id):
     flash('Periode kas berhasil diperbarui.')
     return redirect(url_for('manage_fund'))
 
-@app.route('/fund/periods/delete/<int:id>')
+@app.route('/fund/periods/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_fund_period(id):
     if not current_user.role.can_manage_fund:
@@ -3077,7 +3153,7 @@ def edit_fund(id):
     return redirect(url_for('manage_fund'))
 
 # Suggestion #16: Duplicate
-@app.route('/fund/duplicate/<int:id>')
+@app.route('/fund/duplicate/<int:id>', methods=['POST'])
 @login_required
 def duplicate_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
@@ -3137,7 +3213,7 @@ def batch_add_fund():
     flash(f'Berhasil mencatat {count} transaksi massal.')
     return redirect(url_for('manage_fund'))
 
-@app.route('/fund/delete/<int:id>')
+@app.route('/fund/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_fund(id):
     if not current_user.role.can_manage_fund: return redirect(url_for('dashboard'))
@@ -3358,7 +3434,7 @@ def manage_roles():
             classroom = ClassRoom.query.get(int(classroom_id)) if classroom_id and classroom_id != 'none' else None
             new_user = User(
                 username=request.form['username'], 
-                password=request.form['password'], 
+                password=hash_password(request.form['password']),
                 role_id=request.form['role_id'], 
                 full_name=request.form['full_name'], 
                 email=request.form['email'],
@@ -3402,7 +3478,7 @@ def edit_user(id):
         user.classroom_id = classroom.id if classroom else user.classroom_id
     
     if request.form.get('password'):
-        user.password = request.form['password']
+        user.password = hash_password(request.form['password'])
     
     try:
         db.session.commit()
@@ -3414,7 +3490,7 @@ def edit_user(id):
         print(f"User Edit Error: {e}")
     return redirect(url_for('manage_roles'))
 
-@app.route('/roles/delete/user/<int:id>')
+@app.route('/roles/delete/user/<int:id>', methods=['POST'])
 @login_required
 def delete_user(id):
     if not current_user.role.can_manage_roles: return redirect(url_for('dashboard'))
@@ -3466,7 +3542,7 @@ def edit_role(id):
     log_activity("Edit Role", f"Nama: {role.name}")
     return redirect(url_for('manage_roles'))
 
-@app.route('/roles/delete/role/<int:id>')
+@app.route('/roles/delete/role/<int:id>', methods=['POST'])
 @login_required
 def delete_role(id):
     if not current_user.role.can_manage_roles: return redirect(url_for('dashboard'))
@@ -3634,7 +3710,7 @@ def upload_gallery():
         flash(f'{count} foto berhasil diunggah dan dipublikasikan.')
     return redirect(url_for('manage_gallery'))
 
-@app.route('/gallery/delete/<int:id>')
+@app.route('/gallery/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_gallery(id):
     photo = GalleryPhoto.query.get_or_404(id)
@@ -3664,7 +3740,7 @@ def delete_gallery(id):
     flash('Foto berhasil dihapus.')
     return redirect(url_for('manage_gallery'))
 
-@app.route('/gallery/approve/<int:id>')
+@app.route('/gallery/approve/<int:id>', methods=['POST'])
 @login_required
 def approve_gallery(id):
     if not _can_manage_gallery_content():
@@ -3682,7 +3758,7 @@ def approve_gallery(id):
     flash(f'Foto oleh {photo.user.full_name} disetujui.')
     return redirect(url_for('manage_gallery'))
 
-@app.route('/gallery/reject/<int:id>')
+@app.route('/gallery/reject/<int:id>', methods=['POST'])
 @login_required
 def reject_gallery(id):
     if not _can_manage_gallery_content():
@@ -3708,7 +3784,7 @@ def reject_gallery(id):
     flash('Foto ditolak dan dihapus permanen.')
     return redirect(url_for('manage_gallery'))
 
-@app.route('/gallery/toggle/<int:id>')
+@app.route('/gallery/toggle/<int:id>', methods=['POST'])
 @login_required
 def toggle_gallery_visibility(id):
     if not _can_manage_gallery_content():
@@ -3762,7 +3838,7 @@ def add_photo_comment(photo_id):
         flash('Komentar ditambahkan.')
     return redirect(request.referrer or url_for('manage_gallery'))
 
-@app.route('/gallery/comment/delete/<int:id>')
+@app.route('/gallery/comment/delete/<int:id>', methods=['POST'])
 @login_required
 def delete_photo_comment(id):
     comment = PhotoComment.query.get_or_404(id)
@@ -3980,9 +4056,14 @@ def init_db():
                 
                 # Buat Admin Default
                 db.session.flush()
+                initial_admin_password = os.environ.get('INITIAL_ADMIN_PASSWORD')
+                if not initial_admin_password:
+                    raise RuntimeError(
+                        'INITIAL_ADMIN_PASSWORD wajib disetel saat membuat instalasi baru.'
+                    )
                 db.session.add(User(
                     username='admin',
-                    password='admin',
+                    password=hash_password(initial_admin_password),
                     role_id=admin_r.id,
                     classroom_id=fb.id
                 ))
@@ -4000,11 +4081,22 @@ def init_db():
                 ))
                 db.session.commit()
                 print("Status: Data awal berhasil disuntikkan.")
-            else:
-                admin_user = User.query.filter_by(username='admin').first()
-                if admin_user and not admin_user.classroom_id:
-                    admin_user.classroom_id = fb.id
-                    db.session.commit()
+
+            # One-way migration for legacy plaintext passwords. The existing
+            # plaintext value becomes the user's password input to scrypt.
+            migrated_passwords = False
+            for existing_user in User.query.all():
+                if existing_user.password and not is_password_hash(existing_user.password):
+                    existing_user.password = hash_password(existing_user.password)
+                    migrated_passwords = True
+            if migrated_passwords:
+                db.session.commit()
+                app.logger.warning('Legacy plaintext passwords migrated to scrypt hashes.')
+
+            admin_user = User.query.filter_by(username='admin').first()
+            if admin_user and not admin_user.classroom_id:
+                admin_user.classroom_id = fb.id
+                db.session.commit()
         except Exception as e:
             print(f"Peringatan: Gagal seeding data awal (Mungkin tabel belum sinkron): {e}")
 
@@ -4584,6 +4676,14 @@ def test_whatsapp_notification():
 
 @app.route('/webhooks/waha', methods=['POST'])
 def waha_webhook():
+    webhook_secret = os.environ.get('WAHA_WEBHOOK_SECRET', '').strip()
+    supplied_secret = request.headers.get('X-Webhook-Secret', '').strip()
+    if not webhook_secret:
+        app.logger.error('WAHA_WEBHOOK_SECRET belum dikonfigurasi; webhook ditolak.')
+        return jsonify({'ok': False, 'error': 'Webhook belum dikonfigurasi'}), 503
+    if not supplied_secret or not hmac.compare_digest(webhook_secret, supplied_secret):
+        return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
+
     payload = request.get_json(silent=True)
     if payload is None:
         payload = request.form.to_dict(flat=True) if request.form else {}
@@ -4650,7 +4750,7 @@ def waha_webhook():
         'result': result
     }), 200
 
-@app.route('/notifications/clear')
+@app.route('/notifications/clear', methods=['POST'])
 @login_required
 def clear_notification_history():
     if not current_user.role.can_manage_notifications:
@@ -4710,42 +4810,51 @@ def leaderboard():
 @app.route('/sitemap.xml')
 def sitemap():
     """Generates sitemap.xml dynamically. Excludes API, webhook, and admin-only routes."""
-    # Prefixes and endpoints to exclude from public sitemap
-    EXCLUDED_PREFIXES = ('/api/', '/webhooks/', '/static/')
-    EXCLUDED_ENDPOINTS = {'static', 'sitemap'}
-    # Routes that are internal/admin only (require login and are not public landing pages)
-    ADMIN_ONLY_ROUTES = {
-        '/dashboard', '/members', '/schedule', '/announcements/manage',
-        '/fund', '/settings', '/classes', '/roles', '/logs',
-        '/notifications', '/assignments', '/leaderboard',
-        '/announcements', '/profile', '/logout',
-        '/berita/manage', '/berita/manage/new', '/berita/categories',
-    }
-
-
+    public_endpoints = ('index', 'login', 'public_gallery', 'news_public')
     pages = []
-    for rule in app.url_map.iter_rules():
-        # Skip rules that require URL arguments (dynamic segments)
-        if len(rule.arguments) > 0:
+    for endpoint in public_endpoints:
+        try:
+            pages.append([url_for(endpoint, _external=True), datetime.now().date()])
+        except Exception:
             continue
-        # Skip non-GET rules
-        if "GET" not in rule.methods:
-            continue
-        # Skip excluded endpoints
-        if rule.endpoint in EXCLUDED_ENDPOINTS:
-            continue
-        # Skip API, webhook, and static prefixes
-        if any(rule.rule.startswith(p) for p in EXCLUDED_PREFIXES):
-            continue
-        # Skip admin-only / login-required routes
-        if rule.rule in ADMIN_ONLY_ROUTES:
-            continue
-        pages.append([url_for(rule.endpoint, _external=True), datetime.now().date()])
 
     sitemap_xml = render_template('sitemap.xml', pages=pages)
     response = make_response(sitemap_xml)
     response.headers["Content-Type"] = "application/xml"
     return response
+
+
+@app.route('/robots.txt')
+def robots_txt():
+    body = "\n".join([
+        "User-agent: *",
+        "Allow: /",
+        "Disallow: /api/",
+        "Disallow: /dashboard",
+        "Disallow: /notifications",
+        "Disallow: /settings",
+        "Disallow: /roles",
+        "Disallow: /logs",
+        f"Sitemap: {url_for('sitemap', _external=True)}",
+        "",
+    ])
+    return app.response_class(body, mimetype='text/plain')
+
+
+@app.route('/.well-known/security.txt')
+def security_txt():
+    contact = os.environ.get(
+        'SECURITY_CONTACT',
+        'https://famousbytee.arisdev.web.id/',
+    )
+    body = "\n".join([
+        f"Contact: {contact}",
+        "Preferred-Languages: id, en",
+        f"Canonical: {url_for('security_txt', _external=True)}",
+        "Policy: https://famousbytee.arisdev.web.id/",
+        "",
+    ])
+    return app.response_class(body, mimetype='text/plain')
 
 @app.route('/api/leaderboard', methods=['GET'])
 @login_required
@@ -4781,6 +4890,7 @@ def get_leaderboard():
     } for u in top_users])
 
 @app.route('/api/leaderboard/<int:user_id>', methods=['GET'])
+@login_required
 def get_leaderboard_detail(user_id):
     user = User.query.get_or_404(user_id)
     breakdown = calculate_user_points_breakdown(user)
@@ -4859,12 +4969,9 @@ def _save_news_cover(file):
         img.save(filepath, **save_kwargs)
     except Exception as err:
         app.logger.exception('Gagal menyimpan cover berita: %s', err)
-        try:
-            file.stream.seek(0)
-            file.save(filepath)
-        except Exception as fallback_err:
-            app.logger.exception('Fallback simpan cover berita gagal: %s', fallback_err)
-            return None
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return None
     return filename
 
 
@@ -5096,12 +5203,9 @@ def news_upload_image():
         img.save(filepath, **save_kwargs)
     except Exception as err:
         app.logger.exception('TinyMCE image upload failed: %s', err)
-        try:
-            file.stream.seek(0)
-            file.save(filepath)
-        except Exception as fallback_err:
-            app.logger.exception('TinyMCE fallback upload failed: %s', fallback_err)
-            return jsonify({'error': 'Upload gagal'}), 500
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return jsonify({'error': 'File bukan gambar yang valid'}), 400
     return jsonify({'location': url_for('static', filename=f'uploads/news/{filename}', _external=True)})
 
 

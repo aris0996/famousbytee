@@ -33,6 +33,7 @@ famousbytee_mobile
 
 # Secrets and Dynamic Data
 config.py
+!config.py
 static/uploads/
 static/uploads/gallery/
 !static/uploads/.gitkeep

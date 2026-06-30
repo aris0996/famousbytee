@@ -159,7 +159,7 @@
         document.getElementById('dashboard-ann-modal').style.display = 'flex';
         
         // Mark as read in DB
-        fetch(`/announcements/read/${id}`)
+        fetch(`/announcements/read/${id}`, {method: 'POST'})
             .then(r => r.json())
             .then(data => {
                 if(data.status === 'success') {

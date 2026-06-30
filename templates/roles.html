@@ -95,9 +95,9 @@
                                 <i data-lucide="edit-3" style="width: 18px;"></i>
                             </button>
                             {% if u.id != current_user.id %}
-                            <a href="{{ url_for('delete_user', id=u.id) }}" onclick="return confirm('Apakah Anda yakin ingin menghapus user ini?')" style="color: #ef4444; padding: 5px;">
+                            <form method="POST" action="{{ url_for('delete_user', id=u.id) }}" style="display:inline;" onsubmit="return confirm('Apakah Anda yakin ingin menghapus user ini?')"><button type="submit" style="border:0; background:none; color:#ef4444; padding:5px; cursor:pointer;">
                                 <i data-lucide="trash-2" style="width: 18px;"></i>
-                            </a>
+                            </button></form>
                             {% endif %}
                         </div>
                     </td>
@@ -160,7 +160,7 @@
             <div style="margin-top: 1.5rem; display: flex; justify-content: space-between; align-items: center;">
                 <div>
                      {% if role.name != 'Admin' %}
-                        <a href="{{ url_for('delete_role', id=role.id) }}" onclick="return confirm('Hapus role ini?')" style="color: #ef4444; font-size: 0.8rem; text-decoration: none; font-weight: 600;">Hapus</a>
+                        <form method="POST" action="{{ url_for('delete_role', id=role.id) }}" style="display:inline;" onsubmit="return confirm('Hapus role ini?')"><button type="submit" style="border:0; background:none; color:#ef4444; font-size:.8rem; font-weight:600; cursor:pointer;">Hapus</button></form>
                      {% endif %}
                 </div>
                 <button 

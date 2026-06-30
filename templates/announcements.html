@@ -88,7 +88,7 @@
                             <button class="btn btn-sm" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="padding: 5px 15px; font-size: 0.75rem;">Baca</button>
                             {% if current_user.role.can_manage_announcements %}
                                 <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ 'true' if a.is_public else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
-                                <a href="{{ url_for('delete_announcement', id=a.id) }}" onclick="return confirm('Hapus?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 18px;"></i></a>
+                                <form method="POST" action="{{ url_for('delete_announcement', id=a.id) }}" style="display:inline;" onsubmit="return confirm('Hapus?')"><button type="submit" style="border:0; background:none; color:#ef4444; cursor:pointer;"><i data-lucide="trash-2" style="width:18px;"></i></button></form>
                             {% endif %}
                         </div>
                     </td>
@@ -271,7 +271,7 @@ function viewAnnouncement(title, cat, date, content, id) {
     document.getElementById('view-ann-date').innerText = 'Diterbitkan: ' + date;
     document.getElementById('view-ann-content').innerText = content;
     document.getElementById('modal-view-ann').style.display = 'flex';
-    if(id) fetch(`/announcements/read/${id}`);
+    if(id) fetch(`/announcements/read/${id}`, {method: 'POST'});
     lucide.createIcons();
 }
 

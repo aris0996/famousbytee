@@ -1,0 +1,21 @@
+# Apply in the Apache VirtualHost/server configuration, not .htaccess.
+ServerTokens Prod
+ServerSignature Off
+
+<VirtualHost *:80>
+    ServerName famousbytee.arisdev.web.id
+    Redirect permanent / https://famousbytee.arisdev.web.id
+</VirtualHost>
+
+<VirtualHost *:443>
+    ServerName famousbytee.arisdev.web.id
+
+    # Existing TLS and WSGI configuration remains here.
+    Header always unset X-Powered-By
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Reject encoded/doubled path separators before they reach the app.
+    AllowEncodedSlashes Off
+</VirtualHost>

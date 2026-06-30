@@ -75,9 +75,9 @@
                                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 8px;">{{ a.description }}</p>
                             </div>
                             {% if current_user.role.can_manage_assignments %}
-                            <a href="{{ url_for('delete_assignment', id=a.id) }}" onclick="return confirm('Hapus tugas?')" style="color: #ef4444; padding: 8px; border-radius: 8px; background: #fff5f5;">
+                            <form method="POST" action="{{ url_for('delete_assignment', id=a.id) }}" style="display:inline;" onsubmit="return confirm('Hapus tugas?')"><button type="submit" style="border:0; color:#ef4444; padding:8px; border-radius:8px; background:#fff5f5; cursor:pointer;">
                                 <i data-lucide="trash-2" style="width: 18px;"></i>
-                            </a>
+                            </button></form>
                             {% endif %}
                         </div>
                         {% endfor %}
@@ -401,7 +401,7 @@
                                     <span class="status-badge" style="font-family: monospace; font-size: 0.75rem;">{{ s.room }}</span>
                                     {% if current_user.role.can_manage_schedule %}
                                         <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject }}`, `{{ s.lecturer }}`, `{{ s.room }}`)" class="icon-btn"><i data-lucide="edit-3" style="width: 14px;"></i></button>
-                                        <a href="{{ url_for('delete_schedule', id=s.id) }}" onclick="return confirm('Hapus?')" style="color:#ef4444;" class="icon-btn"><i data-lucide="trash-2" style="width: 14px;"></i></a>
+                                        <form method="POST" action="{{ url_for('delete_schedule', id=s.id) }}" style="display:inline;" onsubmit="return confirm('Hapus?')"><button type="submit" style="border:0; background:none; color:#ef4444; cursor:pointer;" class="icon-btn"><i data-lucide="trash-2" style="width:14px;"></i></button></form>
                                     {% endif %}
                                 </div>
                             </div>

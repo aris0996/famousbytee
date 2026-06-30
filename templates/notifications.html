@@ -351,7 +351,7 @@
                     <p class="notify-muted">Log kini mencatat kelas, channel, dan jejak target WA jika tersedia.</p>
                 </div>
                 {% if history %}
-                <a href="{{ url_for('clear_notification_history') }}" class="btn" style="background:#fee2e2; color:#991b1b;" onclick="return confirm('Hapus seluruh riwayat notifikasi?')">Bersihkan Riwayat</a>
+                <form method="POST" action="{{ url_for('clear_notification_history') }}" onsubmit="return confirm('Hapus seluruh riwayat notifikasi?')"><button type="submit" class="btn" style="background:#fee2e2; color:#991b1b;">Bersihkan Riwayat</button></form>
                 {% endif %}
             </div>
             <div class="notify-history" style="overflow-x:auto; margin-top:1rem;">

@@ -82,8 +82,8 @@
                 <span style="font-size: 0.7rem; font-weight: 800; color: #f59e0b;"><i data-lucide="clock" style="width: 12px; height: 12px; vertical-align: middle;"></i> Menunggu Moderasi</span>
                 {% if gallery_can_moderate %}
                 <div style="display: flex; gap: 5px; margin-top: 8px;">
-                    <a href="{{ url_for('approve_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #10b981; color: white;"><i data-lucide="check" style="width: 10px;"></i> Approve</a>
-                    <a href="{{ url_for('reject_gallery', id=photo.id) }}" class="btn" style="flex: 1; padding: 4px; font-size: 0.65rem; background: #ef4444; color: white;"><i data-lucide="x" style="width: 10px;"></i> Reject</a>
+                    <form method="POST" action="{{ url_for('approve_gallery', id=photo.id) }}" style="flex:1;"><button type="submit" class="btn" style="width:100%; padding:4px; font-size:.65rem; background:#10b981; color:white;"><i data-lucide="check" style="width:10px;"></i> Approve</button></form>
+                    <form method="POST" action="{{ url_for('reject_gallery', id=photo.id) }}" style="flex:1;"><button type="submit" class="btn" style="width:100%; padding:4px; font-size:.65rem; background:#ef4444; color:white;"><i data-lucide="x" style="width:10px;"></i> Reject</button></form>
                 </div>
                 {% endif %}
             </div>
@@ -92,8 +92,8 @@
             {% if gallery_can_moderate %}
             <div class="photo-controls" style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
                 <button type="button" onclick="event.stopPropagation(); openEditGallery('{{ photo.id }}', `{{ (photo.caption or '')|replace('`','\\`') }}`, `{{ (photo.tags or '')|replace('`','\\`') }}`, {{ 'true' if photo.is_public else 'false' }})" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Edit</button>
-                <a href="{{ url_for('toggle_gallery_visibility', id=photo.id) }}" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 600;">{{ 'Set Private' if photo.is_public else 'Set Publik' }}</a>
-                <a href="{{ url_for('delete_gallery', id=photo.id) }}" onclick="return confirm('Hapus permanen foto ini?')" style="background: rgba(239, 68, 68, 0.8); color: white; padding: 6px 12px; border-radius: 6px; text-decoration: none;"><i data-lucide="trash-2" style="width:14px; height:14px;"></i></a>
+                <form method="POST" action="{{ url_for('toggle_gallery_visibility', id=photo.id) }}" style="flex:1;"><button type="submit" style="width:100%; border:0; text-align:center; color:white; background:rgba(255,255,255,.2); padding:6px; border-radius:6px; font-size:.8rem; font-weight:600; cursor:pointer;">{{ 'Set Private' if photo.is_public else 'Set Publik' }}</button></form>
+                <form method="POST" action="{{ url_for('delete_gallery', id=photo.id) }}" onsubmit="return confirm('Hapus permanen foto ini?')"><button type="submit" style="border:0; background:rgba(239,68,68,.8); color:white; padding:6px 12px; border-radius:6px; cursor:pointer;"><i data-lucide="trash-2" style="width:14px; height:14px;"></i></button></form>
             </div>
             {% endif %}
             
@@ -114,7 +114,7 @@
                         <span style="font-size: 0.75rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
                             {{ c.created_at.strftime('%d %b %H:%M') }}
                             {% if current_user.id == c.user_id or gallery_can_moderate %}
-                            <a href="{{ url_for('delete_photo_comment', id=c.id) }}" onclick="return confirm('Hapus komentar?')" style="color: #ef4444;"><i data-lucide="trash-2" style="width: 12px; height: 12px;"></i></a>
+                            <form method="POST" action="{{ url_for('delete_photo_comment', id=c.id) }}" style="display:inline;" onsubmit="return confirm('Hapus komentar?')"><button type="submit" style="border:0; background:none; color:#ef4444; cursor:pointer;"><i data-lucide="trash-2" style="width:12px; height:12px;"></i></button></form>
                             {% endif %}
                         </span>
                     </div>

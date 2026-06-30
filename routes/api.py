@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import os
 import json
 from werkzeug.utils import secure_filename
-from werkzeug.security import check_password_hash
+from security_utils import hash_password, verify_password
 from sqlalchemy import or_
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -409,6 +409,11 @@ def _interleave_explore_items(items):
 
 @api_bp.route('/login', methods=['POST'])
 def login():
+    from app import _login_rate_limited, _clear_login_attempts
+    client_ip = request.remote_addr or 'unknown'
+    if _login_rate_limited(client_ip):
+        return jsonify({"msg": "Too many login attempts. Try again later."}), 429
+
     data = request.get_json(silent=True) or request.form or {}
     if not data:
         return jsonify({"msg": "Missing JSON in request"}), 400
@@ -430,21 +435,22 @@ def login():
     # Check if user exists and password matches
     if user:
         classroom = _user_classroom(user)
-        stored_password = user.password or ''
-        if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
-            is_valid = check_password_hash(stored_password, password)
-        else:
-            is_valid = (stored_password == password)
+        is_valid, needs_rehash = verify_password(user.password, password)
 
         if not is_valid:
             return jsonify({"msg": "Invalid credentials"}), 401
 
         if user.status != 'Active':
-            return jsonify({"msg": "Account is disabled"}), 403
+            return jsonify({"msg": "Invalid credentials"}), 401
             
         # Enforce API Access Control from Role
         if not user.role.can_use_api:
             return jsonify({"msg": "Your role does not have API access permissions"}), 403
+
+        if needs_rehash:
+            user.password = hash_password(password)
+            db.session.commit()
+        _clear_login_attempts(client_ip)
 
         student_data = None
         if user.student:
@@ -520,10 +526,11 @@ def change_password():
     if not old_password or not new_password:
         return jsonify({"msg": "Old and new password required"}), 400
         
-    if user.password != old_password:
+    valid_password, _ = verify_password(user.password, old_password)
+    if not valid_password:
         return jsonify({"msg": "Old password incorrect"}), 401
         
-    user.password = new_password
+    user.password = hash_password(new_password)
     db.session.commit()
     
     return jsonify({"msg": "Password changed successfully"})

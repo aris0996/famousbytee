@@ -107,9 +107,9 @@
                         </div>
                         {% if current_user.role.can_manage_assignments %}
                         <div style="margin-left: 20px;">
-                            <a href="{{ url_for('delete_assignment', id=a.id) }}" onclick="return confirm('Hapus tugas ini?')" class="btn" style="background: #fff5f5; color: #ef4444; border: 1px solid #fee2e2; padding: 8px;">
+                            <form method="POST" action="{{ url_for('delete_assignment', id=a.id) }}" style="display:inline;" onsubmit="return confirm('Hapus tugas ini?')"><button type="submit" class="btn" style="background:#fff5f5; color:#ef4444; border:1px solid #fee2e2; padding:8px;">
                                 <i data-lucide="trash-2" style="width: 18px;"></i>
-                            </a>
+                            </button></form>
                         </div>
                         {% endif %}
                     </div>

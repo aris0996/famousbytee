@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
         :root {
             --primary: #4361ee;
@@ -131,6 +131,7 @@
         {% endwith %}
  
         <form action="{{ url_for('login') }}" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label>Username / NIM</label>
                 <input type="text" name="username" class="form-control" placeholder="admin atau NIM Anda" required>

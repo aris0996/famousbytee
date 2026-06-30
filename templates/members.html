@@ -120,9 +120,9 @@
                                 <button onclick="openEditMember('{{ m.id }}', '{{ m.nim }}', '{{ m.full_name|replace('\'', '\\\'') }}', '{{ m.status }}', '{{ m.classroom_id or '' }}', '{{ (m.classroom.name if m.classroom else '-')|replace('\'', '\\\'') }}', '{{ (m.classroom.batch if m.classroom and m.classroom.batch else '')|replace('\'', '\\\'') }}')" style="background:none; border:none; cursor:pointer; color:var(--primary); padding: 5px;">
                                     <i data-lucide="edit-3" style="width: 18px;"></i>
                                 </button>
-                                <a href="{{ url_for('delete_member', id=m.id) }}" onclick="return confirm('Hapus member ini?')" style="color: #ef4444; padding: 5px;">
+                                <form method="POST" action="{{ url_for('delete_member', id=m.id) }}" style="display:inline;" onsubmit="return confirm('Hapus member ini?')"><button type="submit" style="border:0; background:none; color:#ef4444; padding:5px; cursor:pointer;">
                                     <i data-lucide="trash-2" style="width: 18px;"></i>
-                                </a>
+                                </button></form>
                             </div>
                         </td>
                         {% endif %}

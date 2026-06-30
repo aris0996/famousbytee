@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aktivasi Akun Member - Famousbytee.b</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
         :root {
             --primary: #4361ee;
@@ -79,6 +79,7 @@
         {% endwith %}
 
         <form method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label>Buat Password Baru</label>
                 <input type="password" name="password" placeholder="Min. 6 karakter" required>
