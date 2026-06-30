@@ -3,6 +3,13 @@ from flask_login import UserMixin
 
 db = SQLAlchemy()
 
+MEMBER_STATUSES = ('Aktif', 'Nonaktif', 'Cuti', 'Lulus', 'Pindah Kampus', 'Drop-out')
+
+
+def normalize_member_status(value, default='Aktif'):
+    text = str(value or default).strip()
+    return text if text in MEMBER_STATUSES else default
+
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
@@ -335,4 +342,3 @@ class NewsArticle(db.Model):
     updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(),
                            onupdate=db.func.current_timestamp())
     published_at = db.Column(db.DateTime, nullable=True)
-

@@ -4,7 +4,7 @@ from flask import Flask, render_template, redirect, url_for, request, flash
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, login_user, login_required, logout_user, current_user
 from flask_migrate import Migrate
-from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding, NewsCategory, NewsArticle
+from models import db, User, Role, ClassRoom, Student, Schedule, SchedulePreset, ScheduleTemplate, ScheduleTemplateItem, Announcement, BatchFund, FundPeriod, ActivityLog, SystemSetting, GalleryAlbum, GalleryPhoto, PhotoComment, AnnouncementRead, Assignment, NotificationHistory, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding, NewsCategory, NewsArticle, normalize_member_status
 import os
 import json
 import re
@@ -1976,7 +1976,7 @@ def manage_members():
         new_m = Student(
             nim=request.form['nim'], 
             full_name=request.form['full_name'], 
-            status=request.form['status'], 
+            status=normalize_member_status(request.form.get('status')),
             classroom_id=classroom.id if classroom else None
         )
         db.session.add(new_m)
@@ -2030,7 +2030,7 @@ def bulk_add_members():
         if len(parts) >= 2:
             nim = parts[0].strip()
             name = parts[1].strip()
-            status = parts[2].strip() if len(parts) >= 3 else 'Aktif'
+            status = normalize_member_status(parts[2] if len(parts) >= 3 else 'Aktif')
             
             # Check if exists
             if not Student.query.filter_by(nim=nim).first():
@@ -2070,7 +2070,9 @@ def edit_member(id):
         m.classroom_id = classroom.id
     m.nim = request.form['nim']
     m.full_name = request.form['full_name']
-    m.status = request.form['status']
+    m.status = normalize_member_status(request.form.get('status'), m.status or 'Aktif')
+    if m.user:
+        m.user.status = 'Active' if m.status == 'Aktif' else 'Inactive'
     db.session.commit()
     log_activity("Edit Member", f"Mengubah data {old_name} (ID: {id})")
     flash(f'Data {m.full_name} diperbarui.')

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, verify_jwt_in_request
 from flask_login import current_user
-from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding
+from models import db, User, Announcement, Schedule, SchedulePreset, BatchFund, Student, GalleryPhoto, SystemSetting, FundPeriod, ActivityLog, Assignment, NotificationHistory, ClassRoom, ClassroomNotificationConfig, WhatsAppBot, ClassroomWhatsAppBinding, normalize_member_status
 from datetime import datetime, timedelta
 import os
 import json
@@ -912,6 +912,8 @@ def get_explore():
 
     if filter_type in {'all', 'fund'}:
         fund_query = BatchFund.query
+        classroom = _user_classroom(user)
+        fund_query = _apply_fund_classroom_filter(fund_query, classroom)
         if query:
             fund_query = fund_query.outerjoin(Student, BatchFund.student_id == Student.id).filter(or_(
                 _explore_contains(BatchFund.description, query),
@@ -948,6 +950,17 @@ def get_explore():
             gallery_query = GalleryPhoto.query.filter(
                 (GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == int(user_id))
             )
+
+        classroom = _user_classroom(user)
+        if classroom:
+            default_classroom = _default_classroom()
+            if default_classroom and classroom.id == default_classroom.id:
+                gallery_query = gallery_query.filter(
+                    (GalleryPhoto.classroom_id == classroom.id) |
+                    (GalleryPhoto.classroom_id.is_(None))
+                )
+            else:
+                gallery_query = gallery_query.filter_by(classroom_id=classroom.id)
 
         if query:
             gallery_query = gallery_query.outerjoin(User, GalleryPhoto.uploaded_by == User.id).filter(or_(
@@ -2306,7 +2319,7 @@ def create_member_api():
     data = request.get_json(silent=True) or request.form or {}
     nim = (data.get('nim') or '').strip()
     full_name = (data.get('full_name') or '').strip()
-    status = (data.get('status') or 'Aktif').strip() or 'Aktif'
+    status = normalize_member_status(data.get('status'))
     if not nim or not full_name:
         return jsonify({"error": "NIM dan nama lengkap wajib diisi"}), 400
 
@@ -2375,7 +2388,7 @@ def update_member_api(member_id):
     data = request.get_json(silent=True) or request.form or {}
     nim = (data.get('nim') or member.nim).strip()
     full_name = (data.get('full_name') or member.full_name).strip()
-    status = (data.get('status') or member.status or 'Aktif').strip() or 'Aktif'
+    status = normalize_member_status(data.get('status'), member.status or 'Aktif')
     if not nim or not full_name:
         return jsonify({"error": "NIM dan nama lengkap wajib diisi"}), 400
 
@@ -2399,6 +2412,8 @@ def update_member_api(member_id):
     member.nim = nim
     member.full_name = full_name
     member.status = status
+    if member.user:
+        member.user.status = 'Active' if status == 'Aktif' else 'Inactive'
     if classroom:
         member.classroom_id = classroom.id
         if member.user and getattr(user.role, 'can_move_users_between_classrooms', False):

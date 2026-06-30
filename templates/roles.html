@@ -453,6 +453,20 @@ function openEditRoleModal(id, name, desc, p) {
     document.getElementById('edit-can-m-news').checked = p.mNws;
     document.getElementById('edit-can-m-assignments').checked = p.mAs;
     document.getElementById('edit-can-use-api').checked = p.api;
+    document.getElementById('edit-can-access-mc').checked = p.aMC;
+    document.getElementById('edit-can-switch-ctx').checked = p.sCC;
+    document.getElementById('edit-can-manage-classes').checked = p.mC;
+    document.getElementById('edit-can-assign-users').checked = p.aU;
+    document.getElementById('edit-can-move-users').checked = p.mM;
+    document.getElementById('edit-can-view-all-classes').checked = p.vA;
+    document.getElementById('edit-can-m-students-mc').checked = p.mSM;
+    document.getElementById('edit-can-m-sched-mc').checked = p.mScM;
+    document.getElementById('edit-can-m-ann-mc').checked = p.mAM;
+    document.getElementById('edit-can-m-assign-mc').checked = p.mAsM;
+    document.getElementById('edit-can-m-gallery-mc').checked = p.mGM;
+    document.getElementById('edit-can-m-notif-mc').checked = p.mNM;
+    document.getElementById('edit-can-view-reports').checked = p.vR;
+    document.getElementById('edit-can-export-class').checked = p.eR;
 
     document.getElementById('modal-edit-role').style.display = 'flex';
 }
