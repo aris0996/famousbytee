@@ -1633,7 +1633,9 @@ def calculate_user_points_breakdown(user):
     fund_points = int(total_paid // 10000)
     gallery_points = published_photos * 5
     arrears_penalty = int(arrears // 10000)
-    total_points = max(0, fund_points + gallery_points - arrears_penalty)
+    # Tunggakan tetap ditampilkan sebagai informasi keuangan, tetapi tidak boleh
+    # menghapus poin yang sudah benar-benar diperoleh dari pembayaran kas.
+    total_points = fund_points + gallery_points
 
     return {
         'fund_points': fund_points,

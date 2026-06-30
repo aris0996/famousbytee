@@ -219,6 +219,91 @@ def _is_fund_record_in_scope(record_classroom_id, classroom):
     return bool(record_classroom_id is None and default_classroom and classroom.id == default_classroom.id)
 
 
+@api_bp.route('/leaderboard', methods=['GET'])
+@jwt_required()
+def get_mobile_leaderboard():
+    user = User.query.get(int(get_jwt_identity()))
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    try:
+        classroom = _requested_fund_classroom_for_user(user)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({"error": str(exc)}), 403
+    except LookupError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    from app import calculate_user_points_breakdown
+
+    query = User.query.outerjoin(Student, User.student_id == Student.id)
+    if classroom:
+        query = query.filter(
+            (User.classroom_id == classroom.id) |
+            (Student.classroom_id == classroom.id)
+        )
+
+    ranked = []
+    for member in query.all():
+        breakdown = calculate_user_points_breakdown(member)
+        if breakdown['total_points'] > 0:
+            ranked.append((member, breakdown['total_points']))
+    ranked.sort(key=lambda item: item[1], reverse=True)
+
+    return jsonify([{
+        "id": member.id,
+        "full_name": (
+            member.student.full_name
+            if member.student and member.student.full_name
+            else member.full_name
+        ) or member.username,
+        "points": points,
+        "role": member.role.name if member.role else "-",
+        "nim": member.student.nim if member.student else "-",
+    } for member, points in ranked[:20]])
+
+
+@api_bp.route('/leaderboard/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_mobile_leaderboard_detail(user_id):
+    requester = User.query.get(int(get_jwt_identity()))
+    member = User.query.get_or_404(user_id)
+    if not requester:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    allowed_ids = {item.id for item in _allowed_fund_classrooms_for_user(requester)}
+    member_classroom_id = member.classroom_id or (
+        member.student.classroom_id if member.student else None
+    )
+    if member_classroom_id not in allowed_ids:
+        return jsonify({"error": "Kelas tidak diizinkan"}), 403
+
+    from app import calculate_user_points_breakdown
+    breakdown = calculate_user_points_breakdown(member)
+    return jsonify({
+        "id": member.id,
+        "full_name": (
+            member.student.full_name
+            if member.student and member.student.full_name
+            else member.full_name
+        ) or member.username,
+        "username": member.username,
+        "nim": member.student.nim if member.student else "-",
+        "role": member.role.name if member.role else "-",
+        "points": breakdown['total_points'],
+        "breakdown": {
+            "fund_points": breakdown['fund_points'],
+            "gallery_points": breakdown['gallery_points'],
+            "arrears_penalty": 0,
+            "total_paid": breakdown['total_paid'],
+            "target_payment": breakdown['target_payment'],
+            "arrears": breakdown['arrears'],
+            "published_photos": breakdown['published_photos'],
+        },
+    })
+
+
 def _api_request_user(require_api_access=False):
     verify_jwt_in_request(optional=True)
     identity = get_jwt_identity()
