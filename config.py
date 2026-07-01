@@ -1,7 +1,10 @@
 import os
 import secrets
+import hashlib
+import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
+from urllib.parse import quote_plus
 
 
 load_dotenv(Path(__file__).resolve().parent / '.env')
@@ -11,18 +14,45 @@ def _runtime_secret(name):
     value = os.environ.get(name)
     if value:
         return value
-    instance_dir = Path(__file__).resolve().parent / 'instance'
-    instance_dir.mkdir(parents=True, exist_ok=True)
-    secret_file = instance_dir / f'.{name.lower()}'
-    if secret_file.exists():
-        return secret_file.read_text(encoding='utf-8').strip()
-    value = secrets.token_urlsafe(64)
-    secret_file.write_text(value, encoding='utf-8')
-    try:
-        secret_file.chmod(0o600)
-    except OSError:
-        pass
-    return value
+
+    project_dir = Path(__file__).resolve().parent
+    project_hash = hashlib.sha256(str(project_dir).encode()).hexdigest()[:12]
+    candidate_dirs = (
+        project_dir / 'instance',
+        Path(tempfile.gettempdir()) / f'famousbytee-{project_hash}',
+    )
+
+    for secret_dir in candidate_dirs:
+        try:
+            secret_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+            secret_file = secret_dir / f'.{name.lower()}'
+            try:
+                existing = secret_file.read_text(encoding='utf-8').strip()
+                if existing:
+                    return existing
+            except FileNotFoundError:
+                pass
+
+            generated = secrets.token_urlsafe(64)
+            try:
+                descriptor = os.open(
+                    secret_file,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                )
+                with os.fdopen(descriptor, 'w', encoding='utf-8') as handle:
+                    handle.write(generated)
+                return generated
+            except FileExistsError:
+                existing = secret_file.read_text(encoding='utf-8').strip()
+                if existing:
+                    return existing
+        except (OSError, PermissionError):
+            continue
+
+    raise RuntimeError(
+        f'{name} tidak disetel dan tidak ada direktori runtime yang writable.'
+    )
 
 class Config:
     SECRET_KEY = _runtime_secret('SECRET_KEY')
@@ -46,14 +76,22 @@ class Config:
     DB_HOST = os.environ.get('DB_HOST') or 'localhost'
     DB_PORT = os.environ.get('DB_PORT') or '3306'
     DB_NAME = os.environ.get('DB_NAME') or 'famousbytee'
+    DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()
     
-    if DB_TYPE == 'sqlite':
+    if DATABASE_URL:
+        SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    elif DB_TYPE == 'sqlite':
         SQLALCHEMY_DATABASE_URI = 'sqlite:///campus.db'
     elif DB_TYPE == 'mysql' or DB_TYPE == 'mariadb':
-        # Compatible with both MySQL and MariaDB
-        SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+        SQLALCHEMY_DATABASE_URI = (
+            f'mysql+pymysql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}'
+            f'@{DB_HOST}:{DB_PORT}/{quote_plus(DB_NAME)}'
+        )
     elif DB_TYPE == 'postgresql':
-        SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:5432/{DB_NAME}'
+        SQLALCHEMY_DATABASE_URI = (
+            f'postgresql://{quote_plus(DB_USER)}:{quote_plus(DB_PASS)}'
+            f'@{DB_HOST}:5432/{quote_plus(DB_NAME)}'
+        )
     else:
         SQLALCHEMY_DATABASE_URI = 'sqlite:///campus.db'
         
