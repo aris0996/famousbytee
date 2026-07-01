@@ -217,9 +217,9 @@ def _is_fund_record_in_scope(record_classroom_id, classroom):
 
 
 @api_bp.route('/leaderboard', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_mobile_leaderboard():
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user_or_session(require_api_access=True)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -262,9 +262,9 @@ def get_mobile_leaderboard():
 
 
 @api_bp.route('/leaderboard/<int:user_id>', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_mobile_leaderboard_detail(user_id):
-    requester = User.query.get(int(get_jwt_identity()))
+    requester = _api_request_user_or_session(require_api_access=True)
     member = User.query.get_or_404(user_id)
     if not requester:
         return jsonify({"error": "Unauthorized"}), 401
@@ -316,6 +316,18 @@ def _api_request_user(require_api_access=False):
         return None
 
     return user
+
+
+def _api_request_user_or_session(require_api_access=False):
+    """Resolve API user from JWT, then fall back to the Flask login session."""
+    user = _api_request_user(require_api_access=require_api_access)
+    if user:
+        return user
+    if current_user.is_authenticated:
+        if require_api_access and not getattr(current_user.role, 'can_use_api', False):
+            return None
+        return current_user
+    return None
 
 @api_bp.route('/app/releases/windows/latest', methods=['GET'])
 def latest_windows_release():
@@ -536,10 +548,9 @@ def change_password():
     return jsonify({"msg": "Password changed successfully"})
 
 @api_bp.route('/profile', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_profile():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
     
     if not user:
         return jsonify({"msg": "User not found"}), 404
@@ -579,10 +590,9 @@ def get_profile():
     })
 
 @api_bp.route('/profile/classroom', methods=['PUT'])
-@jwt_required()
+@jwt_required(optional=True)
 def update_profile_classroom():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -705,10 +715,11 @@ def update_fcm_token():
     return jsonify({"msg": "Token missing"}), 400
 
 @api_bp.route('/announcements', methods=['GET', 'POST'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_announcements():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     classroom = _user_classroom(user)
 
     if request.method == 'POST':
@@ -1058,10 +1069,11 @@ def get_explore():
     })
 
 @api_bp.route('/schedules', methods=['GET', 'POST'])
-@jwt_required()
+@jwt_required(optional=True)
 def manage_schedules():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     
     if request.method == 'POST':
         if not user.role.can_manage_schedule:
@@ -1186,9 +1198,11 @@ def _schedule_preset_payload(preset):
     }
 
 @api_bp.route('/schedules/presets', methods=['GET', 'POST'])
-@jwt_required()
+@jwt_required(optional=True)
 def schedule_presets():
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user.role.can_manage_schedule:
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -1463,7 +1477,7 @@ def delete_schedule_template_api(template_id):
 def get_notification_preferences():
     """Get notification preferences for schedule management"""
     from app import get_classroom_notification_policy
-    user = _api_request_user()
+    user = _api_request_user_or_session(require_api_access=True)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
     classroom = _user_classroom(user)
@@ -2087,10 +2101,11 @@ def get_fund_target(as_of=None, classroom_id=None):
     return _count_weekdays_between(start_date, target_until) * daily_rate
 
 @api_bp.route('/funds/summary', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_funds_summary():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     classroom = _user_classroom(user)
     try:
         classroom = _requested_fund_classroom_for_user(user)
@@ -2168,9 +2183,11 @@ def get_funds_summary():
     })
 
 @api_bp.route('/funds/history', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_funds_history():
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     try:
         classroom = _requested_fund_classroom_for_user(user)
     except (ValueError, PermissionError, LookupError) as exc:
@@ -2198,9 +2215,11 @@ def get_funds_history():
     } for f in history])
 
 @api_bp.route('/funds/audit', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_funds_audit():
-    user = User.query.get(int(get_jwt_identity()))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     try:
         classroom = _requested_fund_classroom_for_user(user)
     except (ValueError, PermissionError, LookupError) as exc:
@@ -2443,10 +2462,11 @@ def update_member_api(member_id):
 
 
 @api_bp.route('/fund-periods', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_fund_periods_api():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     if not user.role.can_manage_fund:
         return jsonify({"error": "Unauthorized"}), 403
 
@@ -2564,11 +2584,13 @@ def update_fund_period_api(period_id):
     return jsonify({"status": "success"})
 
 @api_bp.route('/gallery', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_gallery():
     # User can see published photos, or their own pending photos
-    user_id = int(get_jwt_identity())
-    user = User.query.get(user_id)
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
+    user_id = user.id
     classroom = _user_classroom(user)
     
     if user.role.can_manage_gallery:
@@ -3209,8 +3231,11 @@ def duplicate_fund_api(fund_id):
     return jsonify({"status": "success", "id": duplicated.id})
 
 @api_bp.route('/assignments', methods=['GET'])
-@jwt_required()
+@jwt_required(optional=True)
 def get_assignments():
+    user = _api_request_user_or_session(require_api_access=True)
+    if not user:
+        return jsonify({"error": "Unauthorized"}), 401
     assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
     return jsonify([{
         "id": a.id,
