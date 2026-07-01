@@ -3902,6 +3902,12 @@ def init_db():
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN original_description VARCHAR(200) NULL"))
                 if 'tags' not in fund_cols:
                     conn.execute(text("ALTER TABLE batch_fund ADD COLUMN tags VARCHAR(100) NULL"))
+
+                # Password hashes (scrypt/pbkdf2) exceed the original 120 chars.
+                user_cols = {c['name']: c for c in inspector.get_columns('user')}
+                password_length = getattr(user_cols.get('password', {}).get('type'), 'length', 0) or 0
+                if password_length < 255:
+                    conn.execute(text("ALTER TABLE user MODIFY COLUMN password VARCHAR(255) NOT NULL"))
                 
                 # C2. Sinkronisasi tabel 'fund_period'
                 if 'fund_period' in inspector.get_table_names():
