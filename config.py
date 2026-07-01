@@ -1,6 +1,10 @@
 import os
 import secrets
 from pathlib import Path
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parent / '.env')
 
 
 def _runtime_secret(name):
@@ -36,7 +40,7 @@ class Config:
     # PostgreSQL: 'postgresql://user:password@localhost/dbname'
     # MySQL/MariaDB: 'mysql+pymysql://user:password@localhost/dbname'
     
-    DB_TYPE = os.environ.get('DB_TYPE') or 'sqlite'
+    DB_TYPE = (os.environ.get('DB_TYPE') or 'mariadb').strip().lower()
     DB_USER = os.environ.get('DB_USER') or 'famousbytee'
     DB_PASS = os.environ.get('DB_PASS') or ''
     DB_HOST = os.environ.get('DB_HOST') or 'localhost'
