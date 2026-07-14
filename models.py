@@ -73,6 +73,14 @@ class Role(db.Model):
     can_view_classroom_reports = db.Column(db.Boolean, default=False)
     can_export_classroom_data = db.Column(db.Boolean, default=False)
 
+    @property
+    def sidobe_enabled(self):
+        return self.can_manage_whatsapp
+
+    @sidobe_enabled.setter
+    def sidobe_enabled(self, value):
+        self.can_manage_whatsapp = bool(value)
+
 
 class GalleryAlbum(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -253,6 +261,14 @@ class ClassroomNotificationConfig(db.Model):
     classroom = db.relationship('ClassRoom', backref=db.backref('notification_config', uselist=False), lazy=True)
     updater = db.relationship('User', backref='updated_classroom_notification_configs', lazy=True)
 
+    @property
+    def sidobe_enabled(self):
+        return self.whatsapp_enabled
+
+    @sidobe_enabled.setter
+    def sidobe_enabled(self, value):
+        self.whatsapp_enabled = bool(value)
+
 class WhatsAppBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
@@ -264,6 +280,14 @@ class WhatsAppBot(db.Model):
     last_seen_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     updated_at = db.Column(db.DateTime, default=db.func.current_timestamp(), onupdate=db.func.current_timestamp())
+
+    @property
+    def sidobe_provider(self):
+        return self.provider
+
+    @sidobe_provider.setter
+    def sidobe_provider(self, value):
+        self.provider = value
 
 class ClassroomWhatsAppBinding(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -277,6 +301,10 @@ class ClassroomWhatsAppBinding(db.Model):
     classroom = db.relationship('ClassRoom', backref=db.backref('whatsapp_binding', uselist=False), lazy=True)
     bot = db.relationship('WhatsAppBot', backref=db.backref('classroom_bindings', lazy=True), lazy=True)
     updater = db.relationship('User', backref='updated_classroom_whatsapp_bindings', lazy=True)
+
+    @property
+    def sidobe_binding(self):
+        return self
 
 class Assignment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -314,6 +342,11 @@ class NotificationHistory(db.Model):
     status = db.Column(db.String(100)) # Success, Failed, Error Details
     classroom = db.relationship('ClassRoom', backref=db.backref('notification_histories', lazy=True), lazy=True)
     bot = db.relationship('WhatsAppBot', backref=db.backref('notification_histories', lazy=True), lazy=True)
+
+
+# Compatibility aliases for the Si Dobe migration layer.
+SidobeBot = WhatsAppBot
+SidobeBinding = ClassroomWhatsAppBinding
 
 
 class NewsCategory(db.Model):

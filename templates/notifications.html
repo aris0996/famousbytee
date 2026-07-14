@@ -51,17 +51,17 @@
         min-height: 100px;
     }
     .notify-toolbar { display:flex; gap:.6rem; flex-wrap:wrap; align-items:center; }
-    .waha-board { display:grid; gap:1rem; }
-    .waha-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:1rem; }
-    .waha-item {
+    .sidobe-board { display:grid; gap:1rem; }
+    .sidobe-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(250px, 1fr)); gap:1rem; }
+    .sidobe-item {
         border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; padding:1rem;
     }
-    .waha-item h4 { margin:0 0 .4rem; font-size:1rem; }
-    .waha-pill { display:inline-flex; padding:.25rem .55rem; border-radius:999px; font-size:.72rem; font-weight:800; }
-    .waha-pill.ok { background:#dcfce7; color:#166534; }
-    .waha-pill.off { background:#f1f5f9; color:#475569; }
-    .waha-pill.warn { background:#fef3c7; color:#92400e; }
-    .waha-pill.error { background:#fee2e2; color:#b91c1c; }
+    .sidobe-item h4 { margin:0 0 .4rem; font-size:1rem; }
+    .sidobe-pill { display:inline-flex; padding:.25rem .55rem; border-radius:999px; font-size:.72rem; font-weight:800; }
+    .sidobe-pill.ok { background:#dcfce7; color:#166534; }
+    .sidobe-pill.off { background:#f1f5f9; color:#475569; }
+    .sidobe-pill.warn { background:#fef3c7; color:#92400e; }
+    .sidobe-pill.error { background:#fee2e2; color:#b91c1c; }
     .notify-history table td { vertical-align: top; }
     .notify-guide { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; }
     .notify-step { padding:.9rem; border:1px solid #dbeafe; border-radius:12px; background:#eff6ff; color:#1e3a8a; }
@@ -89,8 +89,8 @@
                     <i data-lucide="smartphone"></i> Test Push
                 </button>
                 {% endif %}
-                {% if current_user.role.can_manage_whatsapp %}
-                <button class="btn" style="background:#16a34a;" onclick="runClassroomWhatsAppTest()">
+                {% if current_user.role.sidobe_enabled %}
+                <button class="btn" style="background:#16a34a;" onclick="runClassroomSidobeTest()">
                     <i data-lucide="message-circle"></i> Test Si Dobe Kelas
                 </button>
                 {% endif %}
@@ -109,7 +109,7 @@
         <strong>Hak akses Anda</strong>
         <div class="notify-mini" style="margin-top:.35rem;">
             Kirim notifikasi: {{ 'Diizinkan' if current_user.role.can_manage_notifications else 'Tidak diizinkan' }} ·
-            Atur Si Dobe: {{ 'Diizinkan' if current_user.role.can_manage_whatsapp else 'Tidak diizinkan' }} ·
+            Atur Si Dobe: {{ 'Diizinkan' if current_user.role.sidobe_enabled else 'Tidak diizinkan' }} ·
             Lintas kelas: {{ 'Diizinkan' if can_manage_multi_notifications else 'Hanya kelas sendiri' }}
         </div>
     </section>
@@ -129,7 +129,7 @@
             <div class="notify-kv" style="margin-top:.85rem;">
                 <div><strong>Channel:</strong> {{ policy.default_channel if policy else 'push' }}</div>
                 <div><strong>Push:</strong> {{ 'Aktif' if not policy or policy.push_enabled else 'Nonaktif' }}</div>
-                <div><strong>Si Dobe:</strong> {{ 'Aktif' if policy and policy.whatsapp_enabled else 'Nonaktif' }}</div>
+                <div><strong>Si Dobe:</strong> {{ 'Aktif' if policy and policy.sidobe_enabled else 'Nonaktif' }}</div>
                 <div><strong>Bot:</strong> {{ binding.bot.name if binding and binding.bot else '-' }}</div>
                 <div><strong>Target:</strong> {{ binding.chat_label if binding and binding.chat_label else (binding.chat_id if binding else '-') }}</div>
             </div>
@@ -140,7 +140,7 @@
     <nav class="notify-tabs">
         <button class="notify-tab-btn active" data-tab="policy" onclick="showNotifyTab('policy')">Pengaturan Kelas</button>
         <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Grup Si Dobe</button>
-        {% if current_user.role.can_manage_whatsapp %}
+        {% if current_user.role.sidobe_enabled %}
         <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Koneksi Si Dobe</button>
         {% endif %}
         <button class="notify-tab-btn" data-tab="history" onclick="showNotifyTab('history')">Riwayat</button>
@@ -161,7 +161,7 @@
                 </div>
                 <div class="notify-grid">
                     <label class="notify-row"><input type="checkbox" id="policy-push"> Push aktif</label>
-                    <label class="notify-row"><input type="checkbox" id="policy-whatsapp"> Si Dobe aktif</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-sidobe"> Si Dobe aktif</label>
                 </div>
                 <div class="form-group" style="margin-top:1rem;">
                     <label>Cara Pengiriman Utama</label>
@@ -206,7 +206,7 @@
                 </div>
                 <div class="form-group">
                     <label>Pilih Koneksi Si Dobe</label>
-                    <select id="binding-bot" class="form-control" onchange="loadWahaGroups()">
+                    <select id="binding-bot" class="form-control" onchange="loadSidobeGroups()">
                         <option value="">Pilih bot</option>
                         {% for bot in bots %}
                         <option value="{{ bot.id }}">{{ bot.name }} - {{ bot.session_name }}</option>
@@ -219,7 +219,7 @@
                         <select id="binding-chat-select" class="form-control" onchange="syncBindingChat()">
                             <option value="">Muat grup dari Si Dobe</option>
                         </select>
-                        <button type="button" class="btn" style="background:#1e293b; white-space:nowrap;" onclick="loadWahaGroups()">Muat</button>
+                        <button type="button" class="btn" style="background:#1e293b; white-space:nowrap;" onclick="loadSidobeGroups()">Muat</button>
                     </div>
                     <input type="text" id="binding-chat-id" class="form-control" placeholder="Atau isi manual chat id" style="margin-top:.6rem;">
                 </div>
@@ -240,19 +240,19 @@
         </div>
     </section>
 
-    {% if current_user.role.can_manage_whatsapp %}
+    {% if current_user.role.sidobe_enabled %}
     <section id="notify-tab-bots" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
                 <h2 class="notify-section-title">Koneksi Si Dobe</h2>
                 <p class="notify-muted">Biasanya cukup isi alamat layanan dan kunci akses sekali saja.</p>
-                <form method="POST" action="{{ url_for('save_waha_config') }}" class="notify-card" style="margin-top:1rem;">
-                    <div class="form-group"><label>Alamat Layanan Si Dobe</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="Contoh: https://sido.be"></div>
-                    <div class="form-group"><label>Kunci Akses</label><input type="password" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'Masukkan kunci akses' }}"></div>
-                    <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
+                <form method="POST" action="/notifications/sidobe/save-config" class="notify-card" style="margin-top:1rem;">
+                    <div class="form-group"><label>Alamat Layanan Si Dobe</label><input type="text" name="sidobe_base_url" class="form-control" value="{{ settings.sidobe_base_url }}" placeholder="Contoh: https://sido.be"></div>
+                    <div class="form-group"><label>Kunci Akses Si Dobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Masukkan kunci akses' }}"></div>
+                    <div class="form-group"><label>Jam Ringkasan Harian Si Dobe</label><input type="time" name="sidobe_daily_time" class="form-control" value="{{ settings.sidobe_daily_time }}"></div>
                     <div class="notify-actions" style="justify-content:space-between;">
                         <button type="submit" class="btn">Simpan Koneksi</button>
-                        <button type="button" class="btn" style="background:#1e293b;" onclick="refreshWahaDashboard()">Cek Koneksi</button>
+                        <button type="button" class="btn" style="background:#1e293b;" onclick="refreshSidobeDashboard()">Cek Koneksi</button>
                     </div>
                 </form>
                 <div class="notify-card" style="margin-top:1rem;">
@@ -261,27 +261,27 @@
                         <div class="notify-grid" style="grid-template-columns:1fr 160px 160px; align-items:end;">
                             <div class="form-group">
                                 <label>Nama Koneksi Baru</label>
-                                <input type="text" id="waha-new-session-name" class="form-control" placeholder="session-kelas-b">
+                                <input type="text" id="sidobe-new-session-name" class="form-control" placeholder="session-kelas-b">
                             </div>
                             <div class="form-group">
                                 <label>Alamat Layanan</label>
-                                <input type="text" id="waha-new-session-baseurl" class="form-control" value="{{ settings.waha_base_url }}">
+                                <input type="text" id="sidobe-new-session-baseurl" class="form-control" value="{{ settings.sidobe_base_url }}">
                             </div>
                             <div class="notify-actions">
-                                <button class="btn" type="button" style="background:#16a34a;" onclick="createWahaSession()">Buat Koneksi</button>
+                                <button class="btn" type="button" style="background:#16a34a;" onclick="createSidobeSession()">Buat Koneksi</button>
                             </div>
                         </div>
                         <div class="notify-toolbar">
-                            <select id="waha-session-live" class="form-control" style="min-width:240px;">
+                            <select id="sidobe-session-live" class="form-control" style="min-width:240px;">
                                 <option value="">Pilih koneksi Si Dobe</option>
                             </select>
-                            <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Koneksi</button>
+                            <button class="btn" type="button" style="background:#1e293b;" onclick="refreshSidobeSessions()">Muat Koneksi</button>
                             <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Gunakan</button>
                         </div>
-                        <div id="waha-session-status" class="notify-mini" style="margin-top:.6rem;">Session live akan muncul di sini.</div>
-                        <div id="waha-session-qr" style="display:none; margin-top:1rem; text-align:center;">
+                        <div id="sidobe-session-status" class="notify-mini" style="margin-top:.6rem;">Session live akan muncul di sini.</div>
+                        <div id="sidobe-session-qr" style="display:none; margin-top:1rem; text-align:center;">
                             <div class="notify-mini" style="margin-bottom:.5rem;">QR session</div>
-                            <img id="waha-session-qr-img" src="" alt="QR Si Dobe" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
+                            <img id="sidobe-session-qr-img" src="" alt="QR Si Dobe" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
                         </div>
                         <div class="notify-actions" style="margin-top:.75rem;">
                             <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan QR</button>
@@ -309,7 +309,7 @@
                     <summary>Diagnostik layanan</summary>
                     <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Status Teknis</h3>
-                    <div id="waha-dashboard" class="waha-board">
+                    <div id="sidobe-dashboard" class="sidobe-board">
                         <div class="notify-output">Klik “Cek Koneksi” untuk memuat status.</div>
                     </div>
                     </div>
@@ -455,7 +455,7 @@ async function loadPolicy() {
     try {
         const data = await apiFetch(`/api/notifications/classrooms/${classroomId}/policy`);
         document.getElementById('policy-push').checked = !!data.push_enabled;
-        document.getElementById('policy-whatsapp').checked = !!data.whatsapp_enabled;
+        document.getElementById('policy-sidobe').checked = !!(data.sidobe_enabled ?? data.whatsapp_enabled);
         document.getElementById('policy-channel').value = data.default_channel || 'push';
         document.getElementById('policy-announcement').checked = !!data.announcement_enabled;
         document.getElementById('policy-assignment').checked = !!data.assignment_enabled;
@@ -465,7 +465,7 @@ async function loadPolicy() {
         document.getElementById('policy-summary').innerHTML = `
             <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
             <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
-            <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | Si Dobe: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
+            <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | Si Dobe: ${(data.sidobe_enabled ?? data.whatsapp_enabled) ? 'Aktif' : 'Nonaktif'}</span>
         `;
     } catch (error) {
         document.getElementById('policy-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat kebijakan: ${error.message}</span>`;
@@ -476,7 +476,7 @@ async function savePolicy() {
     const classroomId = document.getElementById('policy-classroom').value;
     const payload = {
         push_enabled: document.getElementById('policy-push').checked,
-        whatsapp_enabled: document.getElementById('policy-whatsapp').checked,
+        sidobe_enabled: document.getElementById('policy-sidobe').checked,
         default_channel: document.getElementById('policy-channel').value,
         announcement_enabled: document.getElementById('policy-announcement').checked,
         assignment_enabled: document.getElementById('policy-assignment').checked,
@@ -500,7 +500,7 @@ async function loadBinding() {
         document.getElementById('binding-bot').value = data.bot_id || '';
         document.getElementById('binding-chat-id').value = data.chat_id || '';
         document.getElementById('binding-chat-label').value = data.chat_label || '';
-        await loadWahaGroups();
+        await loadSidobeGroups();
         document.getElementById('binding-summary').innerHTML = `
             <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
             <span class="notify-mini">Bot ID: ${data.bot_id || '-'}</span><br>
@@ -529,7 +529,7 @@ async function saveBinding() {
     }
 }
 
-async function loadWahaGroups() {
+async function loadSidobeGroups() {
     const botId = document.getElementById('binding-bot').value;
     const select = document.getElementById('binding-chat-select');
     const manual = document.getElementById('binding-chat-id');
@@ -586,13 +586,13 @@ function fillBotForm(id, name, sessionName, baseUrl, status) {
     document.getElementById('bot-status').value = status;
 }
 
-async function refreshWahaSessions() {
-    const select = document.getElementById('waha-session-live');
-    const status = document.getElementById('waha-session-status');
+async function refreshSidobeSessions() {
+    const select = document.getElementById('sidobe-session-live');
+    const status = document.getElementById('sidobe-session-status');
     select.innerHTML = '<option value="">Memuat session...</option>';
     if (status) status.innerText = 'Mengambil daftar session dari Si Dobe...';
     try {
-        const data = await apiFetch('{{ url_for("get_waha_sessions") }}');
+        const data = await apiFetch('/notifications/sidobe/sessions');
         const items = data.items || [];
         if (!items.length) {
             select.innerHTML = '<option value="">Tidak ada session aktif</option>';
@@ -600,7 +600,7 @@ async function refreshWahaSessions() {
             return;
         }
         select.innerHTML = '<option value="">Pilih session aktif</option>' + items.map(item => {
-            return `<option value="${item.name}">${item.name} - ${normalizeWahaStatusText(item.status)}</option>`;
+            return `<option value="${item.name}">${item.name} - ${normalizeSidobeStatusText(item.status)}</option>`;
         }).join('');
         if (status) status.innerText = `Ditemukan ${items.length} session.`;
     } catch (error) {
@@ -610,7 +610,7 @@ async function refreshWahaSessions() {
 }
 
 function useSelectedSession() {
-    const select = document.getElementById('waha-session-live');
+    const select = document.getElementById('sidobe-session-live');
     const session = document.getElementById('bot-session');
     if (select && select.value && session) {
         session.value = select.value;
@@ -618,16 +618,16 @@ function useSelectedSession() {
 }
 
 async function refreshSelectedSessionQr() {
-    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
-    const qrWrap = document.getElementById('waha-session-qr');
-    const qrImg = document.getElementById('waha-session-qr-img');
-    const status = document.getElementById('waha-session-status');
+    const sessionName = (document.getElementById('sidobe-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const qrWrap = document.getElementById('sidobe-session-qr');
+    const qrImg = document.getElementById('sidobe-session-qr-img');
+    const status = document.getElementById('sidobe-session-status');
     if (!sessionName) {
         if (status) status.innerText = 'Pilih session dulu.';
         return;
     }
     try {
-        const data = await apiFetch(`/notifications/waha/session/${encodeURIComponent(sessionName)}/qr`);
+        const data = await apiFetch(`/notifications/sidobe/session/${encodeURIComponent(sessionName)}/qr`);
         if (status) status.innerText = `Status session: ${data.status || 'unknown'}`;
         if (data.qr) {
             qrWrap.style.display = 'block';
@@ -643,16 +643,16 @@ async function refreshSelectedSessionQr() {
 }
 
 async function refreshSelectedSessionScreenshot() {
-    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
-    const qrWrap = document.getElementById('waha-session-qr');
-    const qrImg = document.getElementById('waha-session-qr-img');
-    const status = document.getElementById('waha-session-status');
+    const sessionName = (document.getElementById('sidobe-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const qrWrap = document.getElementById('sidobe-session-qr');
+    const qrImg = document.getElementById('sidobe-session-qr-img');
+    const status = document.getElementById('sidobe-session-status');
     if (!sessionName) {
         if (status) status.innerText = 'Pilih session dulu.';
         return;
     }
     try {
-        const data = await apiFetch(`/notifications/waha/session/${encodeURIComponent(sessionName)}/screenshot`);
+        const data = await apiFetch(`/notifications/sidobe/session/${encodeURIComponent(sessionName)}/screenshot`);
         if (data.data) {
             const value = typeof data.data === 'string' ? data.data : (data.data.screenshot || data.data.qr || data.data.image || '');
             if (value) {
@@ -668,33 +668,33 @@ async function refreshSelectedSessionScreenshot() {
     }
 }
 
-async function refreshWahaDashboard() {
-    const board = document.getElementById('waha-dashboard');
+async function refreshSidobeDashboard() {
+    const board = document.getElementById('sidobe-dashboard');
     if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard Si Dobe...</div>';
     try {
-        const data = await apiFetch('{{ url_for("api.notification_waha_dashboard_api") }}');
+        const data = await apiFetch('/api/notifications/sidobe/dashboard');
         const workers = data.workers || [];
         const sessions = data.sessions || [];
         const workerError = data.worker_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.worker_error}</div>` : '';
         const sessionError = data.session_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.session_error}</div>` : '';
         const workerHtml = workers.length ? workers.map(worker => `
-            <div class="waha-item">
+            <div class="sidobe-item">
                 <h4>${worker.name}</h4>
                 <div class="notify-mini">API: ${worker.api || '-'}</div>
-                <div style="margin-top:.45rem;"><span class="waha-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : worker.status === 'offline' || worker.status === 'error' ? 'error' : 'warn'}">${normalizeWahaStatusText(worker.status)}</span></div>
+                <div style="margin-top:.45rem;"><span class="sidobe-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : worker.status === 'offline' || worker.status === 'error' ? 'error' : 'warn'}">${normalizeSidobeStatusText(worker.status)}</span></div>
                 <div class="notify-mini" style="margin-top:.45rem;">Info: ${worker.info || '-'}</div>
                 <div class="notify-mini">Sessions: ${worker.sessions || 0}</div>
             </div>
         `).join('') : '<div class="notify-output">Tidak ada worker terdeteksi.</div>';
 
         const sessionHtml = sessions.length ? sessions.map(session => `
-            <div class="waha-item">
+            <div class="sidobe-item">
                 <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
                     <div>
                         <h4>${session.name}</h4>
                         <div class="notify-mini">Account: ${session.account || '-'}</div>
                     </div>
-                    <span class="waha-pill ${sessionStatusClass(session.status)}">${normalizeWahaStatusText(session.status)}</span>
+                    <span class="sidobe-pill ${sessionStatusClass(session.status)}">${normalizeSidobeStatusText(session.status)}</span>
                 </div>
                 <div class="notify-mini" style="margin-top:.45rem;">Server: ${session.server || '-'}</div>
                 <div class="notify-actions" style="margin-top:.75rem;">
@@ -705,9 +705,9 @@ async function refreshWahaDashboard() {
         `).join('') : '<div class="notify-output">Tidak ada session terdeteksi.</div>';
 
         board.innerHTML = `
-            <div class="waha-grid">
-                <div class="waha-item"><h4>Workers</h4>${workerError}<div class="waha-grid" style="grid-template-columns:1fr;">${workerHtml}</div></div>
-                <div class="waha-item"><h4>Sessions</h4>${sessionError}<div class="waha-grid" style="grid-template-columns:1fr;">${sessionHtml}</div></div>
+            <div class="sidobe-grid">
+                <div class="sidobe-item"><h4>Workers</h4>${workerError}<div class="sidobe-grid" style="grid-template-columns:1fr;">${workerHtml}</div></div>
+                <div class="sidobe-item"><h4>Sessions</h4>${sessionError}<div class="sidobe-grid" style="grid-template-columns:1fr;">${sessionHtml}</div></div>
             </div>
         `;
     } catch (error) {
@@ -715,7 +715,7 @@ async function refreshWahaDashboard() {
     }
 }
 
-function normalizeWahaStatusText(status) {
+function normalizeSidobeStatusText(status) {
     const raw = String(status || '').trim();
     const lower = raw.toLowerCase();
     if (!raw) return 'unknown';
@@ -736,7 +736,7 @@ function sessionStatusClass(status) {
 
 function useSessionName(sessionName) {
     const session = document.getElementById('bot-session');
-    const live = document.getElementById('waha-session-live');
+    const live = document.getElementById('sidobe-session-live');
     if (session) session.value = sessionName;
     if (live) {
         let option = [...live.options].find(o => o.value === sessionName);
@@ -754,10 +754,10 @@ function useSessionName(sessionName) {
 async function loadSessionQr(sessionName) {
     if (!sessionName) return;
     try {
-        const data = await apiFetch(`/notifications/waha/session/${encodeURIComponent(sessionName)}/qr`);
-        const qrWrap = document.getElementById('waha-session-qr');
-        const qrImg = document.getElementById('waha-session-qr-img');
-        const status = document.getElementById('waha-session-status');
+        const data = await apiFetch(`/notifications/sidobe/session/${encodeURIComponent(sessionName)}/qr`);
+        const qrWrap = document.getElementById('sidobe-session-qr');
+        const qrImg = document.getElementById('sidobe-session-qr-img');
+        const status = document.getElementById('sidobe-session-status');
         if (status) status.innerText = `Status session: ${data.status || 'unknown'}`;
         if (data.qr) {
             qrWrap.style.display = 'block';
@@ -770,38 +770,38 @@ async function loadSessionQr(sessionName) {
     }
 }
 
-async function createWahaSession() {
-    const sessionName = (document.getElementById('waha-new-session-name')?.value || '').trim();
-    const baseUrl = (document.getElementById('waha-new-session-baseurl')?.value || '').trim();
-    const status = document.getElementById('waha-session-status');
+async function createSidobeSession() {
+    const sessionName = (document.getElementById('sidobe-new-session-name')?.value || '').trim();
+    const baseUrl = (document.getElementById('sidobe-new-session-baseurl')?.value || '').trim();
+    const status = document.getElementById('sidobe-session-status');
     if (!sessionName) {
         if (status) status.innerText = 'Nama session baru wajib diisi.';
         return;
     }
     try {
-        const result = await apiFetch('/notifications/waha/sessions/create', {
+        const result = await apiFetch('/notifications/sidobe/sessions/create', {
             method: 'POST',
             body: JSON.stringify({ session_name: sessionName, base_url: baseUrl })
         });
         if (status) status.innerText = `Session ${sessionName} dibuat. ${result.path ? `Endpoint: ${result.path}` : ''}`;
-        await refreshWahaSessions();
+        await refreshSidobeSessions();
         useSessionName(sessionName);
     } catch (error) {
         if (status) status.innerText = error.message;
     }
 }
 
-async function _changeWahaSession(action) {
-    const sessionName = (document.getElementById('waha-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
-    const status = document.getElementById('waha-session-status');
+async function _changeSidobeSession(action) {
+    const sessionName = (document.getElementById('sidobe-session-live')?.value || document.getElementById('bot-session')?.value || '').trim();
+    const status = document.getElementById('sidobe-session-status');
     if (!sessionName) {
         if (status) status.innerText = 'Pilih session dulu.';
         return;
     }
     try {
-        const result = await apiFetch(`/notifications/waha/sessions/${encodeURIComponent(sessionName)}/${action}`, { method: 'POST' });
+        const result = await apiFetch(`/notifications/sidobe/sessions/${encodeURIComponent(sessionName)}/${action}`, { method: 'POST' });
         if (status) status.innerText = `Session ${sessionName} ${action} berhasil.`;
-        await refreshWahaSessions();
+        await refreshSidobeSessions();
         if (result && result.path) {
             await refreshSelectedSessionQr();
         }
@@ -810,9 +810,9 @@ async function _changeWahaSession(action) {
     }
 }
 
-function startSelectedSession() { return _changeWahaSession('start'); }
-function stopSelectedSession() { return _changeWahaSession('stop'); }
-function restartSelectedSession() { return _changeWahaSession('restart'); }
+function startSelectedSession() { return _changeSidobeSession('start'); }
+function stopSelectedSession() { return _changeSidobeSession('stop'); }
+function restartSelectedSession() { return _changeSidobeSession('restart'); }
 
 async function saveBot() {
     const payload = {
@@ -871,7 +871,7 @@ async function runNotificationAction(url) {
     }
 }
 
-async function runClassroomWhatsAppTest() {
+async function runClassroomSidobeTest() {
     const chatId = document.getElementById('binding-chat-id').value.trim();
     try {
         const data = await apiFetch('{{ url_for('test_whatsapp_notification') }}', {
@@ -887,10 +887,10 @@ async function runClassroomWhatsAppTest() {
 document.addEventListener('DOMContentLoaded', () => {
     loadPolicy();
     loadBinding();
-    refreshWahaSessions();
-    refreshWahaDashboard();
+    refreshSidobeSessions();
+    refreshSidobeDashboard();
     lucide.createIcons();
-    const liveSelect = document.getElementById('waha-session-live');
+    const liveSelect = document.getElementById('sidobe-session-live');
     if (liveSelect) liveSelect.addEventListener('change', useSelectedSession);
     if (liveSelect) liveSelect.addEventListener('change', refreshSelectedSessionQr);
 });

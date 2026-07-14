@@ -77,6 +77,7 @@ def _permission_payload(role):
         "can_manage_announcements": role.can_manage_announcements,
         "can_manage_notifications": role.can_manage_notifications,
         "can_manage_whatsapp": role.can_manage_whatsapp,
+        "sidobe_enabled": getattr(role, 'sidobe_enabled', role.can_manage_whatsapp),
         "can_manage_gallery": role.can_manage_gallery,
         "can_manage_assignments": role.can_manage_assignments,
         "can_view_logs": role.can_view_logs,
@@ -1612,6 +1613,7 @@ def classroom_notification_policy_api(classroom_id):
             'classroom_name': classroom.name,
             'classroom_batch': classroom.batch,
             'push_enabled': policy.push_enabled if policy else True,
+            'sidobe_enabled': policy.whatsapp_enabled if policy else False,
             'whatsapp_enabled': policy.whatsapp_enabled if policy else False,
             'default_channel': policy.default_channel if policy else 'push',
             'announcement_enabled': policy.announcement_enabled if policy else True,
@@ -1627,7 +1629,8 @@ def classroom_notification_policy_api(classroom_id):
         db.session.add(policy)
 
     policy.push_enabled = str(data.get('push_enabled', policy.push_enabled)).lower() == 'true' if isinstance(data.get('push_enabled'), str) else bool(data.get('push_enabled', policy.push_enabled))
-    policy.whatsapp_enabled = str(data.get('whatsapp_enabled', policy.whatsapp_enabled)).lower() == 'true' if isinstance(data.get('whatsapp_enabled'), str) else bool(data.get('whatsapp_enabled', policy.whatsapp_enabled))
+    incoming_sidobe_enabled = data.get('sidobe_enabled', data.get('whatsapp_enabled', policy.whatsapp_enabled))
+    policy.whatsapp_enabled = str(incoming_sidobe_enabled).lower() == 'true' if isinstance(incoming_sidobe_enabled, str) else bool(incoming_sidobe_enabled)
     default_channel = (data.get('default_channel') or policy.default_channel or 'push').strip().lower()
     policy.default_channel = default_channel if default_channel in {'push', 'whatsapp', 'both'} else 'push'
     for field in ['announcement_enabled', 'assignment_enabled', 'schedule_enabled', 'finance_enabled', 'emergency_enabled']:
@@ -1643,7 +1646,7 @@ def classroom_whatsapp_binding_api(classroom_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
 
     allowed_ids = {item.id for item in _allowed_notification_classrooms_for_user(user)}
@@ -1697,7 +1700,7 @@ def notification_bots_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
 
     if request.method == 'GET':
@@ -1720,7 +1723,7 @@ def notification_bots_api():
         return jsonify({'error': 'Nama bot dan session_name wajib diisi'}), 400
     bot = WhatsAppBot(
         name=name,
-        provider=(data.get('provider') or 'waha').strip() or 'waha',
+        provider=(data.get('provider') or 'sidobe').strip() or 'sidobe',
         session_name=session_name,
         base_url=(data.get('base_url') or '').strip() or None,
         status=(data.get('status') or 'configured').strip() or 'configured',
@@ -1736,7 +1739,7 @@ def update_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
     data = request.get_json(silent=True) or request.form or {}
@@ -1759,7 +1762,7 @@ def delete_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
     if ClassroomWhatsAppBinding.query.filter_by(bot_id=bot.id).first():
@@ -1774,18 +1777,18 @@ def notification_bot_health_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request, _normalize_waha_scalar
+    from app import _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    result = _waha_request('GET', '/api/sessions', base_url_override=bot.base_url or None)
+    result = _sidobe_request_with_auth_fallback('GET', '/api/sessions', base_url_override=bot.base_url or None)
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal cek bot')}), 400
     raw_data = result.get('data') or []
     sessions = raw_data if isinstance(raw_data, list) else raw_data.get('sessions', [])
     matched = None
     for item in sessions:
-        session_name = _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '')
+        session_name = _sidobe_normalize_scalar(item.get('name') or item.get('session') or item.get('id') or '')
         if session_name == bot.session_name:
             matched = item
             break
@@ -1793,7 +1796,7 @@ def notification_bot_health_api(bot_id):
         'ok': bool(matched),
         'bot_id': bot.id,
         'session_name': bot.session_name,
-        'status': _normalize_waha_scalar((matched or {}).get('status') or (matched or {}).get('state') or 'not-found'),
+        'status': _sidobe_normalize_scalar((matched or {}).get('status') or (matched or {}).get('state') or 'not-found'),
     })
 
 
@@ -1802,48 +1805,48 @@ def notification_bot_groups_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    from app import _waha_request, _normalize_waha_scalar, _normalize_waha_chat_id
-    result = _waha_request('GET', f'/api/{bot.session_name}/groups', base_url_override=bot.base_url or None)
+    from app import _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar, _sidobe_normalize_chat_id
+    result = _sidobe_request_with_auth_fallback('GET', f'/api/{bot.session_name}/groups', base_url_override=bot.base_url or None)
     raw_data = []
     chats = []
     if result.get('ok'):
         raw_data = result.get('data') or []
         chats = raw_data if isinstance(raw_data, list) else raw_data.get('groups', raw_data.get('chats', []))
     if not chats:
-        fallback = _waha_request('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
+        fallback = _sidobe_request_with_auth_fallback('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
         if fallback.get('ok'):
             raw_data = fallback.get('data') or []
             chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
         elif not result.get('ok'):
-            return jsonify({'ok': False, 'error': result.get('error', fallback.get('error', 'Gagal memuat grup WAHA'))}), 400
+            return jsonify({'ok': False, 'error': result.get('error', fallback.get('error', 'Gagal memuat grup Si Dobe'))}), 400
     normalized = []
     for item in chats:
         if not isinstance(item, dict):
             continue
-        chat_id = _normalize_waha_chat_id(item)
+        chat_id = _sidobe_normalize_chat_id(item)
         if not chat_id or '@g.us' not in chat_id:
             continue
         normalized.append({
-            'name': _normalize_waha_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
+            'name': _sidobe_normalize_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
             'chat_id': chat_id,
             'participants': item.get('participantsCount') or item.get('size') or 0,
-            'owner': _normalize_waha_scalar(item.get('owner') or item.get('ownerPn') or '-'),
+            'owner': _sidobe_normalize_scalar(item.get('owner') or item.get('ownerPn') or '-'),
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': bot.session_name, 'bot_id': bot.id})
 
 
-@api_bp.route('/notifications/waha/dashboard', methods=['GET'])
-def notification_waha_dashboard_api():
+@api_bp.route('/notifications/sidobe/dashboard', methods=['GET'])
+def notification_sidobe_dashboard_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import get_setting_value, _waha_request, _normalize_waha_scalar
-    base_url = get_setting_value('waha_base_url', '').strip() or None
+    from app import get_sidobe_setting_value, _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar
+    base_url = get_sidobe_setting_value('base_url', '').strip() or None
 
     dashboard = {
         'ok': True,
@@ -1854,66 +1857,66 @@ def notification_waha_dashboard_api():
         'session_error': '',
     }
 
-    workers_result = _waha_request('GET', '/api/workers', base_url_override=base_url)
+    workers_result = _sidobe_request_with_auth_fallback('GET', '/api/workers', base_url_override=base_url)
     if workers_result.get('ok'):
         raw_workers = workers_result.get('data') or []
         workers = raw_workers if isinstance(raw_workers, list) else raw_workers.get('workers', raw_workers.get('data', []))
         dashboard['workers'] = [{
-            'name': _normalize_waha_scalar(item.get('name') or item.get('id') or 'worker'),
-            'api': _normalize_waha_scalar(item.get('api') or item.get('baseUrl') or base_url or ''),
-            'status': _normalize_waha_scalar(item.get('status') or item.get('state') or 'unknown'),
-            'info': _normalize_waha_scalar(item.get('info') or item.get('version') or item.get('build') or ''),
+            'name': _sidobe_normalize_scalar(item.get('name') or item.get('id') or 'worker'),
+            'api': _sidobe_normalize_scalar(item.get('api') or item.get('baseUrl') or base_url or ''),
+            'status': _sidobe_normalize_scalar(item.get('status') or item.get('state') or 'unknown'),
+            'info': _sidobe_normalize_scalar(item.get('info') or item.get('version') or item.get('build') or ''),
             'sessions': item.get('sessions') or item.get('sessionCount') or item.get('workingSessions') or 0,
         } for item in workers if isinstance(item, dict)]
     else:
         dashboard['worker_error'] = workers_result.get('error', 'Gagal memuat worker Si Dobe')
 
-    sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
+    sessions_result = _sidobe_request_with_auth_fallback('GET', '/api/sessions', base_url_override=base_url)
     if sessions_result.get('ok'):
         raw_sessions = sessions_result.get('data') or []
         sessions = raw_sessions if isinstance(raw_sessions, list) else raw_sessions.get('sessions', [])
         dashboard['sessions'] = [{
-            'name': _normalize_waha_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
-            'status': _normalize_waha_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or 'unknown'),
-            'account': _normalize_waha_scalar(item.get('me') or item.get('meId') or item.get('phone') or item.get('wid') or '-'),
-            'server': _normalize_waha_scalar(item.get('server') or item.get('worker') or item.get('engine') or 'default'),
-            'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
+            'name': _sidobe_normalize_scalar(item.get('name') or item.get('session') or item.get('id') or '-'),
+            'status': _sidobe_normalize_scalar(item.get('status') or item.get('state') or item.get('connectionStatus') or 'unknown'),
+            'account': _sidobe_normalize_scalar(item.get('me') or item.get('meId') or item.get('phone') or item.get('wid') or '-'),
+            'server': _sidobe_normalize_scalar(item.get('server') or item.get('worker') or item.get('engine') or 'default'),
+            'qr': _sidobe_normalize_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
         } for item in sessions if isinstance(item, dict)]
     else:
         dashboard['session_error'] = sessions_result.get('error', 'Gagal memuat session Si Dobe')
 
     return jsonify(dashboard)
 
-@api_bp.route('/notifications/waha/sessions/create', methods=['POST'])
+@api_bp.route('/notifications/sidobe/sessions/create', methods=['POST'])
 @jwt_required()
-def notification_waha_create_session_api():
+def notification_sidobe_create_session_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request_any, get_setting_value
+    from app import _sidobe_request_any, get_sidobe_setting_value
     data = request.get_json(silent=True) or {}
     session_name = (data.get('session_name') or data.get('name') or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session name wajib diisi'}), 400
-    base_url = (data.get('base_url') or get_setting_value('waha_base_url', '')).strip() or None
-    result = _waha_request_any('POST', ['/api/sessions', '/api/session'], payload={'name': session_name, 'session': session_name}, base_url_override=base_url)
+    base_url = (data.get('base_url') or get_sidobe_setting_value('base_url', '')).strip() or None
+    result = _sidobe_request_any('POST', ['/api/sessions', '/api/session'], payload={'name': session_name, 'session': session_name}, base_url_override=base_url)
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal membuat session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
-@api_bp.route('/notifications/waha/sessions/<string:session_name>/start', methods=['POST'])
+@api_bp.route('/notifications/sidobe/sessions/<string:session_name>/start', methods=['POST'])
 @jwt_required()
-def notification_waha_start_session_api(session_name):
+def notification_sidobe_start_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request_any, get_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
-    result = _waha_request_any('POST', [
+    from app import _sidobe_request_any, get_sidobe_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/start',
         f'/api/{session_name}/start',
         f'/api/sessions/{session_name}/connect',
@@ -1922,17 +1925,17 @@ def notification_waha_start_session_api(session_name):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal start session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
-@api_bp.route('/notifications/waha/sessions/<string:session_name>/stop', methods=['POST'])
+@api_bp.route('/notifications/sidobe/sessions/<string:session_name>/stop', methods=['POST'])
 @jwt_required()
-def notification_waha_stop_session_api(session_name):
+def notification_sidobe_stop_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request_any, get_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
-    result = _waha_request_any('POST', [
+    from app import _sidobe_request_any, get_sidobe_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/stop',
         f'/api/{session_name}/stop',
         f'/api/sessions/{session_name}/disconnect',
@@ -1941,17 +1944,17 @@ def notification_waha_stop_session_api(session_name):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal stop session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
-@api_bp.route('/notifications/waha/sessions/<string:session_name>/restart', methods=['POST'])
+@api_bp.route('/notifications/sidobe/sessions/<string:session_name>/restart', methods=['POST'])
 @jwt_required()
-def notification_waha_restart_session_api(session_name):
+def notification_sidobe_restart_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request_any, get_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_setting_value('waha_base_url', '')
-    result = _waha_request_any('POST', [
+    from app import _sidobe_request_any, get_sidobe_setting_value
+    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/restart',
         f'/api/{session_name}/restart',
         f'/api/sessions/{session_name}/start',
@@ -1960,17 +1963,17 @@ def notification_waha_restart_session_api(session_name):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal restart session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
-@api_bp.route('/notifications/waha/sessions/<string:session_name>/screenshot', methods=['GET'])
+@api_bp.route('/notifications/sidobe/sessions/<string:session_name>/screenshot', methods=['GET'])
 @jwt_required()
-def notification_waha_session_screenshot_api(session_name):
+def notification_sidobe_session_screenshot_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.can_manage_whatsapp:
+    if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _waha_request_any, get_setting_value
-    base_url = get_setting_value('waha_base_url', '').strip() or None
-    result = _waha_request_any('GET', [
+    from app import _sidobe_request_any, get_sidobe_setting_value
+    base_url = get_sidobe_setting_value('base_url', '').strip() or None
+    result = _sidobe_request_any('GET', [
         '/api/screenshot',
         f'/api/{session_name}/screenshot',
         f'/api/sessions/{session_name}/screenshot',
@@ -1987,15 +1990,15 @@ def notification_waha_session_screenshot_api(session_name):
 @api_bp.route('/schedules/<int:id>/send-whatsapp', methods=['POST'])
 @jwt_required()
 def send_schedule_whatsapp(id):
-    """Manually send WhatsApp notification for a specific schedule"""
-    from app import send_whatsapp
+    """Manually send Si Dobe notification for a specific schedule"""
+    from app import send_sidobe
     from models import Schedule
     
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
-    if not (user.role.can_manage_schedule and user.role.can_manage_whatsapp):
-        return jsonify({"error": "Perlu izin kelola jadwal dan WhatsApp"}), 403
+    if not (user.role.can_manage_schedule and user.role.sidobe_enabled):
+        return jsonify({"error": "Perlu izin kelola jadwal dan Si Dobe"}), 403
     
     schedule = Schedule.query.get_or_404(id)
     
@@ -2011,7 +2014,7 @@ def send_schedule_whatsapp(id):
         else:  # update
             whatsapp_text = f"Perubahan jadwal\n{schedule.subject}\nHari: {schedule.day}\nJam: {schedule.time_start}-{schedule.time_end}\nRuang: {schedule.room}"
     
-    result = send_whatsapp(
+    result = send_sidobe(
         whatsapp_text,
         sender_id=user.id,
         title=f"Jadwal: {schedule.subject}",
@@ -2024,14 +2027,14 @@ def send_schedule_whatsapp(id):
 @api_bp.route('/notifications/send-daily-summary', methods=['POST'])
 @jwt_required()
 def send_daily_summary_on_demand():
-    """Send daily schedule summary WhatsApp on demand"""
-    from app import send_whatsapp, _build_schedule_summary_message
+    """Send daily schedule summary Si Dobe on demand"""
+    from app import send_sidobe, _build_schedule_summary_message
     
     user_id = get_jwt_identity()
     user = User.query.get(int(user_id))
     
-    if not (user.role.can_manage_schedule and user.role.can_manage_whatsapp):
-        return jsonify({"error": "Perlu izin kelola jadwal dan WhatsApp"}), 403
+    if not (user.role.can_manage_schedule and user.role.sidobe_enabled):
+        return jsonify({"error": "Perlu izin kelola jadwal dan Si Dobe"}), 403
     
     data = request.get_json() or {}
     target_date_str = data.get('target_date')  # Optional: YYYY-MM-DD format
@@ -2064,8 +2067,8 @@ def send_daily_summary_on_demand():
     if note and note.strip():
         message += f"\n\n📝 *Info Tambahan:*\n{note.strip()}"
     
-    # Send WhatsApp
-    result = send_whatsapp(
+    # Send Si Dobe
+    result = send_sidobe(
         message,
         sender_id=user.id,
         title=f"Ringkasan Jadwal {target_date.strftime('%d/%m/%Y')}",

@@ -13,7 +13,7 @@ Berikut adalah daftar 20 fitur tambahan untuk membawa Portal Famousbytee.b ke le
 6.  **Real-time Chat**: Fitur chatting antar mahasiswa di dalam aplikasi (menggunakan Firebase Realtime Database).
 7.  **Polling/Voting**: Admin bisa membuat jajak pendapat untuk menentukan lokasi makrab atau keputusan kelas lainnya.
 8.  **Ulang Tahun Member**: Notifikasi otomatis dan ucapan di dashboard saat ada mahasiswa yang sedang berulang tahun hari itu.
-9.  **Thread Diskusi**: Forum diskusi di bawah setiap pengumuman agar mahasiswa bisa bertanya tanpa memenuhi grup WhatsApp.
+9.  **Thread Diskusi**: Forum diskusi di bawah setiap pengumuman agar mahasiswa bisa bertanya tanpa memenuhi grup Si Dobe.
 10. **Sistem Badge/Poin**: Memberikan penghargaan (badge) kepada mahasiswa yang paling rajin bayar kas atau aktif di forum.
 
 ## 🎓 Akademik & Studi
