@@ -78,7 +78,7 @@
         <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:flex-start;">
             <div>
                 <h1 class="notify-section-title">Pusat Notifikasi</h1>
-                <p class="notify-muted" style="margin:0;">Atur pesan aplikasi dan WhatsApp kelas dari satu halaman.</p>
+                <p class="notify-muted" style="margin:0;">Atur pesan aplikasi dan notifikasi Si Dobe dari satu halaman.</p>
             </div>
             <div class="notify-actions">
                 {% if current_user.role.can_manage_notifications %}
@@ -91,7 +91,7 @@
                 {% endif %}
                 {% if current_user.role.can_manage_whatsapp %}
                 <button class="btn" style="background:#16a34a;" onclick="runClassroomWhatsAppTest()">
-                    <i data-lucide="message-circle"></i> Test WhatsApp Kelas
+                    <i data-lucide="message-circle"></i> Test Si Dobe Kelas
                 </button>
                 {% endif %}
             </div>
@@ -100,8 +100,8 @@
 
     <section class="notify-guide">
         <div class="notify-step"><strong>1. Pilih kelas</strong>Pastikan kelas yang akan menerima pesan sudah benar.</div>
-        <div class="notify-step"><strong>2. Pilih saluran</strong>Aktifkan notifikasi aplikasi, WhatsApp, atau keduanya.</div>
-        <div class="notify-step"><strong>3. Hubungkan grup</strong>Pilih koneksi dan grup WhatsApp tujuan.</div>
+        <div class="notify-step"><strong>2. Pilih saluran</strong>Aktifkan notifikasi aplikasi, Si Dobe, atau keduanya.</div>
+        <div class="notify-step"><strong>3. Hubungkan grup</strong>Pilih koneksi Si Dobe dan grup tujuan.</div>
         <div class="notify-step"><strong>4. Uji kirim</strong>Kirim pesan percobaan sebelum digunakan.</div>
     </section>
 
@@ -109,7 +109,7 @@
         <strong>Hak akses Anda</strong>
         <div class="notify-mini" style="margin-top:.35rem;">
             Kirim notifikasi: {{ 'Diizinkan' if current_user.role.can_manage_notifications else 'Tidak diizinkan' }} ·
-            Atur WhatsApp: {{ 'Diizinkan' if current_user.role.can_manage_whatsapp else 'Tidak diizinkan' }} ·
+            Atur Si Dobe: {{ 'Diizinkan' if current_user.role.can_manage_whatsapp else 'Tidak diizinkan' }} ·
             Lintas kelas: {{ 'Diizinkan' if can_manage_multi_notifications else 'Hanya kelas sendiri' }}
         </div>
     </section>
@@ -129,7 +129,7 @@
             <div class="notify-kv" style="margin-top:.85rem;">
                 <div><strong>Channel:</strong> {{ policy.default_channel if policy else 'push' }}</div>
                 <div><strong>Push:</strong> {{ 'Aktif' if not policy or policy.push_enabled else 'Nonaktif' }}</div>
-                <div><strong>WhatsApp:</strong> {{ 'Aktif' if policy and policy.whatsapp_enabled else 'Nonaktif' }}</div>
+                <div><strong>Si Dobe:</strong> {{ 'Aktif' if policy and policy.whatsapp_enabled else 'Nonaktif' }}</div>
                 <div><strong>Bot:</strong> {{ binding.bot.name if binding and binding.bot else '-' }}</div>
                 <div><strong>Target:</strong> {{ binding.chat_label if binding and binding.chat_label else (binding.chat_id if binding else '-') }}</div>
             </div>
@@ -139,9 +139,9 @@
 
     <nav class="notify-tabs">
         <button class="notify-tab-btn active" data-tab="policy" onclick="showNotifyTab('policy')">Pengaturan Kelas</button>
-        <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Grup WhatsApp</button>
+        <button class="notify-tab-btn" data-tab="binding" onclick="showNotifyTab('binding')">Grup Si Dobe</button>
         {% if current_user.role.can_manage_whatsapp %}
-        <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Koneksi WhatsApp</button>
+        <button class="notify-tab-btn" data-tab="bots" onclick="showNotifyTab('bots')">Koneksi Si Dobe</button>
         {% endif %}
         <button class="notify-tab-btn" data-tab="history" onclick="showNotifyTab('history')">Riwayat</button>
     </nav>
@@ -161,14 +161,14 @@
                 </div>
                 <div class="notify-grid">
                     <label class="notify-row"><input type="checkbox" id="policy-push"> Push aktif</label>
-                    <label class="notify-row"><input type="checkbox" id="policy-whatsapp"> WhatsApp aktif</label>
+                    <label class="notify-row"><input type="checkbox" id="policy-whatsapp"> Si Dobe aktif</label>
                 </div>
                 <div class="form-group" style="margin-top:1rem;">
                     <label>Cara Pengiriman Utama</label>
                     <select id="policy-channel" class="form-control">
                         <option value="push">Push saja</option>
-                        <option value="whatsapp">WhatsApp saja</option>
-                        <option value="both">Push + WhatsApp</option>
+                        <option value="whatsapp">Si Dobe saja</option>
+                        <option value="both">Push + Si Dobe</option>
                     </select>
                 </div>
                 <div class="notify-grid" style="margin-top:1rem;">
@@ -194,8 +194,8 @@
     <section id="notify-tab-binding" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Grup WhatsApp Kelas</h2>
-                <p class="notify-muted">Hubungkan satu kelas dengan grup WhatsApp tujuan.</p>
+                <h2 class="notify-section-title">Grup Si Dobe Kelas</h2>
+                <p class="notify-muted">Hubungkan satu kelas dengan grup Si Dobe tujuan.</p>
                 <div class="form-group" style="margin-top:1rem;">
                     <label>Pilih Kelas</label>
                     <select id="binding-classroom" class="form-control" onchange="loadBinding()">
@@ -205,7 +205,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Pilih Koneksi WhatsApp</label>
+                    <label>Pilih Koneksi Si Dobe</label>
                     <select id="binding-bot" class="form-control" onchange="loadWahaGroups()">
                         <option value="">Pilih bot</option>
                         {% for bot in bots %}
@@ -214,7 +214,7 @@
                     </select>
                 </div>
                 <div class="form-group">
-                    <label>Grup WhatsApp</label>
+                    <label>Grup Si Dobe</label>
                     <div style="display:flex; gap:.6rem; align-items:center;">
                         <select id="binding-chat-select" class="form-control" onchange="syncBindingChat()">
                             <option value="">Muat grup dari Si Dobe</option>
@@ -244,7 +244,7 @@
     <section id="notify-tab-bots" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Koneksi WhatsApp</h2>
+                <h2 class="notify-section-title">Koneksi Si Dobe</h2>
                 <p class="notify-muted">Biasanya cukup isi alamat layanan dan kunci akses sekali saja.</p>
                 <form method="POST" action="{{ url_for('save_waha_config') }}" class="notify-card" style="margin-top:1rem;">
                     <div class="form-group"><label>Alamat Layanan Si Dobe</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="Contoh: https://sido.be"></div>
@@ -273,7 +273,7 @@
                         </div>
                         <div class="notify-toolbar">
                             <select id="waha-session-live" class="form-control" style="min-width:240px;">
-                                <option value="">Pilih koneksi WhatsApp</option>
+                                <option value="">Pilih koneksi Si Dobe</option>
                             </select>
                             <button class="btn" type="button" style="background:#1e293b;" onclick="refreshWahaSessions()">Muat Koneksi</button>
                             <button class="btn" type="button" style="background:#f1f5f9; color:#475569;" onclick="useSelectedSession()">Gunakan</button>
@@ -465,7 +465,7 @@ async function loadPolicy() {
         document.getElementById('policy-summary').innerHTML = `
             <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
             <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
-            <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | WhatsApp: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
+            <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | Si Dobe: ${data.whatsapp_enabled ? 'Aktif' : 'Nonaktif'}</span>
         `;
     } catch (error) {
         document.getElementById('policy-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat kebijakan: ${error.message}</span>`;
@@ -550,7 +550,7 @@ async function loadWahaGroups() {
             if (bindingStatus) bindingStatus.innerText = data.error || 'Si Dobe belum mengembalikan grup. Pastikan session login dan base URL benar.';
             return;
         }
-        select.innerHTML = '<option value="">Pilih grup WhatsApp</option>' + items.map(item => {
+        select.innerHTML = '<option value="">Pilih grup Si Dobe</option>' + items.map(item => {
             const label = `${item.name} (${item.participants || 0})`;
             return `<option value="${item.chat_id}">${label}</option>`;
         }).join('');
@@ -763,7 +763,7 @@ async function loadSessionQr(sessionName) {
             qrWrap.style.display = 'block';
             qrImg.src = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
         } else if (status) {
-            status.innerText += ' | QR belum tersedia dari WAHA.';
+            status.innerText += ' | QR belum tersedia dari Si Dobe.';
         }
     } catch (error) {
         alert(error.message);
@@ -876,9 +876,9 @@ async function runClassroomWhatsAppTest() {
     try {
         const data = await apiFetch('{{ url_for('test_whatsapp_notification') }}', {
             method: 'POST',
-            body: JSON.stringify({ chat_id: chatId, message: 'Test WhatsApp dari panel notifikasi multi-kelas.' }),
+            body: JSON.stringify({ chat_id: chatId, message: 'Test Si Dobe dari panel notifikasi multi-kelas.' }),
         });
-        alert(data.message || 'Test WhatsApp diproses.');
+        alert(data.message || 'Test Si Dobe diproses.');
     } catch (error) {
         alert(error.message);
     }
