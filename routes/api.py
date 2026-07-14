@@ -1777,10 +1777,12 @@ def notification_bot_health_api(bot_id):
         return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _sidobe_request, _normalize_phone_number
+    from app import _sidobe_request, _sidobe_e164_phone
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    phone = _normalize_phone_number(bot.session_name)
-    result = _sidobe_request('POST', '/utilities/check-number', {'phone': f'+{phone}'})
+    phone = _sidobe_e164_phone(bot.session_name)
+    if not phone:
+        return jsonify({'ok': False, 'error': 'Nomor pengirim bukan format E.164 yang valid'}), 400
+    result = _sidobe_request('POST', '/utilities/check-number', {'phone': phone})
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal cek bot')}), 400
     response = result.get('data') or {}

@@ -770,11 +770,22 @@ def _normalize_phone_number(raw_value):
     digits = re.sub(r'\D', '', str(raw_value or ''))
     if not digits:
         return ''
+    if digits.startswith('00'):
+        digits = digits[2:]
+    if digits.startswith('620'):
+        digits = '62' + digits[3:]
     if digits.startswith('0'):
         digits = '62' + digits[1:]
     elif digits.startswith('8'):
         digits = '62' + digits
     return digits
+
+
+def _sidobe_e164_phone(raw_value):
+    digits = _normalize_phone_number(raw_value)
+    if not re.fullmatch(r'[1-9]\d{7,14}', digits):
+        return ''
+    return f'+{digits}'
 
 def _find_user_by_whatsapp(raw_value):
     candidate = _normalize_phone_number(raw_value)
@@ -1363,15 +1374,19 @@ def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, c
         'message': text,
         'is_async': get_sidobe_setting_value('is_async', 'true').strip().lower() == 'true',
     }
-    if '@g.us' in target_chat:
+    target_lower = target_chat.lower()
+    is_personal_jid = target_lower.endswith(('@c.us', '@s.whatsapp.net'))
+    if '@' in target_chat and not is_personal_jid:
         payload['group_id'] = target_chat
     else:
-        phone = _normalize_phone_number(target_chat)
-        payload['phone'] = f'+{phone}' if phone else target_chat
+        phone = _sidobe_e164_phone(target_chat)
+        if not phone:
+            return {'ok': False, 'error': 'Nomor tujuan tidak valid. Gunakan format E.164, contoh +628123456789.'}
+        payload['phone'] = phone
     if bot and bot.session_name:
-        sender_phone = _normalize_phone_number(bot.session_name)
+        sender_phone = _sidobe_e164_phone(bot.session_name)
         if sender_phone:
-            payload['sender_phone'] = f'+{sender_phone}'
+            payload['sender_phone'] = sender_phone
     result = _sidobe_request('POST', '/send-message', payload)
     status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
     _log_notification_history(title or "Si Dobe", text, None, sender_id, status, channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat)
