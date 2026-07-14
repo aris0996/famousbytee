@@ -1718,13 +1718,18 @@ def notification_bots_api():
 
     data = request.get_json(silent=True) or request.form or {}
     name = (data.get('name') or '').strip()
-    session_name = (data.get('sender_phone') or data.get('session_name') or '').strip()
-    if not name or not session_name:
-        return jsonify({'error': 'Nama bot dan nomor pengirim wajib diisi'}), 400
+    sender_phone_raw = (data.get('sender_phone') or data.get('session_name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Nama bot wajib diisi'}), 400
+    from app import _sidobe_e164_phone
+    sender_phone = _sidobe_e164_phone(sender_phone_raw) if sender_phone_raw else ''
+    if sender_phone_raw and not sender_phone:
+        return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
     bot = WhatsAppBot(
         name=name,
         provider=(data.get('provider') or 'sidobe').strip() or 'sidobe',
-        session_name=session_name,
+        # Empty string means Sidobe chooses the default registered device.
+        session_name=sender_phone,
         base_url=None,
         status=(data.get('status') or 'configured').strip() or 'configured',
         is_active=str(data.get('is_active', 'true')).lower() == 'true',
@@ -1746,7 +1751,12 @@ def update_notification_bot_api(bot_id):
     if data.get('name') is not None:
         bot.name = (data.get('name') or bot.name).strip() or bot.name
     if data.get('sender_phone') is not None or data.get('session_name') is not None:
-        bot.session_name = (data.get('sender_phone') or data.get('session_name') or bot.session_name).strip() or bot.session_name
+        from app import _sidobe_e164_phone
+        raw_sender_phone = (data.get('sender_phone') or data.get('session_name') or '').strip()
+        sender_phone = _sidobe_e164_phone(raw_sender_phone) if raw_sender_phone else ''
+        if raw_sender_phone and not sender_phone:
+            return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
+        bot.session_name = sender_phone
     if data.get('status') is not None:
         bot.status = (data.get('status') or 'configured').strip() or 'configured'
     if data.get('is_active') is not None:
@@ -1781,7 +1791,14 @@ def notification_bot_health_api(bot_id):
     bot = WhatsAppBot.query.get_or_404(bot_id)
     phone = _sidobe_e164_phone(bot.session_name)
     if not phone:
-        return jsonify({'ok': False, 'error': 'Nomor pengirim bukan format E.164 yang valid'}), 400
+        # sender_phone is optional in Sidobe. Legacy session values therefore
+        # fall back safely to the default device registered in Sidobe Console.
+        return jsonify({
+            'ok': True,
+            'bot_id': bot.id,
+            'session_name': '',
+            'status': 'default-device',
+        })
     result = _sidobe_request('POST', '/utilities/check-number', {'phone': phone})
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal cek bot')}), 400
@@ -1803,9 +1820,9 @@ def notification_bot_groups_api(bot_id):
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    from app import _sidobe_request, _normalize_phone_number
-    phone = _normalize_phone_number(bot.session_name)
-    path = f'/whatsapp-groups?from_phone={phone}' if phone else '/whatsapp-groups'
+    from app import _sidobe_request, _sidobe_e164_phone
+    phone = _sidobe_e164_phone(bot.session_name)
+    path = f'/whatsapp-groups?from_phone={phone[1:]}' if phone else '/whatsapp-groups'
     result = _sidobe_request('GET', path)
     if not result.get('ok'):
         return jsonify(result), 400
