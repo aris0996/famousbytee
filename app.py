@@ -4471,6 +4471,7 @@ def manage_notifications():
         )
     users = users_query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
+        'sidobe_webhook_url': url_for('sidobe_webhook', _external=True),
         'sidobe_api_key_masked': ('*' * max(0, len(get_sidobe_setting_value('api_key', '')) - 4)) + get_sidobe_setting_value('api_key', '')[-4:],
         'sidobe_is_async': get_sidobe_setting_value('is_async', 'true'),
         'sidobe_daily_time': get_sidobe_setting_value('daily_time', '18:00'),
@@ -4834,22 +4835,42 @@ def test_whatsapp_notification():
     result = send_sidobe(custom_message, sender_id=current_user.id, title='Test Si Dobe', chat_id=custom_chat_id or None, classroom_id=active_classroom.id if active_classroom else None, category='emergency', force=bool(custom_chat_id))
     return jsonify(result), (200 if result.get('ok') else 400)
 
+def _sidobe_webhook_signature(secret_key, webhook_id):
+    return hashlib.sha256(f'{secret_key}|{webhook_id}'.encode('utf-8')).hexdigest()
+
+
+@app.route('/webhooks/sidobe/health', methods=['GET'])
+def sidobe_webhook_health():
+    return jsonify({
+        'ok': True,
+        'service': 'sidobe-webhook',
+        'configured': bool(get_sidobe_setting_value('api_key', '').strip()),
+        'supported_event': 'SEND_MESSAGE_STATUS',
+    })
+
+
 @app.route('/webhooks/sidobe', methods=['POST'])
 def sidobe_webhook():
-    payload = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({'ok': False, 'error': 'JSON body wajib diisi'}), 400
     webhook_id = str(payload.get('id') or '').strip()
     secret_key = get_sidobe_setting_value('api_key', '').strip()
     supplied_signature = request.headers.get('X-Webhook-Signature', '').strip()
-    expected_signature = hashlib.sha256(f'{secret_key}|{webhook_id}'.encode('utf-8')).hexdigest()
+    expected_signature = _sidobe_webhook_signature(secret_key, webhook_id)
     if not secret_key or not webhook_id or not supplied_signature or not hmac.compare_digest(expected_signature, supplied_signature):
+        app.logger.warning('Sidobe webhook ditolak: signature tidak valid atau payload id kosong')
         return jsonify({'ok': False, 'error': 'Invalid webhook signature'}), 401
 
     if payload.get('event') != 'SEND_MESSAGE_STATUS':
+        app.logger.info('Sidobe webhook event diabaikan: %s', payload.get('event'))
         return jsonify({'ok': True, 'accepted': True, 'ignored': True}), 200
 
     data = payload.get('data') or {}
-    message_id = str(data.get('whatsapp_message_id') or '')
-    status = str(data.get('status') or 'PENDING')
+    message_id = str(data.get('whatsapp_message_id') or '').strip()
+    status = str(data.get('status') or '').strip().upper()
+    if not message_id or status not in {'PENDING', 'SUCCESS', 'FAILED'}:
+        return jsonify({'ok': False, 'error': 'Payload SEND_MESSAGE_STATUS tidak valid'}), 400
     app.logger.info('Sidobe delivery update message_id=%s status=%s', message_id, status)
     return jsonify({'ok': True, 'accepted': True, 'message_id': message_id, 'status': status}), 200
 

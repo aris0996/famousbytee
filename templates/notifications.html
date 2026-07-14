@@ -248,6 +248,7 @@
                 <p class="notify-muted">Konfigurasi mengikuti WhatsApp API v1 Sidobe.</p>
                 <form method="POST" action="/notifications/sidobe/save-config" class="notify-card" style="margin-top:1rem;">
                     <div class="form-group"><label>Secret Key Sidobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Developer Tools → Credential' }}"></div>
+                    <div class="form-group"><label>Webhook Sidobe</label><input type="text" class="form-control" value="{{ settings.sidobe_webhook_url }}" readonly><small class="notify-mini">Pasang URL ini di Developer Tools → Settings → Webhook WhatsApp pada Sidobe Console.</small></div>
                     <label class="notify-row"><input type="checkbox" name="sidobe_is_async" {% if settings.sidobe_is_async == 'true' %}checked{% endif %}> Kirim asynchronous (status melalui webhook)</label>
                     <div class="notify-actions" style="justify-content:space-between;">
                         <button type="submit" class="btn">Simpan Koneksi</button>
