@@ -1718,14 +1718,14 @@ def notification_bots_api():
 
     data = request.get_json(silent=True) or request.form or {}
     name = (data.get('name') or '').strip()
-    session_name = (data.get('session_name') or '').strip()
+    session_name = (data.get('sender_phone') or data.get('session_name') or '').strip()
     if not name or not session_name:
-        return jsonify({'error': 'Nama bot dan session_name wajib diisi'}), 400
+        return jsonify({'error': 'Nama bot dan nomor pengirim wajib diisi'}), 400
     bot = WhatsAppBot(
         name=name,
         provider=(data.get('provider') or 'sidobe').strip() or 'sidobe',
         session_name=session_name,
-        base_url=(data.get('base_url') or '').strip() or None,
+        base_url=None,
         status=(data.get('status') or 'configured').strip() or 'configured',
         is_active=str(data.get('is_active', 'true')).lower() == 'true',
     )
@@ -1745,10 +1745,8 @@ def update_notification_bot_api(bot_id):
     data = request.get_json(silent=True) or request.form or {}
     if data.get('name') is not None:
         bot.name = (data.get('name') or bot.name).strip() or bot.name
-    if data.get('session_name') is not None:
-        bot.session_name = (data.get('session_name') or bot.session_name).strip() or bot.session_name
-    if data.get('base_url') is not None:
-        bot.base_url = (data.get('base_url') or '').strip() or None
+    if data.get('sender_phone') is not None or data.get('session_name') is not None:
+        bot.session_name = (data.get('sender_phone') or data.get('session_name') or bot.session_name).strip() or bot.session_name
     if data.get('status') is not None:
         bot.status = (data.get('status') or 'configured').strip() or 'configured'
     if data.get('is_active') is not None:
@@ -1779,24 +1777,19 @@ def notification_bot_health_api(bot_id):
         return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar
+    from app import _sidobe_request, _normalize_phone_number
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    result = _sidobe_request_with_auth_fallback('GET', '/api/sessions', base_url_override=bot.base_url or None)
+    phone = _normalize_phone_number(bot.session_name)
+    result = _sidobe_request('POST', '/utilities/check-number', {'phone': f'+{phone}'})
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal cek bot')}), 400
-    raw_data = result.get('data') or []
-    sessions = raw_data if isinstance(raw_data, list) else raw_data.get('sessions', [])
-    matched = None
-    for item in sessions:
-        session_name = _sidobe_normalize_scalar(item.get('name') or item.get('session') or item.get('id') or '')
-        if session_name == bot.session_name:
-            matched = item
-            break
+    response = result.get('data') or {}
+    registered = bool((response.get('data') or {}).get('is_registered'))
     return jsonify({
-        'ok': bool(matched),
+        'ok': True,
         'bot_id': bot.id,
         'session_name': bot.session_name,
-        'status': _sidobe_normalize_scalar((matched or {}).get('status') or (matched or {}).get('state') or 'not-found'),
+        'status': 'registered' if registered else 'not-registered',
     })
 
 
@@ -1808,32 +1801,26 @@ def notification_bot_groups_api(bot_id):
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    from app import _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar, _sidobe_normalize_chat_id
-    result = _sidobe_request_with_auth_fallback('GET', f'/api/{bot.session_name}/groups', base_url_override=bot.base_url or None)
-    raw_data = []
-    chats = []
-    if result.get('ok'):
-        raw_data = result.get('data') or []
-        chats = raw_data if isinstance(raw_data, list) else raw_data.get('groups', raw_data.get('chats', []))
-    if not chats:
-        fallback = _sidobe_request_with_auth_fallback('GET', f'/api/{bot.session_name}/chats', base_url_override=bot.base_url or None)
-        if fallback.get('ok'):
-            raw_data = fallback.get('data') or []
-            chats = raw_data if isinstance(raw_data, list) else raw_data.get('chats', [])
-        elif not result.get('ok'):
-            return jsonify({'ok': False, 'error': result.get('error', fallback.get('error', 'Gagal memuat grup Si Dobe'))}), 400
+    from app import _sidobe_request, _normalize_phone_number
+    phone = _normalize_phone_number(bot.session_name)
+    path = f'/whatsapp-groups?from_phone={phone}' if phone else '/whatsapp-groups'
+    result = _sidobe_request('GET', path)
+    if not result.get('ok'):
+        return jsonify(result), 400
+    response = result.get('data') or {}
+    chats = response.get('data', []) if isinstance(response, dict) else []
     normalized = []
     for item in chats:
         if not isinstance(item, dict):
             continue
-        chat_id = _sidobe_normalize_chat_id(item)
-        if not chat_id or '@g.us' not in chat_id:
+        chat_id = str(item.get('id') or '').strip()
+        if not chat_id:
             continue
         normalized.append({
-            'name': _sidobe_normalize_scalar(item.get('name') or item.get('pushName') or item.get('shortName') or item.get('formattedTitle') or chat_id),
+            'name': str(item.get('name') or chat_id),
             'chat_id': chat_id,
-            'participants': item.get('participantsCount') or item.get('size') or 0,
-            'owner': _sidobe_normalize_scalar(item.get('owner') or item.get('ownerPn') or '-'),
+            'participants': 0,
+            'owner': str(item.get('owner_phone') or '-'),
         })
     return jsonify({'ok': True, 'items': normalized, 'count': len(normalized), 'session': bot.session_name, 'bot_id': bot.id})
 

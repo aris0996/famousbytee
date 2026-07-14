@@ -185,7 +185,7 @@
             </div>
             <div class="notify-card">
                 <h3 style="margin:0;">Ringkasan</h3>
-                <p class="notify-muted" style="margin:.4rem 0 0;">Bagian ini hanya mengatur perilaku kelas, bukan session bot.</p>
+                <p class="notify-muted" style="margin:.4rem 0 0;">Bagian ini hanya mengatur perilaku notifikasi kelas.</p>
                 <div id="policy-summary" class="notify-output" style="margin-top:1rem;">Memuat...</div>
             </div>
         </div>
@@ -221,7 +221,7 @@
                         </select>
                         <button type="button" class="btn" style="background:#1e293b; white-space:nowrap;" onclick="loadSidobeGroups()">Muat</button>
                     </div>
-                    <input type="text" id="binding-chat-id" class="form-control" placeholder="Atau isi manual chat id" style="margin-top:.6rem;">
+                    <input type="text" id="binding-chat-id" class="form-control" placeholder="Group ID Sidobe atau nomor E.164 (+628...)" style="margin-top:.6rem;">
                 </div>
                 <div class="form-group">
                     <label>Label Target</label>
@@ -245,19 +245,17 @@
         <div class="notify-panel notify-split">
             <div>
                 <h2 class="notify-section-title">Koneksi Si Dobe</h2>
-                <p class="notify-muted">Biasanya cukup isi alamat layanan dan kunci akses sekali saja.</p>
+                <p class="notify-muted">Konfigurasi mengikuti WhatsApp API v1 Sidobe.</p>
                 <form method="POST" action="/notifications/sidobe/save-config" class="notify-card" style="margin-top:1rem;">
-                    <div class="form-group"><label>Alamat Layanan Si Dobe</label><input type="text" name="sidobe_base_url" class="form-control" value="{{ settings.sidobe_base_url }}" placeholder="Contoh: https://sido.be"></div>
-                    <div class="form-group"><label>Kunci Akses Si Dobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Masukkan kunci akses' }}"></div>
-                    <div class="form-group"><label>Jam Ringkasan Harian Si Dobe</label><input type="time" name="sidobe_daily_time" class="form-control" value="{{ settings.sidobe_daily_time }}"></div>
+                    <div class="form-group"><label>Secret Key Sidobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Developer Tools → Credential' }}"></div>
+                    <label class="notify-row"><input type="checkbox" name="sidobe_is_async" {% if settings.sidobe_is_async == 'true' %}checked{% endif %}> Kirim asynchronous (status melalui webhook)</label>
                     <div class="notify-actions" style="justify-content:space-between;">
                         <button type="submit" class="btn">Simpan Koneksi</button>
-                        <button type="button" class="btn" style="background:#1e293b;" onclick="refreshSidobeDashboard()">Cek Koneksi</button>
                     </div>
                 </form>
                 <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Tambah / Edit Bot</h3>
-                    <div class="notify-card" style="margin-bottom:1rem; background:#f8fafc;">
+                    <div class="notify-card" style="display:none; margin-bottom:1rem; background:#f8fafc;">
                         <div class="notify-grid" style="grid-template-columns:1fr 160px 160px; align-items:end;">
                             <div class="form-group">
                                 <label>Nama Koneksi Baru</label>
@@ -291,21 +289,16 @@
                             <button class="btn" type="button" style="background:#ef4444;" onclick="stopSelectedSession()">Nonaktifkan</button>
                         </div>
                     </div>
-                    <details class="notify-advanced">
-                    <summary>Pengaturan teknis lanjutan</summary>
                     <div class="notify-grid" style="margin-top:1rem;">
                         <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
-                        <div class="form-group"><label>Session Name</label><input type="text" id="bot-session" class="form-control" placeholder="session-kelas-a"></div>
-                        <div class="form-group"><label>Base URL Override</label><input type="text" id="bot-base-url" class="form-control" placeholder="Opsional"></div>
-                        <div class="form-group"><label>Status</label><input type="text" id="bot-status" class="form-control" value="configured"></div>
+                        <div class="form-group"><label>Nomor Pengirim Sidobe</label><input type="text" id="bot-sender-phone" class="form-control" placeholder="+628123456789"></div>
                     </div>
                     <div class="notify-actions">
                         <button class="btn" type="button" onclick="saveBot()">Simpan Bot</button>
                         <span id="bot-status-text" class="notify-mini"></span>
                     </div>
-                    </details>
                 </div>
-                <details class="notify-advanced">
+                <details class="notify-advanced" style="display:none;">
                     <summary>Diagnostik layanan</summary>
                     <div class="notify-card" style="margin-top:1rem;">
                     <h3 style="margin-top:0;">Status Teknis</h3>
@@ -323,7 +316,7 @@
                         <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
                             <div>
                                 <strong>{{ bot.name }}</strong>
-                                <div class="notify-mini">{{ bot.session_name }}</div>
+                                <div class="notify-mini">Pengirim: {{ bot.session_name }}</div>
                             </div>
                             <span class="notify-status {{ 'ok' if bot.is_active else 'off' }}">{{ 'Aktif' if bot.is_active else 'Nonaktif' }}</span>
                         </div>
@@ -578,12 +571,10 @@ function syncBindingChat() {
     }
 }
 
-function fillBotForm(id, name, sessionName, baseUrl, status) {
+function fillBotForm(id, name, senderPhone) {
     currentBotId = id;
     document.getElementById('bot-name').value = name;
-    document.getElementById('bot-session').value = sessionName;
-    document.getElementById('bot-base-url').value = baseUrl;
-    document.getElementById('bot-status').value = status;
+    document.getElementById('bot-sender-phone').value = senderPhone;
 }
 
 async function refreshSidobeSessions() {
@@ -817,9 +808,8 @@ function restartSelectedSession() { return _changeSidobeSession('restart'); }
 async function saveBot() {
     const payload = {
         name: document.getElementById('bot-name').value,
-        session_name: document.getElementById('bot-session').value,
-        base_url: document.getElementById('bot-base-url').value,
-        status: document.getElementById('bot-status').value,
+        sender_phone: document.getElementById('bot-sender-phone').value,
+        provider: 'sidobe',
         is_active: true,
     };
     try {
@@ -847,7 +837,7 @@ async function deleteBot(botId) {
 async function checkBotHealth(botId) {
     try {
         const data = await apiFetch(`/api/notifications/bots/${botId}/health`);
-        alert(`Bot ${data.session_name}: ${data.status}`);
+        alert(`Nomor ${data.session_name}: ${data.status}`);
     } catch (error) {
         alert(error.message);
     }
@@ -887,12 +877,7 @@ async function runClassroomSidobeTest() {
 document.addEventListener('DOMContentLoaded', () => {
     loadPolicy();
     loadBinding();
-    refreshSidobeSessions();
-    refreshSidobeDashboard();
     lucide.createIcons();
-    const liveSelect = document.getElementById('sidobe-session-live');
-    if (liveSelect) liveSelect.addEventListener('change', useSelectedSession);
-    if (liveSelect) liveSelect.addEventListener('change', refreshSelectedSessionQr);
 });
 </script>
 {% endblock %}

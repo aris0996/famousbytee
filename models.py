@@ -272,7 +272,9 @@ class ClassroomNotificationConfig(db.Model):
 class WhatsAppBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
-    provider = db.Column(db.String(30), default='waha')
+    provider = db.Column(db.String(30), default='sidobe')
+    # Legacy column name retained to avoid a destructive migration. For Sidobe
+    # this stores sender_phone (a registered device number in E.164 format).
     session_name = db.Column(db.String(120), nullable=False)
     base_url = db.Column(db.String(255))
     status = db.Column(db.String(30), default='unknown')

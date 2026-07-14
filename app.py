@@ -17,6 +17,7 @@ from werkzeug.utils import secure_filename
 from werkzeug.security import check_password_hash
 import secrets
 import hmac
+import hashlib
 from collections import defaultdict, deque
 from threading import Lock
 from markupsafe import escape
@@ -204,10 +205,8 @@ def get_sidobe_setting_value(key, default=''):
 def migrate_legacy_sidobe_settings():
     mapping = [
         ('enabled', 'false'),
-        ('base_url', ''),
         ('api_key', ''),
-        ('session', ''),
-        ('group_chat_id', ''),
+        ('is_async', 'true'),
         ('daily_time', '18:00'),
         ('last_daily_summary_date', ''),
         ('schedule_template', 'Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih'),
@@ -511,22 +510,21 @@ def _is_fund_in_allowed_scope(fund, classroom):
         return True
     return bool(fund.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
 
-def _sidobe_headers(api_key_override=None, auth_mode='x-api-key'):
+SIDOBE_API_BASE_URL = 'https://api.sidobe.com/wa/v1'
+
+
+def _sidobe_headers(api_key_override=None, auth_mode=None):
     api_key = (api_key_override if api_key_override is not None else get_sidobe_setting_value('api_key', '')).strip()
     headers = {'Content-Type': 'application/json'}
     if api_key:
-        if auth_mode == 'bearer':
-            headers['Authorization'] = f'Bearer {api_key}'
-        else:
-            headers['X-Api-Key'] = api_key
+        headers['X-Secret-Key'] = api_key
     return headers
 
-def _sidobe_request(method, path, payload=None, base_url_override=None, api_key_override=None, auth_mode='x-api-key'):
-    base_url = (base_url_override if base_url_override is not None else get_sidobe_setting_value('base_url', '')).strip().rstrip('/')
-    if not base_url:
-        return {'ok': False, 'error': 'Si Dobe base URL belum diatur'}
-    if not base_url.startswith(('http://', 'https://')):
-        return {'ok': False, 'error': 'Si Dobe base URL harus diawali http:// atau https://'}
+def _sidobe_request(method, path, payload=None, base_url_override=None, api_key_override=None, auth_mode=None):
+    base_url = SIDOBE_API_BASE_URL
+    api_key = (api_key_override if api_key_override is not None else get_sidobe_setting_value('api_key', '')).strip()
+    if not api_key:
+        return {'ok': False, 'error': 'Secret Key Sidobe belum diatur'}
 
     url = f"{base_url}{path}"
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
@@ -535,16 +533,19 @@ def _sidobe_request(method, path, payload=None, base_url_override=None, api_key_
     try:
         with urllib_request.urlopen(req, timeout=15) as resp:
             raw = resp.read().decode('utf-8') if resp.length != 0 else ''
-            return {'ok': True, 'status': resp.status, 'data': json.loads(raw) if raw else None}
+            response_data = json.loads(raw) if raw else None
+            if isinstance(response_data, dict) and response_data.get('is_success') is False:
+                return {'ok': False, 'status': resp.status, 'data': response_data, 'error': response_data.get('message') or 'Permintaan Sidobe gagal'}
+            return {'ok': True, 'status': resp.status, 'data': response_data}
     except urllib_error.HTTPError as e:
         detail = e.read().decode('utf-8', errors='ignore')
         detail_text = (detail or '').strip()
         if e.code in (401, 403):
-            return {'ok': False, 'error': f'Si Dobe menolak akses (HTTP {e.code}). Periksa API key/session login.'}
+            return {'ok': False, 'error': f'Sidobe menolak akses (HTTP {e.code}). Periksa Secret Key.'}
         if e.code == 404:
-            return {'ok': False, 'error': 'Si Dobe endpoint tidak ditemukan. Cek base URL dan versinya.'}
+            return {'ok': False, 'error': 'Endpoint Sidobe tidak ditemukan.'}
         if e.code >= 500:
-            return {'ok': False, 'error': f'Si Dobe error server (HTTP {e.code}). Cek worker/session di sana.'}
+            return {'ok': False, 'error': f'Sidobe mengalami gangguan server (HTTP {e.code}).'}
         return {'ok': False, 'error': f'HTTP {e.code}: {detail_text[:180]}' if detail_text else f'HTTP {e.code}: Permintaan Si Dobe gagal'}
     except urllib_error.URLError as e:
         reason = getattr(e, 'reason', None)
@@ -563,19 +564,7 @@ def _sidobe_request_any(method, paths, payload=None, base_url_override=None, api
     return {'ok': False, 'error': last_error or 'Permintaan Si Dobe gagal'}
 
 def _sidobe_request_with_auth_fallback(method, path, payload=None, base_url_override=None, api_key_override=None):
-    first = _sidobe_request(method, path, payload=payload, base_url_override=base_url_override, api_key_override=api_key_override, auth_mode='x-api-key')
-    if first.get('ok'):
-        return first
-    error_text = (first.get('error') or '').lower()
-    if 'http 401' not in error_text and 'http 403' not in error_text:
-        return first
-    second = _sidobe_request(method, path, payload=payload, base_url_override=base_url_override, api_key_override=api_key_override, auth_mode='bearer')
-    if second.get('ok'):
-        second['auth_mode'] = 'bearer'
-        return second
-    if second.get('error') and second.get('error') != first.get('error'):
-        second['error'] = f"{first.get('error')} | Fallback Bearer juga gagal: {second.get('error')}"
-    return second
+    return _sidobe_request(method, path, payload=payload, api_key_override=api_key_override)
 
 def _apply_whatsapp_admin_header(text, title=None):
     text = (text or '').strip()
@@ -1360,22 +1349,30 @@ def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, c
 
     bot = None
     binding = None
-    session_name = ''
     target_chat = (chat_id or '').strip()
-    if force and target_chat:
-        session_name = get_sidobe_setting_value('session', '').strip()
-    else:
+    if not (force and target_chat):
         bot, binding = resolve_sidobe_bot_for_classroom(target_classroom_id)
-        session_name = bot.session_name.strip() if bot and bot.session_name else ''
         if not target_chat and binding:
             target_chat = (binding.chat_id or '').strip()
 
-    if not session_name or not target_chat:
-        _log_notification_history(title or "Si Dobe gagal", text, None, sender_id, "Missing session/chat", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat or chat_id)
-        return {'ok': False, 'error': 'Bot atau target chat kelas belum diatur'}
+    if not target_chat:
+        _log_notification_history(title or "Si Dobe gagal", text, None, sender_id, "Missing target", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat or chat_id)
+        return {'ok': False, 'error': 'Nomor atau grup tujuan belum diatur'}
 
-    payload = {'session': session_name, 'chatId': target_chat, 'text': text}
-    result = _sidobe_request_with_auth_fallback('POST', '/api/sendText', payload, base_url_override=bot.base_url if bot and bot.base_url else None)
+    payload = {
+        'message': text,
+        'is_async': get_sidobe_setting_value('is_async', 'true').strip().lower() == 'true',
+    }
+    if '@g.us' in target_chat:
+        payload['group_id'] = target_chat
+    else:
+        phone = _normalize_phone_number(target_chat)
+        payload['phone'] = f'+{phone}' if phone else target_chat
+    if bot and bot.session_name:
+        sender_phone = _normalize_phone_number(bot.session_name)
+        if sender_phone:
+            payload['sender_phone'] = f'+{sender_phone}'
+    result = _sidobe_request('POST', '/send-message', payload)
     status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
     _log_notification_history(title or "Si Dobe", text, None, sender_id, status, channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat)
     return result
@@ -4248,10 +4245,8 @@ def init_db():
                     SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)'),
                     SystemSetting(key='activity_log_retention_days', value='30', description='Masa simpan log aktivitas dalam hari'),
                     SystemSetting(key='sidobe_enabled', value='false', description='Aktifkan integrasi Si Dobe'),
-                    SystemSetting(key='sidobe_base_url', value='', description='Base URL server Si Dobe'),
-                    SystemSetting(key='sidobe_api_key', value='', description='API key Si Dobe'),
-                    SystemSetting(key='sidobe_session', value='', description='Nama session Si Dobe'),
-                    SystemSetting(key='sidobe_group_chat_id', value='', description='Chat ID grup Si Dobe'),
+                    SystemSetting(key='sidobe_api_key', value='', description='Secret Key Sidobe'),
+                    SystemSetting(key='sidobe_is_async', value='true', description='Gunakan antrean asynchronous Sidobe'),
                     SystemSetting(key='sidobe_daily_time', value='18:00', description='Jam ringkasan harian Si Dobe'),
                     SystemSetting(key='sidobe_last_daily_summary_date', value='', description='Tanggal ringkasan harian terakhir'),
                     SystemSetting(key='sidobe_schedule_template', value='Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih', description='Template ringkasan jadwal Si Dobe'),
@@ -4449,8 +4444,8 @@ def manage_notifications():
         )
     users = users_query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
-        'sidobe_base_url': get_sidobe_setting_value('base_url', ''),
         'sidobe_api_key_masked': ('*' * max(0, len(get_sidobe_setting_value('api_key', '')) - 4)) + get_sidobe_setting_value('api_key', '')[-4:],
+        'sidobe_is_async': get_sidobe_setting_value('is_async', 'true'),
         'sidobe_daily_time': get_sidobe_setting_value('daily_time', '18:00'),
         'sidobe_schedule_template': get_sidobe_setting_value(
             'schedule_template',
@@ -4478,13 +4473,10 @@ def save_sidobe_config():
         flash('Akses ditolak.')
         return redirect(url_for('manage_notifications'))
 
-    sidobe_base_url = (request.form.get('sidobe_base_url') or '').strip()
-    set_setting_value('sidobe_base_url', sidobe_base_url, 'Base URL server Si Dobe')
     new_api_key = (request.form.get('sidobe_api_key') or '').strip()
     if new_api_key:
         set_setting_value('sidobe_api_key', new_api_key, 'API key Si Dobe')
-    daily_time = (request.form.get('sidobe_daily_time') or '18:00').strip()
-    set_setting_value('sidobe_daily_time', daily_time, 'Jam ringkasan harian Si Dobe')
+    set_setting_value('sidobe_is_async', 'true' if request.form.get('sidobe_is_async') == 'on' else 'false', 'Gunakan antrean asynchronous Sidobe')
     schedule_template = request.form.get('sidobe_schedule_template') or ''
     schedule_item_template = request.form.get('sidobe_schedule_item_template') or ''
     schedule_deadline_item_template = request.form.get('sidobe_schedule_deadline_item_template') or ''
@@ -4817,79 +4809,22 @@ def test_whatsapp_notification():
 
 @app.route('/webhooks/sidobe', methods=['POST'])
 def sidobe_webhook():
-    webhook_secret = os.environ.get('SIDOBE_WEBHOOK_SECRET', '').strip()
-    supplied_secret = request.headers.get('X-Webhook-Secret', '').strip()
-    if not webhook_secret:
-        app.logger.error('SIDOBE_WEBHOOK_SECRET belum dikonfigurasi; webhook ditolak.')
-        return jsonify({'ok': False, 'error': 'Webhook belum dikonfigurasi'}), 503
-    if not supplied_secret or not hmac.compare_digest(webhook_secret, supplied_secret):
-        return jsonify({'ok': False, 'error': 'Unauthorized'}), 401
+    payload = request.get_json(silent=True) or {}
+    webhook_id = str(payload.get('id') or '').strip()
+    secret_key = get_sidobe_setting_value('api_key', '').strip()
+    supplied_signature = request.headers.get('X-Webhook-Signature', '').strip()
+    expected_signature = hashlib.sha256(f'{secret_key}|{webhook_id}'.encode('utf-8')).hexdigest()
+    if not secret_key or not webhook_id or not supplied_signature or not hmac.compare_digest(expected_signature, supplied_signature):
+        return jsonify({'ok': False, 'error': 'Invalid webhook signature'}), 401
 
-    payload = request.get_json(silent=True)
-    if payload is None:
-        payload = request.form.to_dict(flat=True) if request.form else {}
-    if not payload:
-        raw_body = request.get_data(cache=False, as_text=True) or ''
-        payload = {'raw_body': raw_body}
+    if payload.get('event') != 'SEND_MESSAGE_STATUS':
+        return jsonify({'ok': True, 'accepted': True, 'ignored': True}), 200
 
-    event_data = _sidobe_extract_event(payload)
-    body = (event_data.get('body') or '').strip()
-    chat_id = (event_data.get('chat_id') or '').strip()
-    print(f"Si Dobe webhook received: event={event_data.get('event', '')}, chat_id={chat_id or '-'}, body={body[:80] or '-'}")
-
-    # Allow self messages if they are commands (for admin testing)
-    if event_data.get('from_me') is True and not body.startswith('/'):
-        print("Si Dobe webhook ignored. Reason: outgoing/self non-command message.")
-        return jsonify({
-            'ok': True,
-            'accepted': True,
-            'ignored': True,
-            'reason': 'outgoing-message',
-            'event': event_data.get('event', '')
-        }), 200
-
-    if not body.startswith('/') or not chat_id:
-        print(f"Si Dobe webhook ignored. Payload preview: {json.dumps(payload, ensure_ascii=True)[:300]}")
-        return jsonify({
-            'ok': True,
-            'accepted': True,
-            'ignored': True,
-            'reason': 'not-command-or-missing-chat',
-            'event': event_data.get('event', '')
-        }), 200
-
-    if _sidobe_is_duplicate_command(event_data):
-        print(f"Si Dobe webhook ignored. Reason: duplicate command for {chat_id or '-'} body={body[:40]}")
-        return jsonify({
-            'ok': True,
-            'accepted': True,
-            'ignored': True,
-            'reason': 'duplicate-command',
-            'event': event_data.get('event', ''),
-            'command': body,
-            'chat_id': chat_id
-        }), 200
-
-    response_text = _sidobe_build_command_response(body, sender_ref=event_data.get('sender_ref') or chat_id)
-    if not response_text:
-        return jsonify({
-            'ok': True,
-            'accepted': True,
-            'ignored': True,
-            'reason': 'empty-response',
-            'command': body
-        }), 200
-
-    result = send_sidobe(response_text, title=f"Si Dobe Bot {body.split()[0]}", chat_id=chat_id, force=True)
-    print(f"Si Dobe webhook reply: target={chat_id or '-'}, sent={result.get('ok', False)}, error={result.get('error', '-') if not result.get('ok') else '-'}")
-    return jsonify({
-        'ok': True,
-        'accepted': True,
-        'command': body,
-        'chat_id': chat_id,
-        'reply_sent': result.get('ok', False),
-        'result': result
-    }), 200
+    data = payload.get('data') or {}
+    message_id = str(data.get('whatsapp_message_id') or '')
+    status = str(data.get('status') or 'PENDING')
+    app.logger.info('Sidobe delivery update message_id=%s status=%s', message_id, status)
+    return jsonify({'ok': True, 'accepted': True, 'message_id': message_id, 'status': status}), 200
 
 @app.route('/notifications/clear', methods=['POST'])
 @login_required
