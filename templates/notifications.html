@@ -217,7 +217,7 @@
                     <label>Grup WhatsApp</label>
                     <div style="display:flex; gap:.6rem; align-items:center;">
                         <select id="binding-chat-select" class="form-control" onchange="syncBindingChat()">
-                            <option value="">Muat grup dari WAHA</option>
+                            <option value="">Muat grup dari Si Dobe</option>
                         </select>
                         <button type="button" class="btn" style="background:#1e293b; white-space:nowrap;" onclick="loadWahaGroups()">Muat</button>
                     </div>
@@ -247,7 +247,7 @@
                 <h2 class="notify-section-title">Koneksi WhatsApp</h2>
                 <p class="notify-muted">Biasanya cukup isi alamat layanan dan kunci akses sekali saja.</p>
                 <form method="POST" action="{{ url_for('save_waha_config') }}" class="notify-card" style="margin-top:1rem;">
-                    <div class="form-group"><label>Alamat Layanan WhatsApp</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="Contoh: https://wa.domainanda.id"></div>
+                    <div class="form-group"><label>Alamat Layanan Si Dobe</label><input type="text" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="Contoh: https://sido.be"></div>
                     <div class="form-group"><label>Kunci Akses</label><input type="password" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'Masukkan kunci akses' }}"></div>
                     <div class="form-group"><label>Jam Ringkasan Harian</label><input type="time" name="waha_daily_time" class="form-control" value="{{ settings.waha_daily_time }}"></div>
                     <div class="notify-actions" style="justify-content:space-between;">
@@ -281,7 +281,7 @@
                         <div id="waha-session-status" class="notify-mini" style="margin-top:.6rem;">Session live akan muncul di sini.</div>
                         <div id="waha-session-qr" style="display:none; margin-top:1rem; text-align:center;">
                             <div class="notify-mini" style="margin-bottom:.5rem;">QR session</div>
-                            <img id="waha-session-qr-img" src="" alt="QR WAHA" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
+                            <img id="waha-session-qr-img" src="" alt="QR Si Dobe" style="max-width:220px; width:100%; border-radius:16px; border:1px solid #e2e8f0; background:#fff; padding:10px;">
                         </div>
                         <div class="notify-actions" style="margin-top:.75rem;">
                             <button class="btn" type="button" style="background:#4338ca;" onclick="refreshSelectedSessionQr()">Tampilkan QR</button>
@@ -547,7 +547,7 @@ async function loadWahaGroups() {
                 select.value = manual.value;
             }
             const bindingStatus = document.getElementById('binding-status');
-            if (bindingStatus) bindingStatus.innerText = data.error || 'WAHA belum mengembalikan grup. Pastikan session login dan base URL benar.';
+            if (bindingStatus) bindingStatus.innerText = data.error || 'Si Dobe belum mengembalikan grup. Pastikan session login dan base URL benar.';
             return;
         }
         select.innerHTML = '<option value="">Pilih grup WhatsApp</option>' + items.map(item => {
@@ -564,7 +564,7 @@ async function loadWahaGroups() {
         }
         const bindingStatus = document.getElementById('binding-status');
         if (bindingStatus) {
-            bindingStatus.innerText = error.message || 'Gagal memuat grup WAHA.';
+            bindingStatus.innerText = error.message || 'Gagal memuat grup Si Dobe.';
         }
         console.error(error);
     }
@@ -590,7 +590,7 @@ async function refreshWahaSessions() {
     const select = document.getElementById('waha-session-live');
     const status = document.getElementById('waha-session-status');
     select.innerHTML = '<option value="">Memuat session...</option>';
-    if (status) status.innerText = 'Mengambil daftar session dari WAHA...';
+    if (status) status.innerText = 'Mengambil daftar session dari Si Dobe...';
     try {
         const data = await apiFetch('{{ url_for("get_waha_sessions") }}');
         const items = data.items || [];
@@ -634,7 +634,7 @@ async function refreshSelectedSessionQr() {
             qrImg.src = data.qr.startsWith('data:') ? data.qr : `data:image/png;base64,${data.qr}`;
         } else {
             qrWrap.style.display = 'none';
-            if (status) status.innerText += ' | QR belum tersedia dari WAHA.';
+            if (status) status.innerText += ' | QR belum tersedia dari Si Dobe.';
         }
     } catch (error) {
         if (qrWrap) qrWrap.style.display = 'none';
@@ -670,7 +670,7 @@ async function refreshSelectedSessionScreenshot() {
 
 async function refreshWahaDashboard() {
     const board = document.getElementById('waha-dashboard');
-    if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard WAHA...</div>';
+    if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard Si Dobe...</div>';
     try {
         const data = await apiFetch('{{ url_for("api.notification_waha_dashboard_api") }}');
         const workers = data.workers || [];

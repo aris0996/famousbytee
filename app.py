@@ -19,6 +19,7 @@ import secrets
 import hmac
 from collections import defaultdict, deque
 from threading import Lock
+from markupsafe import escape
 from security_utils import hash_password, is_password_hash, verify_password
 from datetime import datetime, timedelta
 from urllib import request as urllib_request, error as urllib_error
@@ -464,9 +465,9 @@ def _waha_headers(api_key_override=None):
 def _waha_request(method, path, payload=None, base_url_override=None, api_key_override=None):
     base_url = (base_url_override if base_url_override is not None else get_setting_value('waha_base_url', '')).strip().rstrip('/')
     if not base_url:
-        return {'ok': False, 'error': 'WAHA base URL belum diatur'}
+        return {'ok': False, 'error': 'Si Dobe base URL belum diatur'}
     if not base_url.startswith(('http://', 'https://')):
-        return {'ok': False, 'error': 'WAHA base URL harus diawali http:// atau https://'}
+        return {'ok': False, 'error': 'Si Dobe base URL harus diawali http:// atau https://'}
 
     url = f"{base_url}{path}"
     data = json.dumps(payload).encode('utf-8') if payload is not None else None
@@ -480,15 +481,15 @@ def _waha_request(method, path, payload=None, base_url_override=None, api_key_ov
         detail = e.read().decode('utf-8', errors='ignore')
         detail_text = (detail or '').strip()
         if e.code in (401, 403):
-            return {'ok': False, 'error': f'WAHA menolak akses (HTTP {e.code}). Periksa API key/session login.'}
+            return {'ok': False, 'error': f'Si Dobe menolak akses (HTTP {e.code}). Periksa API key/session login.'}
         if e.code == 404:
-            return {'ok': False, 'error': 'WAHA endpoint tidak ditemukan. Cek base URL dan versi WAHA.'}
+            return {'ok': False, 'error': 'Si Dobe endpoint tidak ditemukan. Cek base URL dan versinya.'}
         if e.code >= 500:
-            return {'ok': False, 'error': f'WAHA error server (HTTP {e.code}). Cek worker/session di WAHA.'}
-        return {'ok': False, 'error': f'HTTP {e.code}: {detail_text[:180]}' if detail_text else f'HTTP {e.code}: Permintaan WAHA gagal'}
+            return {'ok': False, 'error': f'Si Dobe error server (HTTP {e.code}). Cek worker/session di sana.'}
+        return {'ok': False, 'error': f'HTTP {e.code}: {detail_text[:180]}' if detail_text else f'HTTP {e.code}: Permintaan Si Dobe gagal'}
     except urllib_error.URLError as e:
         reason = getattr(e, 'reason', None)
-        return {'ok': False, 'error': f'Gagal konek ke WAHA: {reason}' if reason else 'Gagal konek ke WAHA'}
+        return {'ok': False, 'error': f'Gagal konek ke Si Dobe: {reason}' if reason else 'Gagal konek ke Si Dobe'}
     except Exception as e:
         return {'ok': False, 'error': str(e)}
 
@@ -499,8 +500,8 @@ def _waha_request_any(method, paths, payload=None, base_url_override=None, api_k
         if result.get('ok'):
             result['path'] = path
             return result
-        last_error = result.get('error', 'Permintaan WAHA gagal')
-    return {'ok': False, 'error': last_error or 'Permintaan WAHA gagal'}
+        last_error = result.get('error', 'Permintaan Si Dobe gagal')
+    return {'ok': False, 'error': last_error or 'Permintaan Si Dobe gagal'}
 
 def _apply_whatsapp_admin_header(text, title=None):
     text = (text or '').strip()
@@ -3829,8 +3830,8 @@ def add_photo_comment(photo_id):
                 'status': 'success',
                 'comment': {
                     'id': comment.id,
-                    'user': name,
-                    'body': comment.body,
+                    'user': escape(name),
+                    'body': escape(comment.body),
                     'time': comment.created_at.strftime('%d %b %H:%M')
                 }
             }
@@ -4121,18 +4122,18 @@ def init_db():
                     SystemSetting(key='social_wa', value='#', description='Link WhatsApp Group'),
                     SystemSetting(key='seo_keywords', value='famousbytee, portal, kelas, manajemen', description='Kata Kunci SEO (Pisahkan dengan koma)'),
                     SystemSetting(key='activity_log_retention_days', value='30', description='Masa simpan log aktivitas dalam hari'),
-                    SystemSetting(key='waha_enabled', value='false', description='Aktifkan integrasi WAHA'),
-                    SystemSetting(key='waha_base_url', value='', description='Base URL server WAHA'),
-                    SystemSetting(key='waha_api_key', value='', description='API key WAHA'),
-                    SystemSetting(key='waha_session', value='', description='Nama session WAHA'),
-                    SystemSetting(key='waha_group_chat_id', value='', description='Chat ID grup WAHA'),
-                    SystemSetting(key='waha_daily_time', value='18:00', description='Jam ringkasan harian WAHA'),
+                    SystemSetting(key='waha_enabled', value='false', description='Aktifkan integrasi Si Dobe'),
+                    SystemSetting(key='waha_base_url', value='', description='Base URL server Si Dobe'),
+                    SystemSetting(key='waha_api_key', value='', description='API key Si Dobe'),
+                    SystemSetting(key='waha_session', value='', description='Nama session Si Dobe'),
+                    SystemSetting(key='waha_group_chat_id', value='', description='Chat ID grup Si Dobe'),
+                    SystemSetting(key='waha_daily_time', value='18:00', description='Jam ringkasan harian Si Dobe'),
                     SystemSetting(key='waha_last_daily_summary_date', value='', description='Tanggal ringkasan harian terakhir'),
                     SystemSetting(key='notification_channel_default', value='push', description='Channel default notifikasi: push, whatsapp, both'),
-                    SystemSetting(key='waha_schedule_template', value='Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih', description='Template ringkasan jadwal WAHA'),
-                    SystemSetting(key='waha_schedule_item_template', value='{index}. MK {subject} mulai jam {time_range}', description='Template item jadwal WAHA'),
-                    SystemSetting(key='waha_schedule_deadline_item_template', value='{index}. Deadline {subject}: {title} jam {deadline_time}', description='Template item deadline WAHA'),
-                    SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan WAHA'),
+                    SystemSetting(key='waha_schedule_template', value='Assalamualaikum dan selamat malam, tabe saudara dan saudari sekalian di grup ini, Jadwal Mata Kuliah {day_name}, {date_long}\n{schedule_lines}\n{deadline_section}(Sesuai jadwal dari pihak kampus)\n{extra_info_section}Sekian dan terimakasih', description='Template ringkasan jadwal Si Dobe'),
+                    SystemSetting(key='waha_schedule_item_template', value='{index}. MK {subject} mulai jam {time_range}', description='Template item jadwal Si Dobe'),
+                    SystemSetting(key='waha_schedule_deadline_item_template', value='{index}. Deadline {subject}: {title} jam {deadline_time}', description='Template item deadline Si Dobe'),
+                    SystemSetting(key='waha_schedule_extra_info', value='', description='Info tambahan tetap di ringkasan Si Dobe'),
                     SystemSetting(key='waha_admin_header_enabled', value='true', description='Aktifkan header/pengenal admin di pesan WA'),
                     SystemSetting(key='waha_admin_header_text', value='*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n', description='Template header admin untuk pesan WA'),
                     SystemSetting(key='schedule_notify_on_create', value='true', description='Kirim notifikasi WhatsApp saat jadwal baru dibuat'),
@@ -4363,7 +4364,7 @@ def save_waha_config():
     set_setting_value('waha_admin_header_enabled', 'true' if request.form.get('waha_admin_header_enabled') == 'on' else 'false', 'Aktifkan header/pengenal admin di pesan WA')
     set_setting_value('waha_admin_header_text', request.form.get('waha_admin_header_text') or '', 'Template header admin untuk pesan WA')
     db.session.commit()
-    flash('Konfigurasi mesin WAHA berhasil disimpan.')
+    flash('Konfigurasi mesin Si Dobe berhasil disimpan.')
     return redirect(url_for('manage_notifications'))
 
 @app.route('/notifications/waha/sessions')

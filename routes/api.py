@@ -8,6 +8,7 @@ import json
 from werkzeug.utils import secure_filename
 from security_utils import hash_password, verify_password
 from sqlalchemy import or_
+from markupsafe import escape
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -30,6 +31,28 @@ def _absolute_public_url(path_or_url):
     if not value:
         return ''
     return request.host_url.rstrip('/') + '/' + value.lstrip('/')
+
+
+def _get_json_payload(required=False):
+    data = request.get_json(silent=True)
+    if data is None:
+        if request.form:
+            data = request.form.to_dict(flat=True)
+        else:
+            data = {}
+    if required and not data:
+        raise ValueError('Payload JSON atau form wajib diisi')
+    return data
+
+
+def _parse_iso_datetime(value, field_name='deadline'):
+    if not value:
+        raise ValueError(f'{field_name} wajib diisi')
+    normalized = str(value).strip().replace('Z', '+00:00')
+    try:
+        return datetime.fromisoformat(normalized)
+    except Exception:
+        raise ValueError(f'Format {field_name} tidak valid')
 
 
 def _default_classroom():
@@ -1843,7 +1866,7 @@ def notification_waha_dashboard_api():
             'sessions': item.get('sessions') or item.get('sessionCount') or item.get('workingSessions') or 0,
         } for item in workers if isinstance(item, dict)]
     else:
-        dashboard['worker_error'] = workers_result.get('error', 'Gagal memuat worker WAHA')
+        dashboard['worker_error'] = workers_result.get('error', 'Gagal memuat worker Si Dobe')
 
     sessions_result = _waha_request('GET', '/api/sessions', base_url_override=base_url)
     if sessions_result.get('ok'):
@@ -1857,7 +1880,7 @@ def notification_waha_dashboard_api():
             'qr': _normalize_waha_scalar(item.get('qr') or item.get('qrcode') or item.get('qrCode') or item.get('qr_code') or ''),
         } for item in sessions if isinstance(item, dict)]
     else:
-        dashboard['session_error'] = sessions_result.get('error', 'Gagal memuat session WAHA')
+        dashboard['session_error'] = sessions_result.get('error', 'Gagal memuat session Si Dobe')
 
     return jsonify(dashboard)
 
@@ -1877,7 +1900,7 @@ def notification_waha_create_session_api():
     base_url = (data.get('base_url') or get_setting_value('waha_base_url', '')).strip() or None
     result = _waha_request_any('POST', ['/api/sessions', '/api/session'], payload={'name': session_name, 'session': session_name}, base_url_override=base_url)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal membuat session WAHA')}), 400
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal membuat session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
 @api_bp.route('/notifications/waha/sessions/<string:session_name>/start', methods=['POST'])
@@ -1896,7 +1919,7 @@ def notification_waha_start_session_api(session_name):
         f'/api/sessions/{session_name}/connect',
     ], base_url_override=(base_url or '').strip() or None)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal start session WAHA')}), 400
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal start session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
 @api_bp.route('/notifications/waha/sessions/<string:session_name>/stop', methods=['POST'])
@@ -1915,7 +1938,7 @@ def notification_waha_stop_session_api(session_name):
         f'/api/sessions/{session_name}/disconnect',
     ], base_url_override=(base_url or '').strip() or None)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal stop session WAHA')}), 400
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal stop session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
 @api_bp.route('/notifications/waha/sessions/<string:session_name>/restart', methods=['POST'])
@@ -1934,7 +1957,7 @@ def notification_waha_restart_session_api(session_name):
         f'/api/sessions/{session_name}/start',
     ], base_url_override=(base_url or '').strip() or None)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal restart session WAHA')}), 400
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal restart session Si Dobe')}), 400
     return jsonify({'ok': True, 'path': result.get('path'), 'data': result.get('data')})
 
 @api_bp.route('/notifications/waha/sessions/<string:session_name>/screenshot', methods=['GET'])
@@ -1955,7 +1978,7 @@ def notification_waha_session_screenshot_api(session_name):
         f'/api/sessions/{session_name}/qr',
     ], base_url_override=base_url)
     if not result.get('ok'):
-        return jsonify({'ok': False, 'error': result.get('error', 'Gagal ambil screenshot/QR WAHA')}), 200
+        return jsonify({'ok': False, 'error': result.get('error', 'Gagal ambil screenshot/QR Si Dobe')}), 200
     data = result.get('data')
     if isinstance(data, dict):
         data = data.get('screenshot') or data.get('qr') or data.get('image') or data.get('data') or ''
@@ -3254,12 +3277,21 @@ def create_assignment():
     if not user.role.can_manage_assignments:
         return jsonify({"error": "Unauthorized"}), 403
         
-    data = request.get_json()
+    data = _get_json_payload(required=True)
+    title = (data.get('title') or '').strip()
+    subject = (data.get('subject') or '').strip()
+    description = (data.get('description') or '').strip()
+    if not title or not subject:
+        return jsonify({"error": "Judul dan mata kuliah wajib diisi"}), 400
+    try:
+        deadline = _parse_iso_datetime(data.get('deadline'))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     a = Assignment(
-        title=data.get('title'),
-        subject=data.get('subject'),
-        deadline=datetime.fromisoformat(data.get('deadline').replace('Z', '')),
-        description=data.get('description', '')
+        title=title,
+        subject=subject,
+        deadline=deadline,
+        description=description
     )
     db.session.add(a)
     db.session.commit()
@@ -3293,12 +3325,18 @@ def modify_assignment(id):
         return jsonify({"status": "success"})
         
     if request.method == 'PUT':
-        data = request.get_json()
-        a.title = data.get('title', a.title)
-        a.subject = data.get('subject', a.subject)
+        data = _get_json_payload(required=True)
+        if data.get('title'):
+            a.title = data.get('title')
+        if data.get('subject'):
+            a.subject = data.get('subject')
         if data.get('deadline'):
-            a.deadline = datetime.fromisoformat(data.get('deadline').replace('Z', ''))
-        a.description = data.get('description', a.description)
+            try:
+                a.deadline = _parse_iso_datetime(data.get('deadline'))
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+        if data.get('description') is not None:
+            a.description = data.get('description')
         
         db.session.commit()
         

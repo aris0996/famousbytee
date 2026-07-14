@@ -13,13 +13,18 @@ def _required_env(name):
         raise RuntimeError(f'{name} wajib disetel di file .env atau environment server.')
     return value
 
+
+def _env_flag(name, default='1'):
+    value = os.environ.get(name, default).strip().lower()
+    return value not in {'0', 'false', 'no', 'off'}
+
 class Config:
     SECRET_KEY = _required_env('SECRET_KEY')
     JWT_SECRET_KEY = _required_env('JWT_SECRET_KEY')
-    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE', '1')
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'
-    REMEMBER_COOKIE_SECURE = True
+    REMEMBER_COOKIE_SECURE = _env_flag('REMEMBER_COOKIE_SECURE', '1')
     REMEMBER_COOKIE_HTTPONLY = True
     REMEMBER_COOKIE_SAMESITE = 'Lax'
     MAX_CONTENT_LENGTH = int(os.environ.get('MAX_CONTENT_LENGTH', 16 * 1024 * 1024))
