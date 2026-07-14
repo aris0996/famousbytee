@@ -1662,6 +1662,8 @@ def classroom_whatsapp_binding_api(classroom_id):
             'classroom_name': classroom.name,
             'classroom_batch': classroom.batch,
             'bot_id': binding.bot_id if binding else None,
+            'bot_name': binding.bot.name if binding and binding.bot else '',
+            'sender_phone': binding.bot.session_name if binding and binding.bot else '',
             'chat_id': binding.chat_id if binding else '',
             'chat_label': binding.chat_label if binding else '',
             'is_default': binding.is_default if binding else True,
@@ -1797,7 +1799,7 @@ def notification_bot_health_api(bot_id):
             'ok': True,
             'bot_id': bot.id,
             'session_name': '',
-            'status': 'default-device',
+            'status': 'Perangkat default Sidobe (nomor akan terdeteksi setelah pengiriman)',
         })
     result = _sidobe_request('POST', '/utilities/check-number', {'phone': phone})
     if not result.get('ok'):

@@ -1388,6 +1388,18 @@ def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, c
         if sender_phone:
             payload['sender_phone'] = sender_phone
     result = _sidobe_request('POST', '/send-message', payload)
+    # Sidobe returns the device actually used. Persist it for legacy/default
+    # bot records so the notification page shows the real sender thereafter.
+    if result.get('ok') and bot:
+        response_body = result.get('data') or {}
+        response_data = response_body.get('data') or {} if isinstance(response_body, dict) else {}
+        device = response_data.get('whatsapp_device') or {} if isinstance(response_data, dict) else {}
+        effective_sender = _sidobe_e164_phone(device.get('phone')) if isinstance(device, dict) else ''
+        if effective_sender and not _sidobe_e164_phone(bot.session_name):
+            bot.session_name = effective_sender
+            bot.status = 'connected'
+            bot.last_seen_at = datetime.now()
+            db.session.commit()
     status = 'Success' if result['ok'] else f"Failed: {result['error'][:80]}"
     _log_notification_history(title or "Si Dobe", text, None, sender_id, status, channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat)
     return result
