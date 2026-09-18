@@ -48,6 +48,7 @@
         /* Dark mode palette support can be added dynamically, but for now we keep a clean modern light theme */
 
         * { margin:0; padding:0; box-sizing:border-box; }
+        [hidden] { display:none !important; }
         body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text-main); line-height: 1.6; overflow-x: hidden; scroll-behavior: smooth; }
 
         /* Navbar */
@@ -198,43 +199,26 @@
         .news-cta { padding: .8rem 1rem; color: #fff; background: var(--secondary); border-radius: 999px; box-shadow: 0 10px 20px rgba(16,25,54,.14); }
         .news-cta:hover { color: #fff; background: var(--primary); gap: 9px; }
 
-        footer { padding: clamp(4rem, 7vw, 6rem) 5% 2rem; background: #0d1730; color: white; }
-        .footer-inner {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 2.5rem;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        @media (min-width: 768px) {
-            .footer-inner { grid-template-columns: 2fr 1fr 1fr; }
-        }
-        .footer-brand p { color: rgba(255,255,255,0.62); font-size: 0.92rem; line-height: 1.75; margin-top: 1rem; max-width: 360px; }
-        .footer-brand-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; letter-spacing: -.03em; }
-        .footer-brand-mark img { height: 36px; width: 36px; object-fit: contain; filter: brightness(0) invert(1); }
-        .footer-brand-mark svg { width: 28px; height: 28px; color: var(--accent); }
-        .footer-col h4 { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 1.2rem; }
-        .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
-        .footer-col ul li a { color: rgba(255,255,255,0.68); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.25s, padding-left .25s; }
-        .footer-col ul li a:hover { color: var(--accent); padding-left: 4px; }
-        .footer-socials { display: flex; gap: 0.8rem; margin-top: 1rem; }
-        .footer-social-btn {
-            width: 40px; height: 40px; border-radius: 999px;
-            background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.1);
-            display: flex; align-items: center; justify-content: center;
-            color: rgba(255,255,255,0.65); text-decoration: none;
-            transition: background 0.25s, color 0.25s, transform 0.2s;
-        }
-        .footer-social-btn:hover { background: var(--primary); color: white; transform: translateY(-2px); }
-        .footer-social-btn i { width: 18px; height: 18px; }
-        .footer-bottom {
-            border-top: 1px solid rgba(255,255,255,0.07);
-            margin-top: 3rem; padding-top: 1.8rem;
-            display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem;
-            font-size: 0.85rem; color: rgba(255,255,255,0.4);
-        }
-        .footer-bottom a { color: var(--accent); text-decoration: none; font-weight: 600; }
-        .footer-bottom a:hover { text-decoration: underline; }
+        footer { padding: clamp(4rem, 7vw, 5.5rem) 5% 0; background: var(--secondary); color: #fff; }
+        .footer-inner { max-width: 1200px; margin: 0 auto; }
+        .footer-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) repeat(2, minmax(150px, .7fr)); gap: clamp(2rem, 5vw, 5rem); padding-bottom: 3.5rem; }
+        .footer-brand { display: inline-flex; align-items: center; gap: .7rem; color: #fff; font-size: 1.05rem; font-weight: 900; letter-spacing: -.03em; text-decoration: none; }
+        .footer-brand-mark { display: inline-flex; align-items: center; justify-content: center; }
+        .footer-brand-mark img, .footer-mark-fallback { width: 40px; height: 40px; padding: 5px; border-radius: 12px; background: #fff; object-fit: contain; }
+        .footer-mark-fallback { display: inline-grid; place-items: center; padding: 0; color: var(--secondary); background: var(--accent); }
+        .footer-mark-fallback svg { width: 24px; height: 24px; }
+        .footer-brand-copy { max-width: 345px; margin: 1.15rem 0 0; color: rgba(255,255,255,.6); font-size: .87rem; line-height: 1.75; }
+        .footer-kicker { display: block; color: var(--accent); font-size: .7rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+        .footer-links { display: grid; gap: .7rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+        .footer-links a { color: rgba(255,255,255,.66); font-size: .84rem; text-decoration: none; transition: color .2s ease, transform .2s ease; }
+        .footer-links a:hover { color: #fff; transform: translateX(3px); }
+        .footer-socials { display: flex; gap: .55rem; margin-top: 1.25rem; }
+        .footer-social-btn { display: inline-grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.06); text-decoration: none; transition: .2s ease; }
+        .footer-social-btn:hover { color: var(--secondary); border-color: var(--accent); background: var(--accent); transform: translateY(-2px); }
+        .footer-social-btn svg { width: 16px; height: 16px; }
+        .footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 0; border-top: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.45); font-size: .74rem; }
+        .footer-bottom p { margin: 0; }
+        .footer-bottom a { color: var(--accent); font-weight: 800; text-decoration: none; }
     
 
         @media (min-width: 992px) {
@@ -272,7 +256,8 @@
             .gallery-item .overlay { opacity: 1; padding: .85rem; }
             .gallery-item .overlay p { transform: none; font-size: .75rem; }
             .news-media { height: 180px; }
-            footer { padding: 4rem 1.25rem 1.5rem; }
+            footer { padding: 3.5rem 1.25rem 0; }
+            .footer-grid { grid-template-columns: 1fr; gap: 2.25rem; padding-bottom: 2.5rem; }
             .footer-bottom { align-items: flex-start; flex-direction: column; }
         }
     </style>
@@ -495,66 +480,55 @@
 
     <footer id="footer">
         <div class="footer-inner">
-            <!-- Brand Column -->
-            <div class="footer-brand footer-col">
-                <div class="footer-brand-mark">
-                    {% if site_settings.logo_display_path %}
-                        <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.get('web_title', 'Portal Manajemen') }}">
-                    {% else %}
-                        <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
-                    {% endif %}
-                    {{ site_settings.get('web_title', 'Portal Manajemen') }}
+            <div class="footer-grid">
+                <div>
+                    <a href="{{ url_for('index') }}" class="footer-brand">
+                        <span class="footer-brand-mark">
+                            {% if site_settings.logo_display_path %}
+                            <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.get('web_title', 'Portal Manajemen') }}" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                            <span class="footer-mark-fallback" hidden><i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i></span>
+                            {% else %}
+                            <span class="footer-mark-fallback"><i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i></span>
+                            {% endif %}
+                        </span>
+                        <span>{{ site_settings.get('web_title', 'Portal Manajemen') }}</span>
+                    </a>
+                    <p class="footer-brand-copy">Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi informasi seluruh kelas.</p>
+                    <div class="footer-socials">
+                        {% set social_ig = site_settings.get('social_ig') %}
+                        {% set social_wa = site_settings.get('social_wa') %}
+                        {% if social_ig and social_ig != '#' %}<a href="{{ social_ig }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram"><i data-lucide="instagram"></i></a>{% endif %}
+                        {% if social_wa and social_wa != '#' %}<a href="{{ social_wa }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Si Dobe"><i data-lucide="message-circle"></i></a>{% endif %}
+                        <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Sitemap"><i data-lucide="file-code-2"></i></a>
+                    </div>
                 </div>
-                <p>Platform terpusat untuk integrasi data, koordinasi harian, dan transparansi internal seluruh kelas secara elegan.</p>
-                <div class="footer-socials">
-                    {% set social_ig = site_settings.get('social_ig') %}
-                    {% set social_wa = site_settings.get('social_wa') %}
-                    {% if social_ig and social_ig != '#' %}
-                    <a href="{{ site_settings.get('social_ig') }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram">
-                        <i data-lucide="instagram"></i>
-                    </a>
-                    {% endif %}
-                    {% if social_wa and social_wa != '#' %}
-                    <a href="{{ site_settings.get('social_wa') }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Grup Si Dobe">
-                        <i data-lucide="message-circle"></i>
-                    </a>
-                    {% endif %}
-                    <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Sitemap XML">
-                        <i data-lucide="file-code"></i>
-                    </a>
+                <div>
+                    <span class="footer-kicker">Jelajahi</span>
+                    <ul class="footer-links">
+                        <li><a href="#">Beranda</a></li>
+                        <li><a href="#jadwal">Jadwal publik</a></li>
+                        <li><a href="#pengumuman">Pengumuman</a></li>
+                        <li><a href="{{ url_for('news_public') }}">Semua berita</a></li>
+                        <li><a href="{{ url_for('login') }}">Masuk ke portal</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <span class="footer-kicker">Kelas & informasi</span>
+                    <ul class="footer-links">
+                        <li><a href="/sitemap.xml" target="_blank" rel="noopener noreferrer">Sitemap</a></li>
+                        {% if classrooms %}
+                        <li><a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}">Galeri kelas</a></li>
+                        {% endif %}
+                        {% for class_obj in classrooms %}
+                        <li><a href="{{ url_for('public_view', class_name=class_obj.name) }}">{{ class_obj.name }}</a></li>
+                        {% endfor %}
+                    </ul>
                 </div>
             </div>
-
-            <!-- Quick Links Column -->
-            <div class="footer-col">
-                <h4>Navigasi</h4>
-                <ul>
-                    <li><a href="#">Beranda</a></li>
-                    <li><a href="#jadwal">Jadwal Publik</a></li>
-                    <li><a href="#pengumuman">Pengumuman</a></li>
-                    {% if classrooms %}
-                    <li><a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}">Galeri Kelas</a></li>
-                    {% endif %}
-                    <li><a href="{{ url_for('login') }}">Login Portal</a></li>
-                </ul>
+            <div class="footer-bottom">
+                <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}. All rights reserved.</p>
+                <p>Platform Engine by <a href="https://instagram.com/ars_0996" target="_blank" rel="noopener noreferrer">@ars_0996</a></p>
             </div>
-
-            <!-- Contact / Info Column -->
-            <div class="footer-col">
-                <h4>Informasi</h4>
-                <ul>
-                    <li><a href="/sitemap.xml" target="_blank">Sitemap</a></li>
-                    {% for class_obj in classrooms %}
-                    <li><a href="{{ url_for('public_view', class_name=class_obj.name) }}">{{ class_obj.name }}</a></li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <!-- Bottom Bar -->
-        <div class="footer-bottom">
-            <p>&copy; {{ datetime.now().year }} {{ site_settings.get('web_title', 'Portal').split(' ')[0] }}. All rights reserved.</p>
-            <p>Platform Engine by <a href="https://instagram.com/ars_0996" target="_blank">@ars_0996</a></p>
         </div>
     </footer>
 
