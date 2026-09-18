@@ -492,6 +492,20 @@
             color: var(--text-muted);
             font-size: 0.9rem;
         }
+
+        /* Shared mobile guardrails for pages that still use the legacy card/grid markup. */
+        @media (max-width: 768px) {
+            html, body { max-width: 100%; overflow-x: hidden; }
+            .main-content { padding: 1rem; }
+            .main-content > header { align-items: flex-start; margin-bottom: 1.25rem; }
+            .main-content > header h1 { font-size: clamp(1.45rem, 7vw, 2rem); line-height: 1.1; }
+            .main-content > header p { font-size: .9rem; line-height: 1.45; }
+            .card { width: 100%; max-width: 100%; margin-bottom: 1rem; padding: 1rem; border-radius: 16px; }
+            .roles-grid, .stats-grid { grid-template-columns: 1fr; gap: 1rem; }
+            .main-content table:not(.class-table):not(.premium-table) { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; }
+            .main-content input, .main-content select, .main-content textarea, .main-content button { max-width: 100%; }
+            .mobile-toggle { right: 1rem; bottom: 1rem; width: 52px; height: 52px; }
+        }
     </style>
 </head>
 
