@@ -5,133 +5,160 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Berita & Artikel - {{ site_settings.app_name or 'Famousbytee' }}</title>
     <meta name="description" content="Kumpulan berita, pengumuman, dan artikel terbaru dari {{ site_settings.app_name or 'Famousbytee' }}.">
+    <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
-        *, *::before, *::after { box-sizing: border-box; }
-        html, body { margin: 0; padding: 0; }
         :root {
-            --primary: #4f46e5;
-            --primary-dark: #312e81;
-            --bg: #f5f7ff;
-            --surface: #ffffff;
-            --text: #172033;
-            --muted: #64748b;
-            --border: #e5e7eb;
-            --shadow: 0 18px 50px rgba(15, 23, 42, 0.08);
-            --radius: 18px;
+            --primary: #3856e8;
+            --secondary: #101936;
+            --accent: #ffb347;
+            --bg: #f3f6fb;
+            --surface: #fff;
+            --text: #11182e;
+            --muted: #69758e;
+            --line: #e2e8f1;
+            --shadow: 0 18px 50px rgba(16,25,54,.08);
+            --shadow-hover: 0 24px 55px rgba(16,25,54,.13);
         }
-        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); }
+
+        * { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body { margin: 0; min-height: 100vh; overflow-x: hidden; font-family: 'Outfit', sans-serif; color: var(--text); background: var(--bg); }
         a { color: inherit; }
-        .nav {
-            position: sticky; top: 0; z-index: 20;
-            background: rgba(255,255,255,.92); backdrop-filter: blur(16px);
-            border-bottom: 1px solid rgba(79,70,229,.08);
-        }
-        .nav-inner, .hero-inner, .content, .footer-inner {
-            max-width: 1180px; margin: 0 auto; padding: 0 24px;
-        }
-        .nav-inner { height: 74px; display:flex; align-items:center; justify-content:space-between; gap:16px; }
-        .brand { text-decoration:none; font-weight:900; color:var(--primary); letter-spacing:-.6px; font-size:1.22rem; }
-        .nav-links { display:flex; align-items:center; gap:18px; }
-        .nav-links a { text-decoration:none; color:var(--muted); font-weight:700; font-size:.95rem; }
-        .nav-links a.active, .nav-links a:hover { color:var(--primary); }
-        .nav-cta {
-            background: var(--primary); color:#fff !important; padding:10px 18px; border-radius:999px; box-shadow: 0 10px 24px rgba(79,70,229,.2);
-        }
 
-        .hero {
-            background: linear-gradient(135deg, #1f2a78 0%, #4f46e5 52%, #6d28d9 100%);
-            color: #fff;
-            padding: 56px 0 66px;
-            position: relative;
-            overflow: hidden;
-        }
-        .hero::after {
-            content: ""; position:absolute; inset:0;
-            background:
-                radial-gradient(circle at 18% 24%, rgba(255,255,255,.12) 0 120px, transparent 160px),
-                radial-gradient(circle at 86% 20%, rgba(255,255,255,.08) 0 140px, transparent 180px);
-            pointer-events:none;
-        }
-        .hero-inner { position:relative; z-index:1; }
-        .hero h1 { margin:0; font-size: clamp(2rem, 4vw, 3.35rem); line-height:1.05; letter-spacing:-1px; }
-        .hero p { margin:14px 0 0; max-width: 720px; color: rgba(255,255,255,.86); font-size:1.03rem; line-height:1.7; }
+        .nav { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid rgba(16,25,54,.07); background: rgba(255,255,255,.88); backdrop-filter: blur(18px); }
+        .nav-inner, .hero-inner, .content-inner, .footer-inner { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
+        .nav-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+        .brand { display: inline-flex; align-items: center; gap: .65rem; color: var(--secondary); font-size: 1.18rem; font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
+        .brand img { width: 34px; height: 34px; padding: 4px; object-fit: contain; border-radius: 10px; background: #fff; box-shadow: 0 6px 15px rgba(16,25,54,.08); }
+        .brand svg { width: 27px; height: 27px; color: var(--primary); }
+        .nav-links { display: flex; align-items: center; gap: .3rem; }
+        .nav-links a { padding: .65rem .85rem; border-radius: 999px; color: var(--muted); font-size: .88rem; font-weight: 800; text-decoration: none; transition: .2s ease; }
+        .nav-links a:hover, .nav-links a.active { color: var(--primary); background: #eef1ff; }
+        .nav-links .nav-cta { padding: .78rem 1.15rem; color: #fff; background: var(--secondary); box-shadow: 0 10px 22px rgba(16,25,54,.14); }
+        .nav-links .nav-cta:hover { color: #fff; background: var(--primary); }
 
-        .content { padding: 28px 24px 40px; }
-        .toolbar {
-            display:flex; align-items:center; justify-content:space-between; gap:16px;
-            margin-bottom: 22px; flex-wrap:wrap;
-        }
-        .chips { display:flex; flex-wrap:wrap; gap:10px; }
-        .chip {
-            text-decoration:none; padding:10px 16px; border-radius:999px;
-            background:#fff; border:1px solid var(--border); color:var(--muted);
-            font-weight:700; font-size:.9rem; transition:.2s ease;
-        }
-        .chip:hover, .chip.active { border-color: var(--primary); color: var(--primary); box-shadow: 0 8px 18px rgba(79,70,229,.08); }
-        .chip.all { background: var(--primary); color:#fff; border-color: transparent; }
+        .hero { position: relative; isolation: isolate; overflow: hidden; color: #fff; background: linear-gradient(135deg, #101936 0%, #17275a 55%, #2943bb 100%); }
+        .hero::before, .hero::after { content: ''; position: absolute; z-index: -1; border: 1px solid rgba(255,255,255,.11); border-radius: 50%; pointer-events: none; }
+        .hero::before { width: 550px; height: 550px; right: -270px; top: -270px; }
+        .hero::after { width: 360px; height: 360px; left: -220px; bottom: -260px; }
+        .hero-inner { min-height: 345px; display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; padding-top: 4.5rem; padding-bottom: 3.5rem; }
+        .hero-copy { max-width: 700px; }
+        .eyebrow { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: .72rem; font-weight: 900; letter-spacing: .17em; text-transform: uppercase; }
+        .eyebrow::before { content: ''; width: 27px; height: 3px; border-radius: 99px; background: var(--accent); }
+        .hero h1 { max-width: 760px; margin: 1rem 0 0; font-size: clamp(2.5rem, 6vw, 4.7rem); line-height: .98; letter-spacing: -.075em; }
+        .hero p { max-width: 650px; margin: 1.25rem 0 0; color: rgba(255,255,255,.7); font-size: 1rem; line-height: 1.75; }
+        .hero-stats { display: flex; flex-shrink: 0; gap: .7rem; }
+        .hero-stat { min-width: 115px; padding: 1rem; border: 1px solid rgba(255,255,255,.13); border-radius: 17px; background: rgba(255,255,255,.08); }
+        .hero-stat strong { display: block; color: var(--accent); font-size: 1.5rem; line-height: 1; }
+        .hero-stat span { display: block; margin-top: .45rem; color: rgba(255,255,255,.65); font-size: .72rem; }
 
-        .grid {
-            display:grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr));
-            gap: 20px;
-        }
-        .card {
-            background: var(--surface); border:1px solid rgba(79,70,229,.08); border-radius: var(--radius);
-            overflow:hidden; box-shadow: var(--shadow); transition: transform .22s ease, box-shadow .22s ease;
-        }
-        .card:hover { transform: translateY(-4px); box-shadow: 0 22px 60px rgba(15,23,42,.12); }
-        .thumb { aspect-ratio: 16 / 10; background: linear-gradient(135deg, #dbe4ff 0%, #eef2ff 100%); }
-        .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
-        .thumb .empty {
-            height:100%; display:grid; place-items:center; color:#94a3b8;
-        }
-        .body { padding: 18px 18px 20px; }
-        .badge {
-            display:inline-flex; align-items:center; gap:6px;
-            font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.8px;
-            border-radius:999px; padding:5px 10px; margin-bottom:12px;
-        }
-        .title {
-            text-decoration:none; color:var(--text); font-weight:800; font-size:1.06rem; line-height:1.45;
-            display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
-        }
+        .content { padding: 3.2rem 0 5rem; }
+        .toolbar { display: flex; align-items: flex-end; justify-content: space-between; gap: 1.5rem; margin-bottom: 2rem; }
+        .toolbar-heading { max-width: 520px; }
+        .toolbar-heading h2 { margin: 0; color: var(--secondary); font-size: clamp(1.7rem, 3vw, 2.35rem); line-height: 1.05; letter-spacing: -.06em; }
+        .toolbar-heading p { margin: .55rem 0 0; color: var(--muted); font-size: .9rem; }
+        .filter-label { display: block; margin-bottom: .65rem; color: var(--muted); font-size: .72rem; font-weight: 900; letter-spacing: .13em; text-transform: uppercase; }
+        .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
+        .chip { display: inline-flex; align-items: center; min-height: 40px; padding: .62rem .9rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: #fff; font-size: .78rem; font-weight: 800; text-decoration: none; transition: .2s ease; }
+        .chip:hover { color: var(--primary); border-color: rgba(56,86,232,.35); transform: translateY(-1px); }
+        .chip.all, .chip.all.active { color: #fff; border-color: transparent; background: var(--primary); box-shadow: 0 9px 18px rgba(56,86,232,.16); }
+
+        .article-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+        .card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 8px 24px rgba(16,25,54,.045); transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
+        .card:hover { border-color: rgba(56,86,232,.22); box-shadow: var(--shadow-hover); transform: translateY(-5px); }
+        .featured-card { grid-column: span 2; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr); }
+        .thumb { position: relative; display: block; min-height: 210px; overflow: hidden; background: linear-gradient(135deg, #dce4ff 0%, #c8d3ff 100%); text-decoration: none; }
+        .featured-card .thumb { min-height: 100%; }
+        .thumb::after { content: ''; position: absolute; inset: auto 0 0; height: 40%; background: linear-gradient(to top, rgba(16,25,54,.32), transparent); pointer-events: none; }
+        .thumb img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform .6s ease; }
+        .card:hover .thumb img { transform: scale(1.06); }
+        .thumb-placeholder { display: grid; width: 100%; height: 100%; min-height: 210px; place-items: center; color: #8799e6; }
+        .thumb-placeholder svg { width: 46px; height: 46px; }
+        .card-body { display: flex; flex: 1; flex-direction: column; padding: 1.3rem; }
+        .featured-card .card-body { justify-content: center; padding: clamp(1.5rem, 3vw, 2.3rem); }
+        .card-top { display: flex; align-items: center; justify-content: space-between; gap: .7rem; margin-bottom: .85rem; }
+        .badge { display: inline-flex; align-items: center; max-width: 100%; padding: .38rem .65rem; border-radius: 8px; color: var(--primary); background: #edf0ff; font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+        .card-date { color: var(--muted); font-size: .73rem; font-weight: 700; white-space: nowrap; }
+        .title { display: -webkit-box; overflow: hidden; color: var(--secondary); font-size: 1.12rem; font-weight: 900; line-height: 1.3; letter-spacing: -.035em; text-decoration: none; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+        .featured-card .title { font-size: clamp(1.45rem, 3vw, 2.1rem); line-height: 1.12; }
         .title:hover { color: var(--primary); }
-        .excerpt {
-            margin:10px 0 0; color:var(--muted); line-height:1.7; font-size:.92rem;
-            display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+        .excerpt { display: -webkit-box; overflow: hidden; margin: .7rem 0 0; color: var(--muted); font-size: .88rem; line-height: 1.7; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+        .meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; flex-wrap: wrap; margin-top: auto; padding-top: 1.15rem; border-top: 1px solid #edf0f5; color: var(--muted); font-size: .72rem; }
+        .meta-info, .read { display: inline-flex; align-items: center; gap: .3rem; }
+        .meta-info svg { width: 13px; height: 13px; }
+        .read { color: var(--primary); font-weight: 900; text-decoration: none; }
+        .read svg { width: 14px; height: 14px; transition: transform .2s ease; }
+        .read:hover svg { transform: translateX(3px); }
+
+        .empty-state { display: grid; min-height: 340px; padding: 3rem 1.5rem; place-items: center; text-align: center; border: 1px dashed #cbd5e1; border-radius: 24px; background: rgba(255,255,255,.65); }
+        .empty-icon { display: grid; width: 72px; height: 72px; place-items: center; border-radius: 22px; color: var(--primary); background: #e9edff; }
+        .empty-icon svg { width: 34px; height: 34px; }
+        .empty-state h3 { margin: 1rem 0 .35rem; color: var(--secondary); font-size: 1.25rem; }
+        .empty-state p { max-width: 420px; margin: 0; color: var(--muted); line-height: 1.65; }
+        .empty-state a { display: inline-flex; align-items: center; gap: .45rem; margin-top: 1.25rem; padding: .75rem 1rem; border-radius: 999px; color: #fff; background: var(--secondary); font-size: .8rem; font-weight: 800; text-decoration: none; }
+        .pagination { display: flex; justify-content: center; gap: .45rem; flex-wrap: wrap; margin-top: 2rem; }
+        .pagination a, .pagination span { display: inline-flex; min-width: 38px; min-height: 38px; align-items: center; justify-content: center; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: #fff; font-size: .78rem; font-weight: 800; text-decoration: none; }
+        .pagination a:hover, .pagination span.current { color: #fff; border-color: var(--primary); background: var(--primary); }
+
+        footer { padding: 2rem 0 2.5rem; color: #fff; background: var(--secondary); }
+        .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: rgba(255,255,255,.58); font-size: .8rem; }
+        .footer-brand { display: inline-flex; align-items: center; gap: .6rem; color: #fff; font-size: .95rem; font-weight: 900; }
+        .footer-brand img { width: 30px; height: 30px; padding: 4px; border-radius: 9px; background: #fff; object-fit: contain; }
+        .footer-brand svg { width: 24px; height: 24px; color: var(--accent); }
+        .footer-inner a { color: var(--accent); font-weight: 800; text-decoration: none; }
+
+        @media (max-width: 900px) {
+            .hero-inner { display: block; }
+            .hero-stats { margin-top: 2rem; }
+            .toolbar { display: block; }
+            .chips { justify-content: flex-start; margin-top: 1.35rem; }
+            .article-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .featured-card { grid-column: span 2; }
         }
-        .meta {
-            display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;
-            margin-top:16px; padding-top:14px; border-top:1px solid #eef2ff; color:var(--muted); font-size:.8rem;
+        @media (max-width: 620px) {
+            .nav-inner, .hero-inner, .content-inner, .footer-inner { width: min(100% - 32px, 1180px); }
+            .nav-inner { min-height: 68px; }
+            .nav-links { gap: 0; }
+            .nav-links a { padding: .58rem .62rem; font-size: .78rem; }
+            .nav-links .nav-cta { padding: .65rem .82rem; }
+            .hero-inner { min-height: auto; padding-top: 3.5rem; padding-bottom: 3.5rem; }
+            .hero h1 { font-size: clamp(2.45rem, 13vw, 3.6rem); }
+            .hero p { font-size: .91rem; }
+            .hero-stats { display: grid; grid-template-columns: repeat(2, 1fr); }
+            .hero-stat { min-width: 0; }
+            .content { padding-top: 2.2rem; }
+            .article-grid { grid-template-columns: 1fr; }
+            .featured-card { grid-column: auto; display: flex; }
+            .featured-card .thumb { min-height: 220px; }
+            .featured-card .title { font-size: 1.45rem; }
+            .empty-state { min-height: 300px; padding: 2.5rem 1rem; }
+            .footer-inner { align-items: flex-start; flex-direction: column; }
         }
-        .meta .read { color:var(--primary); font-weight:800; text-decoration:none; }
-        .empty {
-            background:#fff; border:1px solid var(--border); border-radius: var(--radius);
-            box-shadow: var(--shadow); padding: 56px 24px; text-align:center; color: var(--muted);
-        }
-        .empty h3 { margin:14px 0 8px; color: var(--text); font-size:1.15rem; }
-        .pagination { display:flex; justify-content:center; gap:8px; margin-top:28px; flex-wrap:wrap; }
-        .pagination a, .pagination span {
-            text-decoration:none; padding:9px 13px; border-radius:10px;
-            background:#fff; border:1px solid var(--border); color:var(--muted); font-weight:700; font-size:.88rem;
-        }
-        .pagination span.current { background: var(--primary); color:#fff; border-color: transparent; }
-        footer { padding: 26px 24px 38px; color: var(--muted); }
-        .footer-inner { border-top:1px solid rgba(100,116,139,.15); padding-top:18px; text-align:center; font-size:.86rem; }
-        @media (max-width: 720px) {
-            .nav-inner { height:auto; padding-top:14px; padding-bottom:14px; flex-wrap:wrap; justify-content:center; }
-            .nav-links { flex-wrap:wrap; justify-content:center; }
-            .hero { padding: 42px 0 48px; }
-            .content { padding-top: 20px; }
+        @media (max-width: 380px) {
+            .brand { font-size: 1rem; }
+            .brand img { width: 30px; height: 30px; }
+            .nav-links a:not(.nav-cta) { display: none; }
+            .nav-links .nav-cta { padding: .68rem .9rem; }
+            .chips { gap: .4rem; }
+            .chip { padding-left: .72rem; padding-right: .72rem; font-size: .73rem; }
         }
     </style>
 </head>
 <body>
 <nav class="nav">
     <div class="nav-inner">
-        <a href="{{ url_for('index') }}" class="brand">{{ site_settings.app_name or 'Famousbytee' }}</a>
+        <a href="{{ url_for('index') }}" class="brand">
+            {% if site_settings.logo_display_path %}
+                <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}">
+            {% else %}
+                <i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i>
+            {% endif %}
+            <span>{{ site_settings.app_name or 'Famousbytee' }}</span>
+        </a>
         <div class="nav-links">
             <a href="{{ url_for('index') }}">Beranda</a>
             <a href="{{ url_for('news_public') }}" class="active">Berita</a>
@@ -144,96 +171,98 @@
     </div>
 </nav>
 
-<section class="hero">
+<header class="hero">
     <div class="hero-inner">
-        <h1>Berita & Artikel</h1>
-        <p>Ruang informasi yang lebih rapi untuk pengumuman, kegiatan, dan cerita terbaru dari {{ site_settings.app_name or 'Famousbytee' }}.</p>
-    </div>
-</section>
-
-<main class="content">
-    <div class="toolbar">
-        <div class="chips">
-        <a href="{{ url_for('news_public') }}" class="chip all {{ 'active' if not active_cat else '' }}">Semua Berita</a>
-            {% for cat in categories %}
-            <a href="{{ url_for('news_public', kategori=cat.slug) }}"
-               class="chip {{ 'active' if active_cat and active_cat.id == cat.id else '' }}"
-               style="{% if active_cat and active_cat.id == cat.id %}background:{{ cat.color }}15; border-color:{{ cat.color }}; color:{{ cat.color }};{% endif %}">
-                {{ cat.name }}
-            </a>
-            {% endfor %}
+        <div class="hero-copy">
+            <span class="eyebrow">Kabar portal</span>
+            <h1>Berita yang membantu kelas tetap terhubung.</h1>
+            <p>Temukan pengumuman, kegiatan, dan cerita terbaru dari {{ site_settings.app_name or 'Famousbytee' }} dalam satu ruang informasi.</p>
+        </div>
+        <div class="hero-stats" aria-label="Ringkasan berita">
+            <div class="hero-stat"><strong>{{ articles.total }}</strong><span>artikel publik</span></div>
+            <div class="hero-stat"><strong>{{ categories|length }}</strong><span>topik berita</span></div>
         </div>
     </div>
+</header>
 
-    {% if articles.items %}
-    <section class="grid">
-        {% for article in articles.items %}
-        <article class="card">
-            <a href="{{ url_for('news_detail', slug=article.slug) }}" class="thumb">
-                {% if article.cover_image %}
-                <img src="{{ url_for('static', filename='uploads/news/' ~ article.cover_image) }}" alt="{{ article.title }}" loading="lazy">
-                {% else %}
-                <div class="empty">
-                    <i data-lucide="newspaper" style="width:44px; height:44px;"></i>
-                </div>
-                {% endif %}
-            </a>
-            <div class="body">
-                {% if article.category %}
-                <span class="badge" style="background:{{ article.category.color }}18; color:{{ article.category.color }};">
-                    {{ article.category.name }}
-                </span>
-                {% endif %}
-                <a href="{{ url_for('news_detail', slug=article.slug) }}" class="title">{{ article.title }}</a>
-                <p class="excerpt">{{ article.excerpt or article.content | striptags | truncate(160) }}</p>
-                <div class="meta">
-                    <span>
-                        <i data-lucide="calendar" style="width:12px; display:inline; vertical-align:middle;"></i>
-                        {{ (article.published_at or article.created_at).strftime('%d %b %Y') }}
-                        &nbsp;•&nbsp;
-                        <i data-lucide="eye" style="width:12px; display:inline; vertical-align:middle;"></i>
-                        {{ article.views or 0 }}
-                    </span>
-                    <a href="{{ url_for('news_detail', slug=article.slug) }}" class="read">Baca Selengkapnya <i data-lucide="arrow-right" style="width:13px;"></i></a>
+<main class="content">
+    <div class="content-inner">
+        <div class="toolbar">
+            <div class="toolbar-heading">
+                <h2>{{ active_cat.name if active_cat else 'Semua berita' }}</h2>
+                <p>Pilih topik untuk menemukan informasi yang paling relevan.</p>
+            </div>
+            <div>
+                <span class="filter-label">Filter topik</span>
+                <div class="chips">
+                    <a href="{{ url_for('news_public') }}" class="chip all {{ 'active' if not active_cat else '' }}">Semua</a>
+                    {% for cat in categories %}
+                    <a href="{{ url_for('news_public', kategori=cat.slug) }}" class="chip {{ 'active' if active_cat and active_cat.id == cat.id else '' }}" style="{% if active_cat and active_cat.id == cat.id %}background:{{ cat.color }}15; border-color:{{ cat.color }}; color:{{ cat.color }};{% endif %}">
+                        {{ cat.name }}
+                    </a>
+                    {% endfor %}
                 </div>
             </div>
-        </article>
-        {% endfor %}
-    </section>
+        </div>
 
-    {% if articles.pages > 1 %}
-    <div class="pagination">
-        {% if articles.has_prev %}
-        <a href="{{ url_for('news_public', page=articles.prev_num, kategori=active_cat.slug if active_cat else '') }}">Sebelumnya</a>
+        {% if articles.items %}
+        <section class="article-grid" aria-label="Daftar berita">
+            {% for article in articles.items %}
+            <article class="card {{ 'featured-card' if loop.first else '' }}">
+                <a href="{{ url_for('news_detail', slug=article.slug) }}" class="thumb" aria-label="Buka berita {{ article.title }}">
+                    {% if article.cover_image %}
+                    <img src="{{ url_for('static', filename='uploads/news/' ~ article.cover_image) }}" alt="{{ article.title }}" loading="lazy">
+                    {% else %}
+                    <span class="thumb-placeholder"><i data-lucide="newspaper"></i></span>
+                    {% endif %}
+                </a>
+                <div class="card-body">
+                    <div class="card-top">
+                        {% if article.category %}<span class="badge" style="background:{{ article.category.color }}18; color:{{ article.category.color }};">{{ article.category.name }}</span>{% else %}<span></span>{% endif %}
+                        <span class="card-date">{{ (article.published_at or article.created_at).strftime('%d %b %Y') }}</span>
+                    </div>
+                    <a href="{{ url_for('news_detail', slug=article.slug) }}" class="title">{{ article.title }}</a>
+                    <p class="excerpt">{{ article.excerpt or article.content | striptags | truncate(160) }}</p>
+                    <div class="meta">
+                        <span class="meta-info"><i data-lucide="eye"></i> {{ article.views or 0 }} dibaca</span>
+                        <a href="{{ url_for('news_detail', slug=article.slug) }}" class="read">Baca <i data-lucide="arrow-up-right"></i></a>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </section>
+
+        {% if articles.pages > 1 %}
+        <nav class="pagination" aria-label="Pagination berita">
+            {% if articles.has_prev %}<a href="{{ url_for('news_public', page=articles.prev_num, kategori=active_cat.slug if active_cat else '') }}">Sebelumnya</a>{% endif %}
+            {% for p in articles.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                {% if p %}
+                    {% if p == articles.page %}<span class="current" aria-current="page">{{ p }}</span>{% else %}<a href="{{ url_for('news_public', page=p, kategori=active_cat.slug if active_cat else '') }}">{{ p }}</a>{% endif %}
+                {% else %}<span>...</span>{% endif %}
+            {% endfor %}
+            {% if articles.has_next %}<a href="{{ url_for('news_public', page=articles.next_num, kategori=active_cat.slug if active_cat else '') }}">Berikutnya</a>{% endif %}
+        </nav>
         {% endif %}
-        {% for p in articles.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
-            {% if p %}
-                {% if p == articles.page %}
-                <span class="current">{{ p }}</span>
-                {% else %}
-                <a href="{{ url_for('news_public', page=p, kategori=active_cat.slug if active_cat else '') }}">{{ p }}</a>
-                {% endif %}
-            {% else %}
-                <span>...</span>
-            {% endif %}
-        {% endfor %}
-        {% if articles.has_next %}
-        <a href="{{ url_for('news_public', page=articles.next_num, kategori=active_cat.slug if active_cat else '') }}">Berikutnya</a>
+        {% else %}
+        <section class="empty-state">
+            <div>
+                <span class="empty-icon"><i data-lucide="newspaper"></i></span>
+                <h3>Belum ada berita di sini.</h3>
+                <p>{% if active_cat %}Belum ada artikel publik untuk kategori <strong>{{ active_cat.name }}</strong>.{% else %}Belum ada artikel yang dipublikasikan. Silakan kembali lagi nanti.{% endif %}</p>
+                {% if active_cat %}<a href="{{ url_for('news_public') }}">Lihat semua berita <i data-lucide="arrow-right"></i></a>{% endif %}
+            </div>
+        </section>
         {% endif %}
     </div>
-    {% endif %}
-    {% else %}
-    <div class="empty">
-        <i data-lucide="newspaper" style="width:72px; height:72px; opacity:.25;"></i>
-        <h3>Belum ada berita</h3>
-        <p>{% if active_cat %}Belum ada berita di kategori <strong>{{ active_cat.name }}</strong>.{% else %}Belum ada artikel yang dipublikasikan.{% endif %}</p>
-    </div>
-    {% endif %}
 </main>
 
 <footer>
     <div class="footer-inner">
-        &copy; {{ site_settings.app_name or 'Famousbytee' }} - Portal berita dan informasi.
+        <div class="footer-brand">
+            {% if site_settings.logo_display_path %}<img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}">{% else %}<i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i>{% endif %}
+            <span>{{ site_settings.app_name or 'Famousbytee' }}</span>
+        </div>
+        <span>&copy; {{ datetime.now().year }} Portal berita dan informasi kelas.</span>
     </div>
 </footer>
 
