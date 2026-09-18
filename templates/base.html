@@ -376,6 +376,14 @@
                 overflow-y: auto;
                 overflow-x: hidden;
                 -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+            }
+
+            .nav-list::-webkit-scrollbar {
+                display: none;
+                width: 0;
+                height: 0;
             }
 
             .main-content {
