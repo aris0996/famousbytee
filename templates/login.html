@@ -119,9 +119,14 @@
         .login-back:hover { color: var(--primary); }
         .login-back svg { width: 16px; height: 16px; }
 
+        @media (min-width: 861px) {
+            .login-aside { position: sticky; top: 0; align-self: start; height: 100vh; }
+            .login-main { min-height: 100vh; }
+        }
+
         @media (max-width: 860px) {
             .login-page { grid-template-columns: 1fr; }
-            .login-aside { min-height: auto; padding: 1.5rem 1.25rem 2rem; }
+            .login-aside { position: relative; height: auto; min-height: auto; padding: 1.5rem 1.25rem 2rem; }
             .aside-content { margin: 0; padding: 3.5rem 0 1.5rem; }
             .aside-content h1 { max-width: 620px; font-size: clamp(2.45rem, 8vw, 4rem); }
             .aside-content > p { max-width: 600px; }
