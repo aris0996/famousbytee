@@ -39,6 +39,7 @@
             display: grid;
             grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr);
             min-height: 100vh;
+            overflow: hidden;
             isolation: isolate;
         }
         .login-page::before,
@@ -120,7 +121,7 @@
         .login-back svg { width: 16px; height: 16px; }
 
         @media (min-width: 861px) {
-            .login-aside { position: sticky; top: 0; align-self: start; height: 100vh; }
+            .login-aside { position: relative; align-self: stretch; height: auto; }
             .login-main { min-height: 100vh; }
         }
 
