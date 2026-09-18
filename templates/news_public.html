@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Berita & Artikel - {{ site_settings.app_name or 'Famousbytee' }}</title>
     <meta name="description" content="Kumpulan berita, pengumuman, dan artikel terbaru dari {{ site_settings.app_name or 'Famousbytee' }}.">
-    <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
+    <link rel="icon" href="{{ site_settings.favicon_display_url }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -33,7 +33,9 @@
         .nav-inner, .hero-inner, .content-inner, .footer-inner { width: min(1180px, calc(100% - 48px)); margin: 0 auto; }
         .nav-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
         .brand { display: inline-flex; align-items: center; gap: .65rem; color: var(--secondary); font-size: 1.18rem; font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
-        .brand img { width: 34px; height: 34px; padding: 4px; object-fit: contain; border-radius: 10px; background: #fff; box-shadow: 0 6px 15px rgba(16,25,54,.08); }
+        .brand img, .brand-mark-fallback { width: 34px; height: 34px; padding: 4px; object-fit: contain; border-radius: 10px; background: #fff; box-shadow: 0 6px 15px rgba(16,25,54,.08); }
+        .brand-mark-fallback { display: inline-grid; place-items: center; padding: 0; color: var(--primary); }
+        .brand-mark-fallback svg { width: 24px; height: 24px; }
         .brand svg { width: 27px; height: 27px; color: var(--primary); }
         .nav-links { display: flex; align-items: center; gap: .3rem; }
         .nav-links a { padding: .65rem .85rem; border-radius: 999px; color: var(--muted); font-size: .88rem; font-weight: 800; text-decoration: none; transition: .2s ease; }
@@ -105,12 +107,25 @@
         .pagination a, .pagination span { display: inline-flex; min-width: 38px; min-height: 38px; align-items: center; justify-content: center; padding: .55rem .7rem; border: 1px solid var(--line); border-radius: 11px; color: var(--muted); background: #fff; font-size: .78rem; font-weight: 800; text-decoration: none; }
         .pagination a:hover, .pagination span.current { color: #fff; border-color: var(--primary); background: var(--primary); }
 
-        footer { padding: 2rem 0 2.5rem; color: #fff; background: var(--secondary); }
-        .footer-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: rgba(255,255,255,.58); font-size: .8rem; }
-        .footer-brand { display: inline-flex; align-items: center; gap: .6rem; color: #fff; font-size: .95rem; font-weight: 900; }
-        .footer-brand img { width: 30px; height: 30px; padding: 4px; border-radius: 9px; background: #fff; object-fit: contain; }
-        .footer-brand svg { width: 24px; height: 24px; color: var(--accent); }
-        .footer-inner a { color: var(--accent); font-weight: 800; text-decoration: none; }
+        footer { padding: 4.5rem 0 0; color: #fff; background: var(--secondary); }
+        .footer-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) repeat(2, minmax(150px, .7fr)); gap: clamp(2rem, 5vw, 5rem); padding-bottom: 3.5rem; }
+        .footer-brand { display: inline-flex; align-items: center; gap: .7rem; color: #fff; font-size: 1.05rem; font-weight: 900; letter-spacing: -.03em; text-decoration: none; }
+        .footer-brand-mark { display: inline-flex; align-items: center; justify-content: center; }
+        .footer-brand-mark img, .footer-mark-fallback { width: 40px; height: 40px; padding: 5px; border-radius: 12px; background: #fff; object-fit: contain; }
+        .footer-mark-fallback { display: inline-grid; place-items: center; padding: 0; color: var(--secondary); background: var(--accent); }
+        .footer-mark-fallback svg { width: 24px; height: 24px; }
+        .footer-brand-copy { max-width: 345px; margin: 1.15rem 0 0; color: rgba(255,255,255,.6); font-size: .87rem; line-height: 1.75; }
+        .footer-kicker { display: block; color: var(--accent); font-size: .7rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+        .footer-links { display: grid; gap: .7rem; margin: 1rem 0 0; padding: 0; list-style: none; }
+        .footer-links a { color: rgba(255,255,255,.66); font-size: .84rem; text-decoration: none; transition: color .2s ease, transform .2s ease; }
+        .footer-links a:hover { color: #fff; transform: translateX(3px); }
+        .footer-socials { display: flex; gap: .55rem; margin-top: 1.25rem; }
+        .footer-social-btn { display: inline-grid; width: 36px; height: 36px; place-items: center; border: 1px solid rgba(255,255,255,.13); border-radius: 12px; color: rgba(255,255,255,.7); background: rgba(255,255,255,.06); transition: .2s ease; }
+        .footer-social-btn:hover { color: var(--secondary); border-color: var(--accent); background: var(--accent); transform: translateY(-2px); }
+        .footer-social-btn svg { width: 16px; height: 16px; }
+        .footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 1.25rem 0; border-top: 1px solid rgba(255,255,255,.1); color: rgba(255,255,255,.45); font-size: .74rem; }
+        .footer-bottom p { margin: 0; }
+        .footer-bottom a { color: var(--accent); font-weight: 800; text-decoration: none; }
 
         @media (max-width: 900px) {
             .hero-inner { display: block; }
@@ -137,7 +152,9 @@
             .featured-card .thumb { min-height: 220px; }
             .featured-card .title { font-size: 1.45rem; }
             .empty-state { min-height: 300px; padding: 2.5rem 1rem; }
-            .footer-inner { align-items: flex-start; flex-direction: column; }
+            footer { padding-top: 3.5rem; }
+            .footer-grid { grid-template-columns: 1fr; gap: 2.25rem; padding-bottom: 2.5rem; }
+            .footer-bottom { align-items: flex-start; flex-direction: column; }
         }
         @media (max-width: 380px) {
             .brand { font-size: 1rem; }
@@ -154,9 +171,10 @@
     <div class="nav-inner">
         <a href="{{ url_for('index') }}" class="brand">
             {% if site_settings.logo_display_path %}
-                <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}">
+                <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                <span class="brand-mark-fallback" hidden><i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i></span>
             {% else %}
-                <i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i>
+                <span class="brand-mark-fallback"><i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i></span>
             {% endif %}
             <span>{{ site_settings.app_name or 'Famousbytee' }}</span>
         </a>
@@ -259,11 +277,48 @@
 
 <footer>
     <div class="footer-inner">
-        <div class="footer-brand">
-            {% if site_settings.logo_display_path %}<img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}">{% else %}<i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i>{% endif %}
-            <span>{{ site_settings.app_name or 'Famousbytee' }}</span>
+        <div class="footer-grid">
+            <div>
+                <a href="{{ url_for('index') }}" class="footer-brand">
+                    <span class="footer-brand-mark">
+                        {% if site_settings.logo_display_path %}
+                        <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.app_name or 'Famousbytee' }}" onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                        <span class="footer-mark-fallback" hidden><i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i></span>
+                        {% else %}
+                        <span class="footer-mark-fallback"><i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i></span>
+                        {% endif %}
+                    </span>
+                    <span>{{ site_settings.app_name or 'Famousbytee' }}</span>
+                </a>
+                <p class="footer-brand-copy">Ruang informasi yang membantu kelas tetap terhubung melalui berita, pengumuman, dan kabar terbaru.</p>
+                <div class="footer-socials">
+                    {% if site_settings.social_ig %}<a href="{{ site_settings.social_ig }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram"><i data-lucide="instagram"></i></a>{% endif %}
+                    {% if site_settings.social_wa %}<a href="{{ site_settings.social_wa }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Si Dobe"><i data-lucide="message-circle"></i></a>{% endif %}
+                    <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Sitemap"><i data-lucide="file-code-2"></i></a>
+                </div>
+            </div>
+            <div>
+                <span class="footer-kicker">Jelajahi</span>
+                <ul class="footer-links">
+                    <li><a href="{{ url_for('index') }}">Beranda</a></li>
+                    <li><a href="{{ url_for('news_public') }}">Semua berita</a></li>
+                    <li><a href="{{ url_for('index') }}#jadwal">Jadwal publik</a></li>
+                    <li><a href="{{ url_for('index') }}#pengumuman">Pengumuman</a></li>
+                </ul>
+            </div>
+            <div>
+                <span class="footer-kicker">Portal kelas</span>
+                <ul class="footer-links">
+                    <li><a href="{{ url_for('login') }}">Masuk ke portal</a></li>
+                    <li><a href="/sitemap.xml" target="_blank" rel="noopener noreferrer">Sitemap</a></li>
+                    <li><a href="{{ url_for('index') }}#galeri">Galeri kelas</a></li>
+                </ul>
+            </div>
         </div>
-        <span>&copy; {{ datetime.now().year }} Portal berita dan informasi kelas.</span>
+        <div class="footer-bottom">
+            <p>&copy; {{ datetime.now().year }} {{ site_settings.app_name or 'Famousbytee' }}. All rights reserved.</p>
+            <p>Portal berita dan informasi kelas.</p>
+        </div>
     </div>
 </footer>
 

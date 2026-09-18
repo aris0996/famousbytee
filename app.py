@@ -310,7 +310,7 @@ def _build_template_settings():
         'web_desc': 'Portal Resmi Kelas Famousbytee.b',
         'seo_keywords': 'famousbytee, portal, kelas',
         'web_logo': 'monitor',
-        'favicon_url': '/static/favicon.ico',
+        'favicon_url': '/static/favicon.svg',
         'web_logo_path': '',
         'favicon_path': '',
         'social_ig': '#',
@@ -323,11 +323,14 @@ def _build_template_settings():
         values = {}
     merged = {**defaults, **values}
     merged['logo_display_path'] = merged.get('web_logo_path') or ''
-    merged['favicon_display_url'] = (
+    favicon_candidate = (
         merged.get('favicon_path')
         or safe_external_url(merged.get('favicon_url'), allow_local=True)
-        or '/static/favicon.ico'
     )
+    # Keep the browser icon available when an old default points to a missing ICO.
+    if not favicon_candidate or favicon_candidate == '/static/favicon.ico':
+        favicon_candidate = '/static/favicon.svg'
+    merged['favicon_display_url'] = favicon_candidate
     merged['social_ig'] = safe_external_url(
         merged.get('social_ig'), allowed_hosts={'instagram.com'}, allow_local=False
     )
