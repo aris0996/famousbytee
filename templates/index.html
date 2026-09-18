@@ -37,6 +37,11 @@
             --bg: #f4f6fb;
             --bg-card: #ffffff;
             --border: rgba(15, 23, 42, 0.08);
+            --surface-soft: #eef2ff;
+            --surface-muted: #f8fafc;
+            --line: #e4e9f2;
+            --shadow-soft: 0 18px 50px rgba(24, 42, 84, 0.08);
+            --shadow-card: 0 12px 30px rgba(24, 42, 84, 0.07);
             --transition: all 0.22s ease;
         }
 
@@ -61,10 +66,12 @@
         }
         .logo { display: flex; align-items: center; gap: 10px; font-weight: 900; font-size: 1.3rem; color: var(--secondary); letter-spacing: -0.04em; }
         .logo img { border-radius: 10px; background: white; padding: 4px; box-shadow: 0 5px 14px rgba(16,25,54,.08); }
-        .nav-links { display: flex; gap: 1.5rem; list-style: none; align-items: center; }
-        .nav-links a { text-decoration: none; color: var(--text-main); font-weight: 600; transition: var(--transition); font-size: 0.95rem; }
-        .nav-links a:hover { color: var(--primary); }
-        .btn-login { background: var(--primary); color: white !important; padding: 0.7rem 1.2rem; border-radius: 999px; font-size: 0.9rem; transition: transform 0.2s, box-shadow 0.2s; }
+        .nav-logo { height: 32px; width: 32px; object-fit: contain; }
+        .nav-links { display: flex; gap: 0.35rem; list-style: none; align-items: center; }
+        .nav-links a { text-decoration: none; color: var(--text-main); font-weight: 700; transition: var(--transition); font-size: 0.9rem; padding: 0.65rem 0.85rem; border-radius: 999px; }
+        .nav-links a:hover { color: var(--primary); background: rgba(56,86,232,.07); }
+        .btn-login { background: var(--primary); color: white !important; padding: 0.75rem 1.2rem !important; border-radius: 999px; font-size: 0.9rem; transition: transform 0.2s, box-shadow 0.2s; box-shadow: 0 10px 22px rgba(56,86,232,.18); }
+        .btn-login-dark { background: var(--text-main); }
         .btn-login:hover { transform: translateY(-1px); box-shadow: 0 10px 18px rgba(54, 81, 212, 0.16); }
 
         /* Hero Section */
@@ -105,38 +112,93 @@
             100% { transform: translateY(-10px); }
         }
 
-        /* Class Selector Section */
-        .class-selector { padding: 4rem 5%; background: white; text-align: center; }
-        .class-selector h2 { font-size: 1.9rem; font-weight: 800; margin-bottom: 1.25rem; letter-spacing: -0.03em; }
-        .class-grid { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; max-width: 900px; margin: 0 auto; }
-        .class-btn {
-            background: var(--bg); border: 1px solid var(--border); border-radius: 999px; padding: 0.9rem 1.2rem;
-            color: var(--text-main); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 10px;
-            transition: var(--transition);
-        }
-        .class-btn:hover { border-color: rgba(54,81,212,0.25); background: rgba(54,81,212,0.04); transform: translateY(-2px); }
+        /* Public sections */
+        .section-container { width: min(1180px, 100%); margin: 0 auto; }
+        .section-heading { max-width: 680px; }
+        .section-kicker { display: inline-flex; align-items: center; gap: 9px; color: var(--primary); font-size: .72rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; margin-bottom: .9rem; }
+        .section-kicker::before { content: ''; width: 25px; height: 3px; border-radius: 99px; background: var(--accent); }
+        .section-title { color: var(--secondary); font-size: clamp(2rem, 4vw, 3rem); line-height: 1.05; letter-spacing: -.065em; font-weight: 900; }
+        .section-lede { color: var(--text-muted); font-size: 1.03rem; line-height: 1.75; margin-top: .85rem; }
+        .section-heading-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; margin-bottom: 2.5rem; }
+        .section-link { display: inline-flex; align-items: center; gap: 7px; color: var(--primary); text-decoration: none; font-weight: 800; white-space: nowrap; transition: var(--transition); }
+        .section-link:hover { gap: 11px; color: var(--secondary); }
+        .section-note { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: .82rem; font-weight: 800; white-space: nowrap; }
+        .section-note svg { width: 18px; color: var(--primary); }
 
-        /* Features */
-        .features { padding: 5rem 5%; text-align: center; }
-        .features-grid { margin-top: 3.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; }
-        .feature-card { background: var(--bg-card); padding: 2rem; border-radius: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.03); transition: var(--transition); border: 1px solid var(--border); }
-        .feature-card:hover { transform: translateY(-4px); box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06); }
-        .feature-icon { width: 56px; height: 56px; background: rgba(54,81,212,0.08); color: var(--primary); border-radius: 16px; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; transition: transform 0.3s; }
+        .class-selector { position: relative; overflow: hidden; padding: clamp(4.5rem, 8vw, 7rem) 5%; background: linear-gradient(135deg, #fff 0%, #f3f6ff 100%); }
+        .class-selector::after { content: ''; position: absolute; width: 330px; height: 330px; border-radius: 50%; right: -140px; top: 18%; background: rgba(56,86,232,.08); filter: blur(2px); pointer-events: none; }
+        .class-selector .section-container { position: relative; z-index: 1; }
+        .class-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(235px, 1fr)); gap: 1rem; margin-top: 2.2rem; }
+        .class-card { position: relative; min-height: 185px; display: flex; flex-direction: column; justify-content: space-between; padding: 1.35rem; background: rgba(255,255,255,.78); border: 1px solid rgba(56,86,232,.12); border-radius: 22px; color: var(--text-main); text-decoration: none; box-shadow: 0 8px 24px rgba(33,55,120,.045); transition: var(--transition); }
+        .class-card:hover { transform: translateY(-5px); border-color: rgba(56,86,232,.35); box-shadow: var(--shadow-soft); background: #fff; }
+        .class-card-top { display: flex; align-items: center; justify-content: space-between; }
+        .class-icon { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; color: var(--primary); background: #e9edff; }
+        .class-arrow { width: 31px; height: 31px; display: grid; place-items: center; border-radius: 50%; color: var(--primary); background: #f5f7ff; transition: var(--transition); }
+        .class-card:hover .class-arrow { background: var(--primary); color: #fff; transform: rotate(-45deg); }
+        .class-card h3 { margin-top: 1.35rem; font-size: 1.2rem; letter-spacing: -.03em; }
+        .class-card p { color: var(--text-muted); font-size: .86rem; margin-top: .35rem; }
+        .class-card-label { color: var(--primary); font-size: .78rem; font-weight: 800; margin-top: 1.1rem; }
 
-        /* Gallery */
-        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; text-align: left; }
-        .gallery-item { display: block; position: relative; aspect-ratio: 1; border-radius: 18px; overflow: hidden; box-shadow: 0 4px 14px rgba(15,23,42,0.05); background: #e2e8f0; border: 1px solid var(--border); }
-        .gallery-item img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-        .gallery-item .overlay {
-            position: absolute; inset: 0; background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 60%);
-            opacity: 0; transition: opacity 0.3s; display: flex; align-items: flex-end; padding: 1.5rem;
-        }
+        .content-section { padding: clamp(4.5rem, 8vw, 7rem) 5%; }
+        .gallery-section { background: #fff; }
+        .gallery-grid { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(150px, 1fr); gap: 1rem; text-align: left; }
+        .gallery-item { display: block; position: relative; min-height: 190px; border-radius: 22px; overflow: hidden; box-shadow: var(--shadow-card); background: #dfe6f1; border: 1px solid rgba(15,23,42,.08); }
+        .gallery-item:first-child { grid-column: span 2; grid-row: span 2; }
+        .gallery-item img { width: 100%; height: 100%; object-fit: cover; transition: transform .6s cubic-bezier(.4,0,.2,1); }
+        .gallery-item .overlay { position: absolute; inset: 0; background: linear-gradient(to top, rgba(8,15,38,.86) 0%, rgba(8,15,38,0) 68%); opacity: 0; transition: opacity .3s; display: flex; align-items: flex-end; padding: 1.25rem; }
         .gallery-item:hover img { transform: scale(1.08); }
         .gallery-item:hover .overlay { opacity: 1; }
-        .overlay p { color: white; font-size: 0.9rem; font-weight: 600; margin: 0; transform: translateY(10px); transition: transform 0.3s; }
+        .overlay p { color: white; font-size: .9rem; font-weight: 700; margin: 0; transform: translateY(10px); transition: transform .3s; }
         .gallery-item:hover .overlay p { transform: translateY(0); }
 
-        footer { padding: 4rem 5%; background: #0b1220; color: white; }
+        .announcement-section { background: var(--surface-muted); }
+        .announcement-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .announcement-card { position: relative; display: flex; flex-direction: column; min-height: 250px; padding: 1.4rem; background: #fff; border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 8px 22px rgba(24,42,84,.035); transition: var(--transition); overflow: hidden; }
+        .announcement-card::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--primary); }
+        .announcement-card.is-important::before { background: #ef5b69; }
+        .announcement-card:hover { transform: translateY(-4px); box-shadow: var(--shadow-card); border-color: rgba(56,86,232,.2); }
+        .announcement-meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-bottom: 1.2rem; color: var(--text-muted); font-size: .74rem; font-weight: 700; }
+        .announcement-category { padding: .35rem .65rem; border-radius: 8px; color: var(--primary); background: #edf0ff; font-size: .7rem; }
+        .announcement-card.is-important .announcement-category { color: #c4374b; background: #fff0f2; }
+        .announcement-card h3 { color: var(--secondary); font-size: 1.18rem; line-height: 1.3; letter-spacing: -.025em; }
+        .announcement-card p { color: #63708a; font-size: .9rem; line-height: 1.7; margin-top: .75rem; }
+        .announcement-pin { display: inline-flex; align-items: center; gap: 6px; color: #d14355; font-size: .75rem; font-weight: 800; margin-top: auto; padding-top: 1.1rem; }
+        .empty-state { grid-column: 1 / -1; padding: 3.5rem 1.5rem; text-align: center; border: 1px dashed #cbd5e1; border-radius: 22px; color: var(--text-muted); background: rgba(255,255,255,.65); }
+
+        .service-section { background: #fff; }
+        .service-intro { text-align: center; max-width: 680px; margin: 0 auto; }
+        .service-intro .section-lede { max-width: 600px; margin-left: auto; margin-right: auto; }
+        .service-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 3rem; }
+        .service-card { position: relative; padding: 1.6rem; border-radius: 22px; border: 1px solid var(--line); background: linear-gradient(145deg, #fff, #f8faff); transition: var(--transition); }
+        .service-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-card); border-color: rgba(56,86,232,.22); }
+        .service-icon { width: 52px; height: 52px; display: grid; place-items: center; border-radius: 16px; background: var(--surface-soft); color: var(--primary); margin-bottom: 1.25rem; }
+        .service-card:nth-child(2) .service-icon { color: #d27a16; background: #fff4df; }
+        .service-card:nth-child(3) .service-icon { color: #0b9273; background: #e5faf3; }
+        .service-card h3 { color: var(--secondary); font-size: 1.18rem; letter-spacing: -.03em; }
+        .service-card p { color: var(--text-muted); font-size: .9rem; line-height: 1.7; margin-top: .55rem; }
+
+        .news-section { padding: clamp(4.5rem, 8vw, 7rem) 5%; background: #f2f5fb !important; border: 0 !important; }
+        .news-inner { width: min(1180px, 100%); margin: 0 auto; }
+        .news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+        .news-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: #fff; border: 1px solid var(--line); border-radius: 22px; box-shadow: 0 8px 22px rgba(24,42,84,.04); transition: var(--transition); }
+        .news-card:hover { transform: translateY(-5px); box-shadow: var(--shadow-card); }
+        .news-media { position: relative; display: grid; place-items: center; height: 190px; overflow: hidden; background: linear-gradient(135deg, #dce4ff 0%, #c8d3ff 100%); }
+        .news-media img { width: 100%; height: 100%; object-fit: cover; transition: transform .55s ease; }
+        .news-card:hover .news-media img { transform: scale(1.06); }
+        .news-media .news-category { position: absolute; top: 13px; left: 13px; padding: .38rem .65rem; border-radius: 999px; color: #fff; font-size: .68rem; font-weight: 900; letter-spacing: .06em; text-transform: uppercase; }
+        .news-body { display: flex; flex: 1; flex-direction: column; padding: 1.3rem; }
+        .news-body h3 { color: var(--secondary); font-size: 1.12rem; line-height: 1.35; letter-spacing: -.025em; }
+        .news-body h3 a { color: inherit; text-decoration: none; }
+        .news-body h3 a:hover { color: var(--primary); }
+        .news-excerpt { display: -webkit-box; overflow: hidden; margin-top: .7rem; color: var(--text-muted); font-size: .88rem; line-height: 1.65; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+        .news-meta { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: auto; padding-top: 1rem; border-top: 1px solid #edf0f5; color: var(--text-muted); font-size: .73rem; }
+        .news-meta svg, .announcement-meta svg { width: 13px; height: 13px; vertical-align: -3px; }
+        .news-media > svg { width: 48px; height: 48px; color: #91a2e8; }
+        .news-read { display: inline-flex; align-items: center; gap: 4px; color: var(--primary); text-decoration: none; font-weight: 800; }
+        .news-cta { padding: .8rem 1rem; color: #fff; background: var(--secondary); border-radius: 999px; box-shadow: 0 10px 20px rgba(16,25,54,.14); }
+        .news-cta:hover { color: #fff; background: var(--primary); gap: 9px; }
+
+        footer { padding: clamp(4rem, 7vw, 6rem) 5% 2rem; background: #0d1730; color: white; }
         .footer-inner {
             display: grid;
             grid-template-columns: 1fr;
@@ -147,11 +209,14 @@
         @media (min-width: 768px) {
             .footer-inner { grid-template-columns: 2fr 1fr 1fr; }
         }
-        .footer-brand p { color: rgba(255,255,255,0.55); font-size: 0.92rem; line-height: 1.75; margin-top: 1rem; max-width: 320px; }
-        .footer-col h4 { font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: rgba(255,255,255,0.4); margin-bottom: 1.2rem; }
+        .footer-brand p { color: rgba(255,255,255,0.62); font-size: 0.92rem; line-height: 1.75; margin-top: 1rem; max-width: 360px; }
+        .footer-brand-mark { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem; letter-spacing: -.03em; }
+        .footer-brand-mark img { height: 36px; width: 36px; object-fit: contain; filter: brightness(0) invert(1); }
+        .footer-brand-mark svg { width: 28px; height: 28px; color: var(--accent); }
+        .footer-col h4 { font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 1.2rem; }
         .footer-col ul { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
-        .footer-col ul li a { color: rgba(255,255,255,0.65); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.25s; }
-        .footer-col ul li a:hover { color: var(--accent); }
+        .footer-col ul li a { color: rgba(255,255,255,0.68); text-decoration: none; font-size: 0.92rem; font-weight: 500; transition: color 0.25s, padding-left .25s; }
+        .footer-col ul li a:hover { color: var(--accent); padding-left: 4px; }
         .footer-socials { display: flex; gap: 0.8rem; margin-top: 1rem; }
         .footer-social-btn {
             width: 40px; height: 40px; border-radius: 999px;
@@ -178,16 +243,37 @@
             .hero-image { flex: 0 1 46%; min-width: 390px; margin-top: 0; }
             .hero p { margin-left: 0; }
             .hero-btns { justify-content: flex-start; }
-            .features, .class-selector, footer { padding-left: 10%; padding-right: 10%; }
+            .class-selector, .content-section, .news-section, footer { padding-left: 7%; padding-right: 7%; }
+        }
+
+        @media (max-width: 900px) {
+            .announcement-grid, .service-grid, .news-grid { grid-template-columns: repeat(2, 1fr); }
+            .gallery-grid { grid-template-columns: repeat(3, 1fr); }
+            .gallery-item:first-child { grid-column: span 2; }
         }
 
         @media (max-width: 600px) {
             .nav-links li.hide-mobile { display: none; }
+            nav, nav.scrolled { padding: .8rem 1rem; }
+            .nav-links { gap: 0; }
+            .nav-links a { padding: .6rem .7rem; font-size: .82rem; }
+            .logo { font-size: 1.1rem; }
             .hero { padding-top: 8rem; min-height: auto; }
             .hero h1 { font-size: clamp(2.65rem, 13vw, 4.2rem); }
             .hero-image { max-width: 460px; }
-            .feature-card { padding: 2rem 1.5rem; }
-            .gallery-grid { grid-template-columns: repeat(2, 1fr); }
+            .class-selector, .content-section, .news-section { padding: 4rem 1rem; }
+            .section-heading-row { display: block; margin-bottom: 1.8rem; }
+            .section-link, .section-note { margin-top: 1rem; }
+            .class-grid, .announcement-grid, .service-grid, .news-grid { grid-template-columns: 1fr; }
+            .class-card { min-height: 160px; }
+            .gallery-grid { grid-template-columns: repeat(2, 1fr); grid-auto-rows: 150px; gap: .65rem; }
+            .gallery-item { min-height: 0; border-radius: 16px; }
+            .gallery-item:first-child { grid-column: span 2; grid-row: span 2; }
+            .gallery-item .overlay { opacity: 1; padding: .85rem; }
+            .gallery-item .overlay p { transform: none; font-size: .75rem; }
+            .news-media { height: 180px; }
+            footer { padding: 4rem 1.25rem 1.5rem; }
+            .footer-bottom { align-items: flex-start; flex-direction: column; }
         }
     </style>
 </head>
@@ -195,7 +281,7 @@
     <nav id="navbar">
         <div class="logo">
             {% if site_settings.logo_display_path %}
-                <img src="{{ site_settings.logo_display_path }}" style="height: 32px; width: 32px; object-fit: contain;">
+                <img src="{{ site_settings.logo_display_path }}" class="nav-logo" alt="Logo {{ site_settings.get('web_title', 'Portal') }}">
             {% else %}
                 <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
             {% endif %}
@@ -206,7 +292,7 @@
             <li class="hide-mobile"><a href="#pengumuman">Pengumuman</a></li>
             <li class="hide-mobile"><a href="#jadwal">Jadwal</a></li>
             {% if current_user.is_authenticated %}
-            <li><a href="{{ url_for('dashboard') }}" class="btn-login" style="background:var(--text-main);">Dashboard Saya</a></li>
+            <li><a href="{{ url_for('dashboard') }}" class="btn-login btn-login-dark">Dashboard Saya</a></li>
             {% else %}
             <li><a href="{{ url_for('login') }}" class="btn-login">Login Portal</a></li>
             {% endif %}
@@ -253,173 +339,156 @@
         </div>
     </section>
 
-    <!-- Jadwal & Classes Section -->
+    <!-- Public portal sections -->
     <section class="class-selector" id="jadwal">
-        <h2 data-aos="fade-up">Akses Jadwal Publik & Galeri</h2>
-        <p data-aos="fade-up" data-aos-delay="100" style="color: var(--text-muted); margin-bottom: 2rem;">Pilih kelas Anda untuk melihat jadwal hari ini atau galeri publik.</p>
-        
-        <div class="class-grid" data-aos="fade-up" data-aos-delay="200">
-            {% for class_obj in classrooms %}
-            <a href="{{ url_for('public_view', class_name=class_obj.name) }}" class="class-btn">
-                <div style="width: 36px; height: 36px; border-radius: 10px; background: rgba(67,97,238,0.1); color: var(--primary); display: flex; align-items: center; justify-content: center;">
-                    <i data-lucide="users" style="width: 20px; height: 20px;"></i>
+        <div class="section-container">
+            <div class="section-heading-row" data-aos="fade-up">
+                <div class="section-heading">
+                    <span class="section-kicker">Ruang kelas</span>
+                    <h2 class="section-title">Temukan jadwal kelasmu.</h2>
+                    <p class="section-lede">Pilih kelas untuk melihat jadwal kuliah, informasi akademik, dan akses publik yang tersedia.</p>
                 </div>
-                {{ class_obj.name }}
-            </a>
-            {% else %}
-            <p>Belum ada kelas yang terdaftar.</p>
-            {% endfor %}
+                <div class="section-note"><i data-lucide="layers"></i> {{ classrooms|length }} kelas aktif</div>
+            </div>
+
+            <div class="class-grid" data-aos="fade-up" data-aos-delay="120">
+                {% for class_obj in classrooms %}
+                <a href="{{ url_for('public_view', class_name=class_obj.name) }}" class="class-card">
+                    <div class="class-card-top">
+                        <span class="class-icon"><i data-lucide="users"></i></span>
+                        <span class="class-arrow"><i data-lucide="arrow-up-right"></i></span>
+                    </div>
+                    <div>
+                        <h3>{{ class_obj.name }}</h3>
+                        <p>Jadwal kuliah dan informasi kelas.</p>
+                        <span class="class-card-label">Buka jadwal kelas</span>
+                    </div>
+                </a>
+                {% else %}
+                <div class="empty-state"><i data-lucide="layers"></i><p>Belum ada kelas yang terdaftar.</p></div>
+                {% endfor %}
+            </div>
         </div>
     </section>
 
     {% if photos %}
-    <section class="features" style="background: white; padding-top: 4rem;">
-        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; margin-bottom: 2rem; gap: 1rem;" data-aos="fade-up">
-            <div style="text-align: left;">
-                <h2 style="font-size: 2.5rem; font-weight: 800;">Memory & Dokumentasi</h2>
-                <p style="color: var(--text-muted);">Cuplikan keseruan dari galeri publik seluruh kelas.</p>
-            </div>
-            {% if classrooms %}
-            <a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}" style="color: var(--primary); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                Lihat Galeri Penuh <i data-lucide="arrow-right" style="width: 18px;"></i>
-            </a>
-            {% endif %}
-        </div>
-        
-        <div class="gallery-grid">
-            {% for photo in photos %}
-            <a href="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}" class="gallery-item glightbox" data-gallery="gallery-home" data-description="{{ photo.caption or 'Dokumentasi Kelas' }}" data-aos="zoom-in" data-aos-delay="{{ loop.index0 * 100 }}">
-                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" alt="{{ photo.caption }}" loading="lazy">
-                <div class="overlay">
-                    <p>{{ photo.caption or 'Lihat Detail' }}</p>
+    <section class="content-section gallery-section">
+        <div class="section-container">
+            <div class="section-heading-row" data-aos="fade-up">
+                <div class="section-heading">
+                    <span class="section-kicker">Memory kelas</span>
+                    <h2 class="section-title">Cerita yang tersimpan dalam gambar.</h2>
+                    <p class="section-lede">Cuplikan kegiatan dan momen dari galeri publik seluruh kelas.</p>
                 </div>
-            </a>
-            {% endfor %}
+                {% if classrooms %}
+                <a href="{{ url_for('public_gallery', class_name=classrooms[0].name) }}" class="section-link">Lihat galeri penuh <i data-lucide="arrow-up-right"></i></a>
+                {% endif %}
+            </div>
+
+            <div class="gallery-grid">
+                {% for photo in photos %}
+                <a href="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}" class="gallery-item glightbox" data-gallery="gallery-home" data-description="{{ photo.caption or 'Dokumentasi Kelas' }}" data-aos="zoom-in" data-aos-delay="{{ loop.index0 * 80 }}">
+                    <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" alt="{{ photo.caption or 'Dokumentasi kelas' }}" loading="lazy">
+                    <div class="overlay"><p>{{ photo.caption or 'Lihat detail dokumentasi' }}</p></div>
+                </a>
+                {% endfor %}
+            </div>
         </div>
     </section>
     {% endif %}
 
-    <section class="features" id="pengumuman" style="background: var(--bg);">
-        <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; gap: 1rem;" data-aos="fade-up">
-            <div style="text-align: left;">
-                <h2 style="font-size: 2.5rem; font-weight: 800;">Pengumuman Terbaru</h2>
-                <p style="color: var(--text-muted);">Informasi penting untuk seluruh anggota kelas.</p>
+    <section class="content-section announcement-section" id="pengumuman">
+        <div class="section-container">
+            <div class="section-heading-row" data-aos="fade-up">
+                <div class="section-heading">
+                    <span class="section-kicker">Pusat informasi</span>
+                    <h2 class="section-title">Hal penting, tanpa harus mencari.</h2>
+                    <p class="section-lede">Pengumuman terbaru untuk membantu seluruh anggota kelas tetap terhubung.</p>
+                </div>
+                <a href="{{ url_for('login') }}" class="section-link">Masuk untuk lebih banyak <i data-lucide="arrow-up-right"></i></a>
             </div>
-            <a href="{{ url_for('login') }}" style="color: var(--primary); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 5px;">
-                Masuk untuk Lebih Banyak <i data-lucide="arrow-right" style="width: 18px;"></i>
-            </a>
-        </div>
-        
-        <div class="features-grid" style="text-align: left;">
-            {% for a in announcements %}
-            <div class="feature-card" data-aos="fade-up" data-aos-delay="{{ loop.index0 * 150 }}" style="padding: 2rem; border-left: 4px solid {{ '#ef4444' if a.category == 'Penting' else 'var(--primary)' }};">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                    <span class="status-badge" style="background: rgba(67, 97, 238, 0.1); color: var(--primary); font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; font-weight: 700;">
-                        {{ a.category }}
-                    </span>
-                    <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600;">
-                        <i data-lucide="clock" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i> 
-                        {{ a.date_posted.strftime('%d %b %Y') }}
+
+            <div class="announcement-grid">
+                {% for a in announcements %}
+                <article class="announcement-card {{ 'is-important' if a.category == 'Penting' else '' }}" data-aos="fade-up" data-aos-delay="{{ loop.index0 * 120 }}">
+                    <div class="announcement-meta">
+                        <span class="announcement-category">{{ a.category }}</span>
+                        <span><i data-lucide="clock"></i> {{ a.date_posted.strftime('%d %b %Y') }}</span>
                     </div>
-                </div>
-                <h3 style="font-size: 1.3rem; margin-bottom: 12px; font-weight: 800; color: #0f172a;">{{ a.title }}</h3>
-                <p style="font-size: 0.95rem; line-height: 1.6; color: #475569;">{{ a.content[:150] }}{{ '...' if a.content|length > 150 else '' }}</p>
-                {% if a.is_pinned %}
-                <div style="margin-top: 1.5rem; display: flex; align-items: center; gap: 6px; color: #ef4444; font-weight: 700; font-size: 0.8rem;">
-                    <i data-lucide="pin" style="width: 14px;"></i> Disematkan
-                </div>
-                {% endif %}
-            </div>
-            {% else %}
-            <div style="grid-column: 1/-1; padding: 4rem; text-align: center; background: white; border-radius: 24px; opacity: 0.7;">
-                <i data-lucide="inbox" style="width: 56px; height: 56px; margin-bottom: 1rem; color: var(--text-muted);"></i>
-                <p style="font-size: 1.1rem; font-weight: 600;">Belum ada pengumuman kelas saat ini.</p>
-            </div>
-            {% endfor %}
-        </div>
-    </section>
-
-    <section class="features" style="background: white;">
-        <div data-aos="fade-up">
-            <h2 style="font-size: 2.5rem; font-weight: 800; margin-bottom: 1rem;">Layanan Portal Terintegrasi</h2>
-            <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">Nikmati ekosistem manajemen kelas yang modern, responsif, dan mudah digunakan.</p>
-        </div>
-        <div class="features-grid">
-            <div class="feature-card" data-aos="fade-up" data-aos-delay="100">
-                <div class="feature-icon"><i data-lucide="calendar"></i></div>
-                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Jadwal Kuliah</h3>
-                <p style="color: #475569;">Akses jadwal kuliah terbaru yang tersinkronisasi otomatis untuk seluruh anggota kelas.</p>
-            </div>
-            <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
-                <div class="feature-icon"><i data-lucide="wallet"></i></div>
-                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Transparansi Kas</h3>
-                <p style="color: #475569;">Pantau penerimaan dan penggunaan dana kelas dengan riwayat yang jelas dan terbuka.</p>
-            </div>
-            <div class="feature-card" data-aos="fade-up" data-aos-delay="300">
-                <div class="feature-icon"><i data-lucide="bell-ring"></i></div>
-                <h3 style="font-size: 1.4rem; font-weight: 800; margin-bottom: 10px;">Push Notifikasi</h3>
-                <p style="color: #475569;">Pemberitahuan otomatis ke smartphone dan bot Si Dobe untuk info genting.</p>
+                    <h3>{{ a.title }}</h3>
+                    <p>{{ a.content[:150] }}{{ '...' if a.content|length > 150 else '' }}</p>
+                    {% if a.is_pinned %}<span class="announcement-pin"><i data-lucide="pin"></i> Disematkan</span>{% endif %}
+                </article>
+                {% else %}
+                <div class="empty-state"><i data-lucide="inbox"></i><p>Belum ada pengumuman kelas saat ini.</p></div>
+                {% endfor %}
             </div>
         </div>
     </section>
 
+    <section class="content-section service-section">
+        <div class="section-container">
+            <div class="service-intro" data-aos="fade-up">
+                <span class="section-kicker">Satu portal</span>
+                <h2 class="section-title">Semua kebutuhan kelas, lebih terarah.</h2>
+                <p class="section-lede">Ekosistem sederhana untuk jadwal, keuangan, dan notifikasi yang dapat diakses kapan saja.</p>
+            </div>
+            <div class="service-grid">
+                <article class="service-card" data-aos="fade-up" data-aos-delay="100">
+                    <div class="service-icon"><i data-lucide="calendar-days"></i></div>
+                    <h3>Jadwal Kuliah</h3>
+                    <p>Akses jadwal terbaru yang tersinkronisasi untuk seluruh anggota kelas.</p>
+                </article>
+                <article class="service-card" data-aos="fade-up" data-aos-delay="180">
+                    <div class="service-icon"><i data-lucide="wallet-cards"></i></div>
+                    <h3>Transparansi Kas</h3>
+                    <p>Pantau penerimaan dan penggunaan dana kelas melalui riwayat yang jelas.</p>
+                </article>
+                <article class="service-card" data-aos="fade-up" data-aos-delay="260">
+                    <div class="service-icon"><i data-lucide="bell-ring"></i></div>
+                    <h3>Notifikasi Si Dobe</h3>
+                    <p>Dapatkan pengingat penting melalui perangkat dan kanal komunikasi kelas.</p>
+                </article>
+            </div>
+        </div>
+    </section>
 
-    <!-- News Section -->
-    <section class="news-section" style="padding: 5rem 2rem; background: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0;">
-        <div style="max-width: 1100px; margin: 0 auto;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 3rem; flex-wrap: wrap; gap: 1rem;">
-                <div data-aos="fade-right">
-                    <h2 style="font-size: 2.5rem; font-weight: 900; color: #0f172a; letter-spacing: -0.5px;">Kabar & Berita Terbaru</h2>
-                    <p style="color: var(--text-muted); margin-top: 0.5rem; font-size: 1.05rem;">Pantau terus kegiatan, pencapaian, dan pengumuman menarik lainnya.</p>
+    <section class="news-section">
+        <div class="news-inner">
+            <div class="section-heading-row" data-aos="fade-up">
+                <div class="section-heading">
+                    <span class="section-kicker">Kabar portal</span>
+                    <h2 class="section-title">Cerita dan kabar terbaru.</h2>
+                    <p class="section-lede">Pantau kegiatan, pencapaian, dan informasi menarik lainnya dari portal kelas.</p>
                 </div>
-                <a href="{{ url_for('news_public') }}" class="btn" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px; font-weight: 800; background: var(--primary); padding: 0.9rem 1.25rem; border-radius: 999px;">
-                    Lihat Semua Berita <i data-lucide="arrow-right" style="width: 18px;"></i>
-                </a>
+                <a href="{{ url_for('news_public') }}" class="section-link news-cta">Lihat semua berita <i data-lucide="arrow-right"></i></a>
             </div>
 
             {% if recent_news %}
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2rem;">
+            <div class="news-grid">
                 {% for article in recent_news %}
-                <article style="background: white; border-radius: 20px; box-shadow: var(--shadow); overflow: hidden; display: flex; flex-direction: column; transition: transform 0.25s;" onmouseover="this.style.transform='translateY(-6px)'" onmouseout="this.style.transform='translateY(0)'">
-                    <div style="width: 100%; height: 180px; background: linear-gradient(135deg, #e0e7ff 0%, #c7d2fe 100%); overflow: hidden; display: flex; align-items: center; justify-content: center; position: relative;">
+                <article class="news-card" data-aos="fade-up" data-aos-delay="{{ loop.index0 * 100 }}">
+                    <div class="news-media">
                         {% if article.cover_image %}
-                        <img src="{{ url_for('static', filename='uploads/news/' ~ article.cover_image) }}" alt="{{ article.title }}" style="width: 100%; height: 100%; object-fit: cover;">
+                        <img src="{{ url_for('static', filename='uploads/news/' ~ article.cover_image) }}" alt="{{ article.title }}" loading="lazy">
                         {% else %}
-                        <i data-lucide="newspaper" style="width: 48px; height: 48px; color: #a5b4fc;"></i>
+                        <i data-lucide="newspaper"></i>
                         {% endif %}
-                        {% if article.category %}
-                        <span style="position: absolute; top: 12px; left: 12px; background: {{ article.category.color }}; color: white; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 12px; border-radius: 999px;">
-                            {{ article.category.name }}
-                        </span>
-                        {% endif %}
+                        {% if article.category %}<span class="news-category" style="background: {{ article.category.color }};">{{ article.category.name }}</span>{% endif %}
                     </div>
-                    <div style="padding: 1.5rem; flex: 1; display: flex; flex-direction: column; justify-content: space-between;">
-                        <div>
-                            <h3 style="font-size: 1.15rem; font-weight: 800; line-height: 1.4; color: #0f172a; margin-bottom: 0.75rem;">
-                                <a href="{{ url_for('news_detail', slug=article.slug) }}" style="color: inherit; text-decoration: none;">{{ article.title }}</a>
-                            </h3>
-                            <p style="font-size: 0.9rem; color: #475569; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 1.5rem;">
-                                {{ article.excerpt or article.content | striptags | truncate(130) }}
-                            </p>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; color: var(--text-muted); border-top: 1px solid #f1f5f9; padding-top: 1rem;">
-                            <span>
-                                <i data-lucide="calendar" style="width: 12px; display: inline-block; vertical-align: middle;"></i>
-                                {{ (article.published_at or article.created_at).strftime('%d %b %Y') }}
-                            </span>
-                            <a href="{{ url_for('news_detail', slug=article.slug) }}" style="color: var(--primary); font-weight: 700; text-decoration: none; display: flex; align-items: center; gap: 4px;">
-                                Baca Selengkapnya <i data-lucide="chevron-right" style="width: 14px;"></i>
-                            </a>
+                    <div class="news-body">
+                        <h3><a href="{{ url_for('news_detail', slug=article.slug) }}">{{ article.title }}</a></h3>
+                        <p class="news-excerpt">{{ article.excerpt or article.content | striptags | truncate(130) }}</p>
+                        <div class="news-meta">
+                            <span><i data-lucide="calendar"></i> {{ (article.published_at or article.created_at).strftime('%d %b %Y') }}</span>
+                            <a href="{{ url_for('news_detail', slug=article.slug) }}" class="news-read">Baca <i data-lucide="chevron-right"></i></a>
                         </div>
                     </div>
                 </article>
                 {% endfor %}
             </div>
             {% else %}
-            <div style="text-align: center; padding: 4rem 2rem; background: white; border-radius: 20px; opacity: 0.7;">
-                <i data-lucide="newspaper" style="width: 56px; height: 56px; margin-bottom: 1rem; color: var(--text-muted); display: block; margin-left: auto; margin-right: auto;"></i>
-                <p style="font-size: 1.1rem; font-weight: 600;">Belum ada berita terbaru saat ini.</p>
-            </div>
+            <div class="empty-state"><i data-lucide="newspaper"></i><p>Belum ada berita terbaru saat ini.</p></div>
             {% endif %}
         </div>
     </section>
@@ -428,11 +497,11 @@
         <div class="footer-inner">
             <!-- Brand Column -->
             <div class="footer-brand footer-col">
-                <div style="display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.3rem;">
+                <div class="footer-brand-mark">
                     {% if site_settings.logo_display_path %}
-                        <img src="{{ site_settings.logo_display_path }}" style="height: 36px; width: 36px; object-fit: contain; filter: brightness(0) invert(1);">
+                        <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.get('web_title', 'Portal Manajemen') }}">
                     {% else %}
-                        <i data-lucide="{{ site_settings.web_logo or 'monitor' }}" style="width: 28px; height: 28px;"></i>
+                        <i data-lucide="{{ site_settings.web_logo or 'monitor' }}"></i>
                     {% endif %}
                     {{ site_settings.get('web_title', 'Portal Manajemen') }}
                 </div>
@@ -441,16 +510,16 @@
                     {% set social_ig = site_settings.get('social_ig') %}
                     {% set social_wa = site_settings.get('social_wa') %}
                     {% if social_ig and social_ig != '#' %}
-                    <a href="{{ site_settings.get('social_ig') }}" target="_blank" class="footer-social-btn" title="Instagram">
+                    <a href="{{ site_settings.get('social_ig') }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram">
                         <i data-lucide="instagram"></i>
                     </a>
                     {% endif %}
                     {% if social_wa and social_wa != '#' %}
-                    <a href="{{ site_settings.get('social_wa') }}" target="_blank" class="footer-social-btn" title="Grup Si Dobe">
+                    <a href="{{ site_settings.get('social_wa') }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Grup Si Dobe">
                         <i data-lucide="message-circle"></i>
                     </a>
                     {% endif %}
-                    <a href="/sitemap.xml" target="_blank" class="footer-social-btn" title="Sitemap XML">
+                    <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Sitemap XML">
                         <i data-lucide="file-code"></i>
                     </a>
                 </div>
