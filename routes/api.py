@@ -1804,7 +1804,7 @@ def notification_bots_api():
 
     data = request.get_json(silent=True) or request.form or {}
     name = (data.get('name') or '').strip()
-    provider = (data.get('provider') or 'waha').strip().lower() or 'waha'
+    provider = (data.get('provider') or 'sidobe').strip().lower() or 'sidobe'
     if not name:
         return jsonify({'error': 'Nama bot wajib diisi'}), 400
     if provider not in {'waha', 'sidobe'}:

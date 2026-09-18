@@ -237,16 +237,15 @@ def get_whatsapp_setting_value(provider, key, default=''):
 def get_default_whatsapp_provider():
     provider = (
         get_setting_value('whatsapp_provider', None)
-        or os.environ.get('WHATSAPP_PROVIDER', 'waha')
+        or os.environ.get('WHATSAPP_PROVIDER', 'sidobe')
     ).strip().lower()
-    return provider if provider in {'waha', 'sidobe'} else 'waha'
+    return provider if provider in {'waha', 'sidobe'} else 'sidobe'
 
 def migrate_legacy_sidobe_settings():
-    # Keep the old function name for startup compatibility, but make WAHA the
-    # non-destructive default. Existing Sidobe settings remain available only
-    # when an individual bot explicitly selects that provider.
+    # Keep the old function name for startup compatibility while making Si Dobe
+    # the visible and default notification provider.
     defaults = {
-        'whatsapp_provider': 'waha',
+        'whatsapp_provider': 'sidobe',
         'waha_base_url': os.environ.get('WAHA_BASE_URL', 'http://localhost:3000'),
         'waha_api_key': os.environ.get('WAHA_API_KEY', ''),
         'waha_session': os.environ.get('WAHA_SESSION', 'default'),
@@ -4382,7 +4381,7 @@ def init_db():
                         CREATE TABLE whats_app_bot (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             name VARCHAR(120) NOT NULL UNIQUE,
-                            provider VARCHAR(30) DEFAULT 'waha',
+                            provider VARCHAR(30) DEFAULT 'sidobe',
                             session_name VARCHAR(120) NOT NULL,
                             base_url VARCHAR(255) NULL,
                             status VARCHAR(30) DEFAULT 'unknown',
@@ -4744,6 +4743,7 @@ def manage_notifications():
     users = users_query.order_by(User.full_name.is_(None), User.full_name.asc(), User.username.asc()).all()
     settings = {
         'whatsapp_provider': get_default_whatsapp_provider(),
+        'sidobe_base_url': get_sidobe_setting_value('base_url', SIDOBE_API_BASE_URL),
         'waha_base_url': get_whatsapp_setting_value('waha', 'base_url', 'http://localhost:3000'),
         'waha_session': get_whatsapp_setting_value('waha', 'session', 'default'),
         'waha_webhook_url': url_for('waha_webhook', _external=True),
@@ -4779,6 +4779,7 @@ def save_sidobe_config():
         return redirect(url_for('manage_notifications'))
 
     new_api_key = (request.form.get('sidobe_api_key') or '').strip()
+    set_setting_value('whatsapp_provider', 'sidobe', 'Provider notifikasi utama Si Dobe')
     if new_api_key:
         set_setting_value('sidobe_api_key', new_api_key, 'API key Si Dobe')
     set_setting_value('sidobe_is_async', 'true' if request.form.get('sidobe_is_async') == 'on' else 'false', 'Gunakan antrean asynchronous Sidobe')
@@ -4805,7 +4806,7 @@ def save_waha_config():
     if not current_user.role.sidobe_enabled:
         flash('Akses ditolak.')
         return redirect(url_for('manage_notifications'))
-    set_setting_value('whatsapp_provider', (request.form.get('whatsapp_provider') or 'waha').strip().lower() if (request.form.get('whatsapp_provider') or 'waha').strip().lower() in {'waha', 'sidobe'} else 'waha', 'Provider WhatsApp default')
+    set_setting_value('whatsapp_provider', (request.form.get('whatsapp_provider') or 'sidobe').strip().lower() if (request.form.get('whatsapp_provider') or 'sidobe').strip().lower() in {'waha', 'sidobe'} else 'sidobe', 'Provider notifikasi utama')
     set_setting_value('waha_base_url', (request.form.get('waha_base_url') or 'http://localhost:3000').strip().rstrip('/'), 'URL WAHA')
     set_setting_value('waha_session', (request.form.get('waha_session') or 'default').strip() or 'default', 'Session WAHA default')
     new_webhook_secret = (request.form.get('waha_webhook_secret') or '').strip()

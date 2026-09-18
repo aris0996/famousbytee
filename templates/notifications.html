@@ -244,22 +244,11 @@
     <section id="notify-tab-bots" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
-                <h2 class="notify-section-title">Koneksi WhatsApp</h2>
-                <p class="notify-muted">Pilih WAHA sebagai default, atau gunakan Si Dobe hanya pada bot yang memang dipilih.</p>
-                <form method="POST" action="/notifications/waha/save-config" class="notify-card" style="margin-top:1rem;">
-                    <div class="notify-grid">
-                        <div class="form-group"><label>Provider default</label><select name="whatsapp_provider" class="form-control"><option value="waha" {% if settings.whatsapp_provider == 'waha' %}selected{% endif %}>WAHA</option><option value="sidobe" {% if settings.whatsapp_provider == 'sidobe' %}selected{% endif %}>Si Dobe</option></select></div>
-                        <div class="form-group"><label>URL WAHA</label><input type="url" name="waha_base_url" class="form-control" value="{{ settings.waha_base_url }}" placeholder="http://localhost:3000"></div>
-                        <div class="form-group"><label>Session WAHA</label><input type="text" name="waha_session" class="form-control" value="{{ settings.waha_session }}"></div>
-                        <div class="form-group"><label>API key WAHA</label><input type="password" name="waha_api_key" class="form-control" placeholder="{{ settings.waha_api_key_masked or 'WAHA_API_KEY' }}"></div>
-                        <div class="form-group"><label>Secret webhook WAHA</label><input type="password" name="waha_webhook_secret" class="form-control" placeholder="Opsional"></div>
-                    </div>
-                    <div class="form-group"><label>Webhook WAHA</label><input type="text" class="form-control" value="{{ settings.waha_webhook_url }}" readonly><small class="notify-mini">Konfigurasikan URL ini di session WAHA. Jika secret diisi, kirim header X-Webhook-Secret.</small></div>
-                    <button class="btn" type="submit">Simpan Provider</button>
-                </form>
+                <h2 class="notify-section-title">Koneksi Si Dobe</h2>
+                <p class="notify-muted">Semua pesan WhatsApp dari aplikasi dikirim melalui Si Dobe.</p>
                 <form method="POST" action="/notifications/sidobe/save-config" class="notify-card" style="margin-top:1rem;">
-                    <div class="form-group"><label>Secret Key Sidobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Developer Tools → Credential' }}"></div>
-                    <div class="form-group"><label>Webhook Sidobe</label><input type="text" class="form-control" value="{{ settings.sidobe_webhook_url }}" readonly><small class="notify-mini">Pasang URL ini di Developer Tools → Settings → Webhook WhatsApp pada Sidobe Console.</small></div>
+                    <div class="form-group"><label>Secret Key Si Dobe</label><input type="password" name="sidobe_api_key" class="form-control" placeholder="{{ settings.sidobe_api_key_masked or 'Masukkan Secret Key Si Dobe' }}"></div>
+                    <div class="form-group"><label>Webhook Si Dobe</label><input type="text" class="form-control" value="{{ settings.sidobe_webhook_url }}" readonly><small class="notify-mini">Salin URL ini ke pengaturan webhook pada Console Si Dobe.</small></div>
                     <label class="notify-row"><input type="checkbox" name="sidobe_is_async" {% if settings.sidobe_is_async == 'true' %}checked{% endif %}> Kirim asynchronous (status melalui webhook)</label>
                     <div class="notify-actions" style="justify-content:space-between;">
                         <button type="submit" class="btn">Simpan Koneksi</button>
@@ -303,8 +292,8 @@
                     </div>
                     <div class="notify-grid" style="margin-top:1rem;">
                         <div class="form-group"><label>Nama Bot</label><input type="text" id="bot-name" class="form-control" placeholder="Bot Kelas A"></div>
-                        <div class="form-group"><label>Provider WhatsApp</label><select id="bot-provider" class="form-control"><option value="waha">WAHA</option><option value="sidobe">Si Dobe</option></select></div>
-                        <div class="form-group"><label>Session / Nomor Pengirim</label><input type="text" id="bot-sender-phone" class="form-control" placeholder="WAHA: default, Si Dobe: +628..."><small class="notify-mini">WAHA menggunakan nama session; Si Dobe menggunakan nomor E.164.</small></div>
+                        <input type="hidden" id="bot-provider" value="sidobe">
+                        <div class="form-group"><label>Nomor Pengirim Si Dobe</label><input type="text" id="bot-sender-phone" class="form-control" placeholder="+628123456789"><small class="notify-mini">Gunakan nomor E.164 perangkat Si Dobe, misalnya +628123456789.</small></div>
                     </div>
                     <div class="notify-actions">
                         <button class="btn" type="button" onclick="saveBot()">Simpan Bot</button>
@@ -329,13 +318,13 @@
                         <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
                             <div>
                                 <strong>{{ bot.name }}</strong>
-                                <div class="notify-mini">Provider: {{ (bot.provider or 'waha')|upper }} · Session/Pengirim: {{ bot.session_name or '-' }}</div>
+                                <div class="notify-mini">{{ 'Si Dobe' if bot.provider == 'sidobe' else 'Koneksi lama' }} · Nomor Pengirim: {{ bot.session_name or '-' }}</div>
                             </div>
                             <span class="notify-status {{ 'ok' if bot.is_active else 'off' }}">{{ 'Aktif' if bot.is_active else 'Nonaktif' }}</span>
                         </div>
                         <div class="notify-mini" style="margin-top:.5rem;">Status: {{ bot.status or 'unknown' }}</div>
                         <div class="notify-actions" style="margin-top:.75rem;">
-                            <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm('{{ bot.id }}', '{{ bot.name|replace('\'', '\\\'') }}', '{{ bot.session_name|replace('\'', '\\\'') }}', '{{ bot.provider or 'waha' }}')">Edit</button>
+                            <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm('{{ bot.id }}', '{{ bot.name|replace('\'', '\\\'') }}', '{{ bot.session_name|replace('\'', '\\\'') }}', '{{ bot.provider or 'sidobe' }}')">Edit</button>
                             <button class="btn" type="button" style="background:#1e293b; padding:8px 12px;" onclick="checkBotHealth('{{ bot.id }}')">Cek Health</button>
                             <button class="btn" type="button" style="background:#fee2e2; color:#991b1b; padding:8px 12px;" onclick="deleteBot('{{ bot.id }}')">Hapus</button>
                         </div>
@@ -422,8 +411,7 @@
 let currentBotId = null;
 const PAGE_TOKEN = "{{ page_token }}";
 function sessionProviderBase() {
-    const provider = document.getElementById('bot-provider')?.value || '{{ settings.whatsapp_provider or 'waha' }}';
-    return provider === 'sidobe' ? '/notifications/sidobe' : '/notifications/waha';
+    return '/notifications/sidobe';
 }
 
 function showNotifyTab(name) {
@@ -593,7 +581,7 @@ function fillBotForm(id, name, senderPhone, provider) {
     currentBotId = id;
     document.getElementById('bot-name').value = name;
     document.getElementById('bot-sender-phone').value = senderPhone;
-    document.getElementById('bot-provider').value = provider || 'waha';
+    document.getElementById('bot-provider').value = 'sidobe';
 }
 
 async function refreshSidobeSessions() {
@@ -682,8 +670,7 @@ async function refreshSidobeDashboard() {
     const board = document.getElementById('sidobe-dashboard');
     if (board) board.innerHTML = '<div class="notify-output">Memuat dashboard Si Dobe...</div>';
     try {
-        const dashboardProvider = document.getElementById('bot-provider')?.value || '{{ settings.whatsapp_provider or 'waha' }}';
-        const data = await apiFetch(dashboardProvider === 'sidobe' ? '/api/notifications/sidobe/dashboard' : '/api/notifications/waha/dashboard');
+        const data = await apiFetch('/api/notifications/sidobe/dashboard');
         const workers = data.workers || [];
         const sessions = data.sessions || [];
         const workerError = data.worker_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.worker_error}</div>` : '';
