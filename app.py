@@ -525,10 +525,16 @@ def _requested_gallery_classroom():
 
 def _is_gallery_photo_in_allowed_scope(photo, classroom):
     if not classroom:
-        return False
+        return _has_any_classroom_scope(
+            'can_manage_gallery_multi_class',
+            'can_view_all_classrooms',
+            'can_access_multi_classroom',
+        )
     if photo.classroom_id == classroom.id:
         return True
-    return bool(photo.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
+    # An unassigned photo is intentionally visible to a gallery moderator in
+    # the active class so it can be assigned without a data migration.
+    return bool(photo.classroom_id is None and _can_manage_gallery_content())
 
 
 def _can_manage_web_classroom_record(record_classroom_id, multi_permission):
@@ -4199,7 +4205,46 @@ def edit_gallery(id):
     if can_manage:
         photo.is_public = 'is_public' in request.form
 
+        requested_target_id = (request.form.get('target_classroom_id') or '').strip()
+        target_classroom = None
+        if requested_target_id:
+            try:
+                target_id = int(requested_target_id)
+            except (TypeError, ValueError):
+                abort(400, description='Kelas foto tidak valid.')
+            allowed_ids = {classroom.id for classroom in _gallery_allowed_classrooms()}
+            if target_id not in allowed_ids:
+                abort(403, description='Anda tidak memiliki akses ke kelas tujuan foto.')
+            target_classroom = ClassRoom.query.get(target_id)
+        elif photo.classroom_id:
+            target_classroom = ClassRoom.query.get(photo.classroom_id)
+        else:
+            target_classroom = active_classroom
+
+        if not target_classroom:
+            flash('Kelas foto wajib dipilih sebelum disimpan.')
+            return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
+
+        previous_classroom_id = photo.classroom_id
+        photo.classroom_id = target_classroom.id
+        if previous_classroom_id != target_classroom.id:
+            # Existing detections and matches belong to the old scope. Clear
+            # them and let the plugin worker detect the photo in its new class.
+            try:
+                from plugins.face_labeling.config import is_enabled as face_labeling_enabled
+                if face_labeling_enabled():
+                    from plugins.face_labeling.jobs import reset_photo_scope
+                    reset_photo_scope(photo.id, target_classroom.id)
+            except Exception:
+                db.session.rollback()
+                app.logger.exception('Failed to rescope face data for gallery photo %s.', photo.id)
+                flash('Foto belum dipindahkan karena data pemetaan wajah gagal disiapkan.')
+                return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
+
     db.session.commit()
+    if can_manage and previous_classroom_id != target_classroom.id:
+        flash('Foto berhasil diperbarui dan ditautkan ke kelas. Deteksi wajah akan diproses ulang.')
+        return redirect(url_for('manage_gallery', classroom_id=target_classroom.id))
     flash('Foto berhasil diperbarui.')
     return redirect(url_for('manage_gallery', classroom_id=active_classroom.id if active_classroom else None))
 

@@ -14,6 +14,29 @@ from .matcher import rematch_profile
 from .models import ClassFaceProfile, FaceMatch, FaceProcessingJob, PhotoFace
 
 
+def reset_photo_scope(photo_id, classroom_id):
+    """Invalidate detections when a gallery photo changes classroom scope."""
+    photo_faces = PhotoFace.query.filter_by(photo_id=photo_id).all()
+    face_ids = [face.id for face in photo_faces]
+    if face_ids:
+        FaceMatch.query.filter(FaceMatch.photo_face_id.in_(face_ids)).delete(
+            synchronize_session=False,
+        )
+        PhotoFace.query.filter(PhotoFace.id.in_(face_ids)).delete(
+            synchronize_session=False,
+        )
+
+    job = FaceProcessingJob.query.filter_by(photo_id=photo_id).first()
+    if not job:
+        job = FaceProcessingJob(photo_id=photo_id)
+        db.session.add(job)
+    job.classroom_id = classroom_id
+    job.status = 'queued'
+    job.error_message = None
+    job.locked_at = None
+    return job
+
+
 def enqueue_photo(photo_id):
     if not is_enabled():
         return None

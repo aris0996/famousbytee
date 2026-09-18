@@ -19,10 +19,14 @@
 .face-photo-meta { display:flex; flex-direction:column; gap:.3rem; padding:.8rem; }
 .face-photo-meta strong { overflow:hidden; color:#17213f; font-size:.8rem; text-overflow:ellipsis; white-space:nowrap; }
 .face-photo-meta small { color:#64748b; font-size:.7rem; }
-.face-empty { padding:2rem; color:#64748b; text-align:center; }
+.face-empty { display:flex; flex-direction:column; align-items:center; gap:.45rem; padding:2rem; color:#64748b; text-align:center; }
+.face-empty strong { color:#17213f; }
+.face-empty span { max-width:34rem; font-size:.8rem; line-height:1.5; }
+.face-empty .face-button { margin-top:.45rem; }
 .face-empty-state { min-height:260px; display:grid; place-items:center; align-content:center; text-align:center; }
 .face-empty-state svg { width:44px; height:44px; margin-bottom:.8rem; color:#3856e8; }
 .face-empty-state h2 { margin:0 0 .35rem; color:#111936; }
+.face-empty-state .face-empty-note { max-width:34rem; color:#64748b; font-size:.82rem; line-height:1.5; }
 .face-button { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; min-height:40px; border:0; border-radius:11px; padding:.65rem .9rem; font:inherit; font-size:.78rem; font-weight:900; text-decoration:none; cursor:pointer; }
 .face-button svg { width:16px; height:16px; }
 .face-button.primary { color:#fff; background:#3856e8; }

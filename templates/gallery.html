@@ -91,7 +91,7 @@
             
             {% if gallery_can_moderate %}
             <div class="photo-controls" style="display: flex; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                <button type="button" onclick="event.stopPropagation(); openEditGallery({{ photo.id|tojson }}, {{ (photo.caption or '')|tojson }}, {{ (photo.tags or '')|tojson }}, {{ 'true' if photo.is_public else 'false' }})" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Edit</button>
+                <button type="button" onclick="event.stopPropagation(); openEditGallery({{ photo.id|tojson }}, {{ (photo.caption or '')|tojson }}, {{ (photo.tags or '')|tojson }}, {{ 'true' if photo.is_public else 'false' }}, {{ (photo.classroom_id or '')|tojson }})" style="flex: 1; text-align: center; color: white; background: rgba(255,255,255,0.2); padding: 6px; border-radius: 6px; border: none; font-size: 0.8rem; font-weight: 600; cursor: pointer;">Edit</button>
                 <form method="POST" action="{{ url_for('toggle_gallery_visibility', id=photo.id) }}" style="flex:1;"><button type="submit" style="width:100%; border:0; text-align:center; color:white; background:rgba(255,255,255,.2); padding:6px; border-radius:6px; font-size:.8rem; font-weight:600; cursor:pointer;">{{ 'Set Private' if photo.is_public else 'Set Publik' }}</button></form>
                 <form method="POST" action="{{ url_for('delete_gallery', id=photo.id) }}" onsubmit="return confirm('Hapus permanen foto ini?')"><button type="submit" style="border:0; background:rgba(239,68,68,.8); color:white; padding:6px 12px; border-radius:6px; cursor:pointer;"><i data-lucide="trash-2" style="width:14px; height:14px;"></i></button></form>
             </div>
@@ -225,6 +225,7 @@
             <button type="button" class="btn" style="background: #e2e8f0; color: #334155; padding: 0.55rem 0.9rem;" onclick="document.getElementById('modal-edit-gallery').style.display='none'">Tutup</button>
         </div>
         <form id="edit-gallery-form" method="POST">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="classroom_id" value="{{ active_classroom.id if active_classroom else '' }}">
             <div class="form-group">
                 <label>Caption</label>
@@ -235,6 +236,16 @@
                 <input type="text" name="tags" id="edit-gallery-tags" class="form-control" placeholder="#Event #KelasB">
             </div>
             {% if gallery_can_moderate %}
+            <div class="form-group" style="padding: 1rem; background: #eff6ff; border-radius: 10px; border: 1px solid #bfdbfe;">
+                <label for="edit-gallery-classroom">Kelas foto</label>
+                <select name="target_classroom_id" id="edit-gallery-classroom" class="form-control" required>
+                    <option value="">Pilih kelas foto</option>
+                    {% for classroom in classrooms %}
+                    <option value="{{ classroom.id }}">{{ classroom.name }}{% if classroom.batch %} - {{ classroom.batch }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+                <small style="display: block; margin-top: 0.45rem; color: #1d4ed8;">Kelas ini menjadi scope pemetaan wajah dan tidak boleh kosong.</small>
+            </div>
             <div class="form-group" style="padding: 1rem; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0;">
                 <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; margin: 0;">
                     <input type="checkbox" name="is_public" id="edit-gallery-public" value="1" style="width: 18px; height: 18px;">
@@ -473,7 +484,7 @@ function closeLightbox() {
         }, 300);
 }
 
-function openEditGallery(id, caption, tags, isPublic) {
+function openEditGallery(id, caption, tags, isPublic, classroomId) {
     const form = document.getElementById('edit-gallery-form');
     form.action = "{{ url_for('edit_gallery', id=0) }}".replace('/0', `/${id}`);
     document.getElementById('edit-gallery-caption').value = caption || '';
@@ -481,6 +492,11 @@ function openEditGallery(id, caption, tags, isPublic) {
     const publicInput = document.getElementById('edit-gallery-public');
     if (publicInput) {
         publicInput.checked = !!isPublic;
+    }
+    const classroomInput = document.getElementById('edit-gallery-classroom');
+    if (classroomInput) {
+        const requestedClassroom = classroomId ? String(classroomId) : "{{ active_classroom.id if active_classroom else '' }}";
+        classroomInput.value = requestedClassroom;
     }
     document.getElementById('modal-edit-gallery').style.display = 'flex';
 }

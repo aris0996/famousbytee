@@ -86,11 +86,17 @@ def index():
     photos = []
     if active_classroom:
         photos = GalleryPhoto.query.filter_by(classroom_id=active_classroom.id).order_by(GalleryPhoto.created_at.desc()).all()
+    unassigned_public_count = GalleryPhoto.query.filter_by(
+        classroom_id=None,
+        is_public=True,
+        status='Published',
+    ).count()
     return render_template(
         'face_labeling/index.html',
         classrooms=classrooms,
         active_classroom=active_classroom,
         photos=photos,
+        unassigned_public_count=unassigned_public_count,
     )
 
 

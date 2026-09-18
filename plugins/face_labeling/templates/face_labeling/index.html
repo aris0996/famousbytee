@@ -39,7 +39,11 @@
                 </span>
             </a>
             {% else %}
-            <div class="face-empty">Belum ada foto pada kelas ini.</div>
+            <div class="face-empty">
+                <strong>Belum ada foto yang tertaut ke kelas ini.</strong>
+                <span>Foto publik lama yang belum memiliki kelas tidak dapat diberi label identitas.</span>
+                <a class="face-button secondary" href="{{ url_for('manage_gallery', classroom_id=active_classroom.id) }}">Buka Galeri untuk menetapkan kelas</a>
+            </div>
             {% endfor %}
         </div>
     </section>
@@ -48,6 +52,9 @@
         <i data-lucide="scan-face"></i>
         <h2>Pilih kelas untuk mulai</h2>
         <p>Scope label dan pencarian wajah selalu mengikuti kelas foto.</p>
+        {% if unassigned_public_count %}
+        <p class="face-empty-note">Ada {{ unassigned_public_count }} foto publik yang belum memiliki kelas. Tetapkan kelasnya dari menu Galeri agar dapat dipetakan.</p>
+        {% endif %}
     </section>
     {% endif %}
 </div>
