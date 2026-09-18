@@ -1,26 +1,36 @@
 {% extends "base.html" %}
 
 {% block content %}
-<header>
-    <div>
-        <h1>Manajemen Kelas</h1>
-        <p style="color: var(--text-muted);">Daftar kelas aktif, angkatan, dan pusat pengaturan struktur multi-kelas.</p>
-    </div>
-</header>
+<div class="classes-page">
+    <header class="classes-header">
+        <div>
+            <div class="classes-kicker"><i data-lucide="layers-3"></i> Struktur Portal</div>
+            <h1>Manajemen Kelas</h1>
+            <p>Kelola kelas aktif, angkatan, dan struktur multi-kelas dari satu tempat.</p>
+        </div>
+        <div class="classes-total"><strong>{{ classes|length }}</strong><span>Kelas aktif</span></div>
+    </header>
 
-<div class="card" style="padding: 1rem 1.15rem; margin-bottom: 1.5rem; background: #f8fafc; border: 1px solid #e2e8f0;">
-    <div style="font-size: 0.76rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.35rem;">Catatan Operator</div>
-    <div style="font-size: 0.95rem; color: #334155; line-height: 1.6;">
-        Edit kelas dipakai untuk merapikan nama atau batch tanpa mengubah data member yang sudah terhubung.
-        Hapus kelas sebaiknya hanya dilakukan bila benar-benar kosong.
-    </div>
-</div>
+    <section class="operator-note">
+        <div class="operator-note-icon"><i data-lucide="info"></i></div>
+        <div>
+            <strong>Catatan operator</strong>
+            <p>Edit nama atau angkatan tidak mengubah data member yang sudah terhubung. Hapus kelas hanya bila datanya benar-benar kosong.</p>
+        </div>
+    </section>
 
-<div style="display: grid; grid-template-columns: 1fr 300px; gap: 2rem;">
-    <!-- Class Table -->
-    <div class="card">
-        <h2 style="font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem;">Daftar Kelas</h2>
-        <table>
+    <div class="classes-layout">
+        <!-- Class Table -->
+        <section class="classes-list-card">
+            <div class="section-heading">
+                <div>
+                    <span class="section-eyebrow">Database kelas</span>
+                    <h2>Daftar Kelas</h2>
+                </div>
+                <span class="count-pill">{{ classes|length }} kelas</span>
+            </div>
+            <div class="class-table-wrap">
+            <table class="class-table">
             <thead>
                 <tr>
                     <th>Kelas</th>
@@ -32,36 +42,40 @@
             <tbody>
                 {% for c in classes %}
                 <tr>
-                    <td style="font-weight: 700;">{{ c.name }}</td>
-                    <td>{{ c.batch }}</td>
-                    <td>{{ c.students|length }} Orang</td>
-                    <td>
-                        <div style="display: flex; gap: 12px; align-items: center;">
-                            <a href="{{ url_for('public_view', class_name=c.name) }}" target="_blank" style="color: var(--primary); text-decoration: none; font-size: 0.85rem; font-weight: 700; display: flex; align-items: center; gap: 4px;">
-                                <i data-lucide="external-link" style="width: 14px;"></i> Live View
+                    <td data-label="Kelas"><span class="class-name">{{ c.name }}</span></td>
+                    <td data-label="Angkatan"><span class="class-batch">{{ c.batch }}</span></td>
+                    <td data-label="Mahasiswa"><span class="student-count"><i data-lucide="users"></i>{{ c.students|length }} Orang</span></td>
+                    <td data-label="Aksi">
+                        <div class="class-actions">
+                            <a href="{{ url_for('public_view', class_name=c.name) }}" target="_blank" class="live-link">
+                                <i data-lucide="external-link"></i> <span>Live View</span>
                             </a>
-                            <button type="button" class="icon-btn" onclick="openEditClass('{{ c.id }}', '{{ c.name|e }}', '{{ c.batch|e if c.batch else '' }}')">
-                                <i data-lucide="edit" style="width: 18px;"></i>
+                            <button type="button" class="class-edit-button" title="Edit kelas" onclick="openEditClass('{{ c.id }}', '{{ c.name|e }}', '{{ c.batch|e if c.batch else '' }}')">
+                                <i data-lucide="edit-3"></i><span class="sr-only">Edit kelas</span>
                             </button>
                         </div>
                     </td>
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="4" style="text-align: center; padding: 2rem; color: var(--text-muted);">Belum ada kelas.</td>
+                    <td colspan="4" class="empty-classes">Belum ada kelas.</td>
                 </tr>
                 {% endfor %}
             </tbody>
-        </table>
-    </div>
+            </table>
+            </div>
+        </section>
 
     <!-- Add Class Form -->
-        <div class="card">
-            <h2 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem;">Tambah Kelas</h2>
+        <aside class="class-form-card">
+            <div class="form-card-heading">
+                <div class="form-card-icon"><i data-lucide="plus"></i></div>
+                <div><span class="section-eyebrow">Konfigurasi</span><h2 id="class-form-title">Tambah Kelas</h2></div>
+            </div>
             {% with messages = get_flashed_messages() %}
                 {% if messages %}
                     {% for message in messages %}
-                        <div style="background: #ecfdf5; color: #065f46; padding: .85rem 1rem; border-radius: 10px; margin-bottom: 1rem; border: 1px solid #d1fae5;">
+                        <div class="form-message">
                             {{ message }}
                         </div>
                     {% endfor %}
@@ -77,8 +91,12 @@
                 <label>Angkatan / Tahun</label>
                 <input type="text" name="batch" id="class-batch" class="form-control" placeholder="Contoh: TI 2024" required>
             </div>
-            <button type="submit" class="btn" id="class-submit" style="width: 100%;">Simpan Kelas</button>
+            <div class="form-actions">
+                <button type="submit" class="btn class-submit" id="class-submit">Simpan Kelas</button>
+                <button type="button" class="class-cancel" id="class-cancel" onclick="resetClassForm()" hidden>Batal</button>
+            </div>
         </form>
+        </aside>
     </div>
 </div>
 
@@ -88,7 +106,89 @@ function openEditClass(id, name, batch) {
     document.getElementById('class-name').value = name;
     document.getElementById('class-batch').value = batch || '';
     document.getElementById('class-submit').innerText = 'Perbarui Kelas';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    document.getElementById('class-form-title').innerText = 'Edit Kelas';
+    document.getElementById('class-cancel').hidden = false;
+    document.getElementById('class-name').focus();
+}
+
+function resetClassForm() {
+    document.getElementById('form-classroom').reset();
+    document.getElementById('class-id').value = '';
+    document.getElementById('class-submit').innerText = 'Simpan Kelas';
+    document.getElementById('class-form-title').innerText = 'Tambah Kelas';
+    document.getElementById('class-cancel').hidden = true;
 }
 </script>
+<style>
+    .classes-page { max-width: 1440px; margin: 0 auto; color: #17213f; }
+    .classes-header { display:flex; align-items:flex-end; justify-content:space-between; gap:1.5rem; margin-bottom:1.35rem; }
+    .classes-header h1 { margin:.25rem 0 .35rem; color:#142044; font-size:clamp(1.8rem,3vw,2.5rem); letter-spacing:-.055em; }
+    .classes-header p { margin:0; color:#64748b; font-size:1rem; }
+    .classes-kicker, .section-eyebrow { display:inline-flex; align-items:center; gap:6px; color:#4160eb; font-size:.7rem; font-weight:900; letter-spacing:.12em; text-transform:uppercase; }
+    .classes-kicker i { width:16px; height:16px; }
+    .classes-total { display:flex; align-items:baseline; gap:8px; padding:12px 16px; border:1px solid #dce4f2; border-radius:14px; background:#fff; white-space:nowrap; box-shadow:0 7px 18px rgba(17,25,54,.04); }
+    .classes-total strong { color:#3856e8; font-size:1.55rem; }
+    .classes-total span { color:#66738f; font-size:.8rem; font-weight:800; }
+    .operator-note { display:flex; align-items:flex-start; gap:12px; margin-bottom:1.5rem; padding:1rem 1.15rem; border:1px solid #dbe5f4; border-radius:16px; background:linear-gradient(135deg,#f8faff,#eef3ff); }
+    .operator-note-icon { flex:0 0 auto; width:34px; height:34px; display:grid; place-items:center; border-radius:10px; color:#3856e8; background:#dfe7ff; }
+    .operator-note-icon i { width:18px; height:18px; }
+    .operator-note strong { display:block; margin-bottom:3px; color:#25345d; font-size:.77rem; letter-spacing:.1em; text-transform:uppercase; }
+    .operator-note p { margin:0; color:#52617e; line-height:1.55; font-size:.9rem; }
+    .classes-layout { display:grid; grid-template-columns:minmax(0,1fr) 320px; align-items:start; gap:1.35rem; }
+    .classes-list-card, .class-form-card { min-width:0; padding:1.35rem; border:1px solid #e1e7f1; border-radius:20px; background:#fff; box-shadow:0 10px 28px rgba(17,25,54,.055); }
+    .section-heading { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.2rem; }
+    .section-heading h2, .form-card-heading h2 { margin:.25rem 0 0; color:#152044; font-size:1.25rem; letter-spacing:-.035em; }
+    .count-pill { padding:6px 10px; border-radius:999px; color:#3856e8; background:#eef2ff; font-size:.72rem; font-weight:900; }
+    .class-table-wrap { overflow-x:auto; }
+    .class-table { width:100%; min-width:650px; border-collapse:collapse; }
+    .class-table th { padding:0 1rem .85rem; color:#77849e; border-bottom:1px solid #e7edf6; font-size:.72rem; font-weight:900; letter-spacing:.08em; text-align:left; text-transform:uppercase; }
+    .class-table td { padding:1.05rem 1rem; border-bottom:1px solid #edf1f7; color:#43516f; vertical-align:middle; }
+    .class-table tbody tr:last-child td { border-bottom:0; }
+    .class-table tbody tr:hover td { background:#fafbff; }
+    .class-table .empty-classes { padding:2.5rem 1rem; color:#7b88a2; text-align:center; }
+    .class-name { color:#182448; font-weight:900; }
+    .class-batch { color:#5d6b87; font-weight:600; }
+    .student-count { display:inline-flex; align-items:center; gap:7px; color:#5d6b87; font-weight:700; }
+    .student-count i { width:15px; height:15px; color:#8491ad; }
+    .class-actions { display:flex; align-items:center; gap:10px; }
+    .live-link { display:inline-flex; align-items:center; gap:5px; color:#3856e8; font-size:.8rem; font-weight:900; text-decoration:none; }
+    .live-link i { width:15px; height:15px; }
+    .live-link:hover { color:#233db9; }
+    .class-edit-button { display:grid; place-items:center; width:36px; height:36px; border:1px solid #d8e0ee; border-radius:10px; color:#5e6f8f; background:#fff; cursor:pointer; transition:.2s ease; }
+    .class-edit-button:hover { color:#3856e8; border-color:#9dafed; background:#f4f6ff; transform:translateY(-1px); }
+    .class-edit-button i { width:17px; height:17px; }
+    .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+    .form-card-heading { display:flex; align-items:center; gap:10px; margin-bottom:1.35rem; }
+    .form-card-icon { display:grid; place-items:center; width:38px; height:38px; border-radius:12px; color:#fff; background:#3856e8; box-shadow:0 8px 16px rgba(56,86,232,.2); }
+    .form-card-icon i { width:19px; height:19px; }
+    .class-form-card .form-group { margin-bottom:1rem; }
+    .class-form-card .form-group label { display:block; margin-bottom:6px; color:#32415f; font-size:.8rem; font-weight:800; }
+    .class-form-card .form-control { width:100%; min-height:46px; border-color:#dce4f0; border-radius:11px; }
+    .class-form-card .form-control:focus { border-color:#6d83ee; box-shadow:0 0 0 3px rgba(56,86,232,.1); }
+    .form-message { margin-bottom:1rem; padding:.8rem .9rem; border:1px solid #bcebd7; border-radius:10px; color:#09633f; background:#effcf5; font-size:.85rem; line-height:1.45; }
+    .form-actions { display:flex; align-items:center; gap:8px; margin-top:1.3rem; }
+    .class-submit { flex:1; min-height:44px; border:0; border-radius:11px; color:#fff; background:#3856e8; font-weight:900; cursor:pointer; }
+    .class-submit:hover { background:#2945d0; }
+    .class-cancel { min-height:44px; padding:0 14px; border:1px solid #dbe3f0; border-radius:11px; color:#52617e; background:#fff; font:inherit; font-weight:800; cursor:pointer; }
+    .class-cancel:hover { background:#f5f7fb; }
+    @media (max-width: 900px) { .classes-layout { grid-template-columns:1fr; } .class-form-card { order:-1; } }
+    @media (max-width: 640px) {
+        .classes-header { align-items:flex-start; flex-direction:column; gap:1rem; }
+        .classes-total { width:100%; justify-content:space-between; }
+        .operator-note { padding:.9rem; }
+        .classes-list-card, .class-form-card { padding:1rem; border-radius:16px; }
+        .section-heading { align-items:flex-start; }
+        .class-table { min-width:0; }
+        .class-table thead { display:none; }
+        .class-table, .class-table tbody, .class-table tr, .class-table td { display:block; width:100%; }
+        .class-table tr { padding:.95rem 0; border-bottom:1px solid #e7edf6; }
+        .class-table tbody tr:last-child { border-bottom:0; }
+        .class-table td { display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.28rem 0; border:0; text-align:right; }
+        .class-table td::before { content:attr(data-label); color:#8a96ac; font-size:.68rem; font-weight:900; letter-spacing:.06em; text-transform:uppercase; }
+        .class-table td:first-child { display:block; padding-bottom:.55rem; text-align:left; }
+        .class-table td:first-child::before { display:none; }
+        .class-table td:first-child .class-name { font-size:1rem; }
+        .class-actions { justify-content:flex-end; }
+    }
+</style>
 {% endblock %}
