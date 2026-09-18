@@ -3,159 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - CampusLink</title>
+    <title>Masuk - {{ site_settings.get('web_title', 'Famousbytee Portal') }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ site_settings.favicon_display_url }}">
+    <meta name="description" content="Masuk ke {{ site_settings.get('web_title', 'Famousbytee Portal') }}.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
         :root {
-            --primary: #4361ee;
-            --secondary: #3f37c9;
-            --accent: #4cc9f0;
-            --bg: #f8faff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
-            --transition: all 0.3s ease;
+            --primary: #3856e8;
+            --secondary: #101936;
+            --accent: #ffb347;
+            --bg: #f3f6fb;
+            --surface: #ffffff;
+            --text-main: #11182e;
+            --text-muted: #69758e;
+            --line: #e1e7f0;
+            --danger: #c83f52;
+            --danger-bg: #fff1f3;
+            --shadow: 0 28px 70px rgba(16, 25, 54, .12);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Outfit', sans-serif;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background-color: var(--bg);
-            display: flex;
-            align-items: center;
-            justify-content: center;
             min-height: 100vh;
-            padding: 1.5rem;
-        }
-
-        .login-card {
-            background: white;
-            width: 100%;
-            max-width: 420px;
-            padding: 3rem 2.5rem;
-            border-radius: 24px;
-            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-            text-align: center;
-        }
-
-        .login-card h1 {
-            font-size: 1.75rem;
-            font-weight: 800;
-            margin-bottom: 0.5rem;
+            overflow-x: hidden;
+            font-family: 'Outfit', sans-serif;
             color: var(--text-main);
+            background: var(--bg);
         }
 
-        .login-card p {
-            color: var(--text-muted);
-            margin-bottom: 2.5rem;
+        .login-page {
+            position: relative;
+            display: grid;
+            grid-template-columns: minmax(0, 1.05fr) minmax(420px, .95fr);
+            min-height: 100vh;
+            isolation: isolate;
         }
-
-        .form-group {
-            margin-bottom: 1.5rem;
-            text-align: left;
+        .login-page::before,
+        .login-page::after {
+            content: '';
+            position: absolute;
+            z-index: -1;
+            border-radius: 50%;
+            pointer-events: none;
         }
+        .login-page::before { width: 420px; height: 420px; left: -190px; bottom: -170px; background: rgba(56, 86, 232, .09); }
+        .login-page::after { width: 300px; height: 300px; right: -130px; top: -110px; background: rgba(255, 179, 71, .13); }
 
-        .form-group label {
-            display: block;
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-            font-size: 0.9rem;
+        .login-aside {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 100vh;
+            overflow: hidden;
+            padding: clamp(2rem, 6vw, 5rem);
+            color: #fff;
+            background: linear-gradient(145deg, #111a39 0%, #17275a 58%, #2943bb 100%);
         }
-
-        .form-control {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            outline: none;
-            transition: var(--transition);
+        .login-aside::before,
+        .login-aside::after {
+            content: '';
+            position: absolute;
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 50%;
+            pointer-events: none;
         }
+        .login-aside::before { width: 560px; height: 560px; right: -300px; bottom: -240px; }
+        .login-aside::after { width: 290px; height: 290px; left: -170px; top: 26%; }
+        .brand-mark { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: .8rem; color: #fff; font-size: 1.25rem; font-weight: 900; letter-spacing: -.04em; text-decoration: none; }
+        .brand-mark img { width: 42px; height: 42px; padding: 5px; object-fit: contain; border-radius: 13px; background: #fff; }
+        .brand-mark svg { width: 30px; height: 30px; color: var(--accent); }
+        .aside-content { position: relative; z-index: 1; max-width: 520px; margin: auto 0; padding: 3rem 0; }
+        .aside-kicker { display: inline-flex; align-items: center; gap: 9px; color: var(--accent); font-size: .72rem; font-weight: 900; letter-spacing: .17em; text-transform: uppercase; }
+        .aside-kicker::before { content: ''; width: 26px; height: 3px; border-radius: 99px; background: var(--accent); }
+        .aside-content h1 { max-width: 560px; margin-top: 1.25rem; color: #fff; font-size: clamp(2.7rem, 5vw, 5rem); line-height: .98; letter-spacing: -.075em; }
+        .aside-content h1 span { color: #93a5ff; }
+        .aside-content > p { max-width: 470px; margin-top: 1.35rem; color: rgba(255,255,255,.7); font-size: 1.02rem; line-height: 1.75; }
+        .portal-points { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: 2.3rem; }
+        .portal-point { padding: .9rem; border: 1px solid rgba(255,255,255,.12); border-radius: 16px; background: rgba(255,255,255,.07); }
+        .portal-point svg { width: 19px; height: 19px; margin-bottom: .55rem; color: var(--accent); }
+        .portal-point span { display: block; color: rgba(255,255,255,.76); font-size: .76rem; line-height: 1.35; }
+        .aside-footer { position: relative; z-index: 1; color: rgba(255,255,255,.45); font-size: .76rem; }
 
-        .form-control:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 4px rgba(67, 97, 238, 0.1);
+        .login-main { display: grid; place-items: center; padding: 2rem; }
+        .login-panel { width: min(100%, 460px); }
+        .mobile-brand { display: none; }
+        .login-heading { margin-bottom: 1.7rem; }
+        .login-heading .eyebrow { color: var(--primary); font-size: .72rem; font-weight: 900; letter-spacing: .16em; text-transform: uppercase; }
+        .login-heading h2 { margin-top: .65rem; color: var(--secondary); font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.05; letter-spacing: -.06em; }
+        .login-heading p { margin-top: .7rem; color: var(--text-muted); font-size: .96rem; line-height: 1.65; }
+        .login-card { padding: clamp(1.5rem, 4vw, 2.2rem); border: 1px solid rgba(56,86,232,.09); border-radius: 26px; background: rgba(255,255,255,.88); box-shadow: var(--shadow); }
+
+        .flash-msg { display: flex; align-items: flex-start; gap: .65rem; margin-bottom: 1.25rem; padding: .85rem .95rem; border: 1px solid #ffd1d8; border-radius: 13px; color: var(--danger); background: var(--danger-bg); font-size: .84rem; font-weight: 700; line-height: 1.45; }
+        .flash-msg svg { flex: 0 0 auto; width: 17px; height: 17px; margin-top: 1px; }
+        .form-group { margin-bottom: 1.15rem; }
+        .form-group label { display: block; margin-bottom: .5rem; color: var(--secondary); font-size: .84rem; font-weight: 800; }
+        .input-wrap { position: relative; }
+        .input-icon { position: absolute; left: .95rem; top: 50%; width: 18px; height: 18px; color: #8a96ad; transform: translateY(-50%); pointer-events: none; }
+        .form-control { width: 100%; min-height: 52px; padding: .85rem 2.8rem .85rem 2.8rem; border: 1px solid var(--line); border-radius: 14px; outline: none; color: var(--text-main); background: #fbfcfe; font: inherit; font-size: .92rem; transition: border-color .2s, box-shadow .2s, background .2s; }
+        .form-control::placeholder { color: #a2adbf; }
+        .form-control:focus { border-color: var(--primary); background: #fff; box-shadow: 0 0 0 4px rgba(56,86,232,.11); }
+        .password-toggle { position: absolute; top: 50%; right: .8rem; display: grid; width: 32px; height: 32px; place-items: center; border: 0; border-radius: 9px; color: #7d8aa3; background: transparent; cursor: pointer; transform: translateY(-50%); }
+        .password-toggle:hover { color: var(--primary); background: #eef2ff; }
+        .password-toggle:focus-visible { outline: 3px solid rgba(56,86,232,.2); outline-offset: 2px; }
+        .password-toggle svg { width: 17px; height: 17px; }
+        .login-help { display: flex; align-items: flex-start; gap: .5rem; margin: .2rem 0 1.35rem; color: var(--text-muted); font-size: .78rem; line-height: 1.5; }
+        .login-help svg { flex: 0 0 auto; width: 15px; height: 15px; margin-top: 1px; color: var(--primary); }
+        .btn-submit { display: inline-flex; align-items: center; justify-content: center; gap: .6rem; width: 100%; min-height: 53px; border: 0; border-radius: 14px; color: #fff; background: var(--primary); box-shadow: 0 12px 22px rgba(56,86,232,.2); cursor: pointer; font: inherit; font-size: .94rem; font-weight: 800; transition: transform .2s, box-shadow .2s, background .2s; }
+        .btn-submit:hover { transform: translateY(-2px); background: #2f4bd2; box-shadow: 0 16px 28px rgba(56,86,232,.27); }
+        .btn-submit:focus-visible { outline: 3px solid rgba(56,86,232,.22); outline-offset: 3px; }
+        .login-back { display: flex; align-items: center; justify-content: center; gap: .45rem; margin-top: 1.35rem; color: var(--text-muted); font-size: .82rem; font-weight: 700; text-decoration: none; transition: color .2s; }
+        .login-back:hover { color: var(--primary); }
+        .login-back svg { width: 16px; height: 16px; }
+
+        @media (max-width: 860px) {
+            .login-page { grid-template-columns: 1fr; }
+            .login-aside { min-height: auto; padding: 1.5rem 1.25rem 2rem; }
+            .aside-content { margin: 0; padding: 3.5rem 0 1.5rem; }
+            .aside-content h1 { max-width: 620px; font-size: clamp(2.45rem, 8vw, 4rem); }
+            .aside-content > p { max-width: 600px; }
+            .aside-footer { display: none; }
+            .login-main { padding: 2.5rem 1.25rem 3rem; }
         }
-
-        .btn-login {
-            background: var(--primary);
-            color: white;
-            border: none;
-            width: 100%;
-            padding: 1rem;
-            border-radius: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: var(--transition);
-            margin-top: 1rem;
+        @media (max-width: 520px) {
+            .login-aside { background: linear-gradient(145deg, #111a39 0%, #17275a 100%); }
+            .aside-content { padding-top: 2.6rem; }
+            .aside-content h1 { font-size: clamp(2.45rem, 13vw, 3.7rem); }
+            .aside-content > p { font-size: .92rem; }
+            .portal-points { grid-template-columns: 1fr; gap: .55rem; margin-top: 1.6rem; }
+            .portal-point { display: flex; align-items: center; gap: .7rem; padding: .72rem .8rem; }
+            .portal-point svg { margin: 0; }
+            .login-main { display: block; padding: 2.25rem 1rem 2.5rem; }
+            .login-heading h2 { font-size: 2.2rem; }
+            .login-card { padding: 1.2rem; border-radius: 21px; }
         }
-
-        .btn-login:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(67, 97, 238, 0.4);
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; }
         }
-
-        .flash-msg {
-            background: #ffe4e6;
-            color: #e11d48;
-            padding: 0.75rem;
-            border-radius: 10px;
-            margin-bottom: 1.5rem;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-
     </style>
 </head>
 <body>
-    <div class="login-card">
-        <div style="background: rgba(67, 97, 238, 0.1); width: 64px; height: 64px; border-radius: 18px; display: flex; align-items: center; justify-content: center; color: var(--primary); margin: 0 auto 1.5rem;">
-            <i data-lucide="monitor" style="width: 32px; height: 32px;"></i>
-        </div>
-        <h1>Portal Famousbytee.b</h1>
-        <p>Gunakan Username atau NIM untuk masuk.</p>
- 
-        {% with messages = get_flashed_messages() %}
-            {% if messages %}
-                {% for message in messages %}
-                    <div class="flash-msg">{{ message }}</div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
- 
-        <form action="{{ url_for('login') }}" method="POST">
-            <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
-            <div class="form-group">
-                <label>Username / NIM</label>
-                <input type="text" name="username" class="form-control" placeholder="admin atau NIM Anda" required>
-            </div>
-            <div class="form-group" style="margin-bottom: 0.5rem;">
-                <label>Password</label>
-                <input type="password" name="password" class="form-control" placeholder="••••••••">
-            </div>
-            <p style="font-size: 0.75rem; text-align: left; margin-bottom: 1.5rem; line-height: 1.4;">
-                <i data-lucide="info" style="width: 12px; vertical-align: middle;"></i> 
-                Belum aktivasi? Masukkan NIM saja dan klik login untuk membuat password.
-            </p>
-            <button type="submit" class="btn-login">Masuk ke Portal</button>
-        </form>
-        
-        <div style="margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #f1f5f9;">
-            <a href="{{ url_for('index') }}" style="color: var(--text-muted); text-decoration: none; font-size: 0.85rem; font-weight: 600;">
-                <i data-lucide="arrow-left" style="width: 14px; vertical-align: middle;"></i> Kembali ke Home
+    <main class="login-page">
+        <section class="login-aside" aria-label="Tentang portal">
+            <a class="brand-mark" href="{{ url_for('index') }}" aria-label="Kembali ke beranda">
+                {% if site_settings.logo_display_path %}
+                    <img src="{{ site_settings.logo_display_path }}" alt="Logo {{ site_settings.get('web_title', 'Famousbytee Portal') }}">
+                {% else %}
+                    <i data-lucide="{{ site_settings.web_logo or 'sparkles' }}"></i>
+                {% endif %}
+                <span>{{ site_settings.get('web_title', 'Famousbytee Portal') }}</span>
             </a>
-        </div>
-    </div>
+
+            <div class="aside-content">
+                <span class="aside-kicker">Member portal</span>
+                <h1>Satu ruang untuk <span>kelas yang terhubung.</span></h1>
+                <p>Kelola informasi perkuliahan, koordinasi kelas, dan kabar penting dari satu portal yang rapi.</p>
+                <div class="portal-points" aria-label="Fitur portal">
+                    <div class="portal-point"><i data-lucide="calendar-days"></i><span>Jadwal kelas</span></div>
+                    <div class="portal-point"><i data-lucide="megaphone"></i><span>Pengumuman</span></div>
+                    <div class="portal-point"><i data-lucide="bell-ring"></i><span>Si Dobe</span></div>
+                </div>
+            </div>
+
+            <p class="aside-footer">Portal koordinasi kelas {{ datetime.now().year }}</p>
+        </section>
+
+        <section class="login-main" aria-label="Form login">
+            <div class="login-panel">
+                <div class="login-heading">
+                    <span class="eyebrow">Selamat datang kembali</span>
+                    <h2>Masuk ke portal.</h2>
+                    <p>Gunakan username atau NIM untuk melanjutkan ke dashboard kelas.</p>
+                </div>
+
+                <div class="login-card">
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                                <div class="flash-msg" role="alert"><i data-lucide="circle-alert"></i><span>{{ message }}</span></div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+
+                    <form action="{{ url_for('login') }}" method="POST">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="username">Username / NIM</label>
+                            <div class="input-wrap">
+                                <i class="input-icon" data-lucide="user-round"></i>
+                                <input id="username" type="text" name="username" class="form-control" placeholder="Contoh: admin atau NIM" autocomplete="username" required autofocus>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <div class="input-wrap">
+                                <i class="input-icon" data-lucide="lock-keyhole"></i>
+                                <input id="password" type="password" name="password" class="form-control" placeholder="Masukkan password" autocomplete="current-password">
+                                <button type="button" class="password-toggle" id="password-toggle" aria-label="Tampilkan password" aria-pressed="false">
+                                    <i data-lucide="eye"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <p class="login-help"><i data-lucide="info"></i><span>Belum aktivasi? Hubungi pengurus kelas untuk bantuan akses akun.</span></p>
+                        <button type="submit" class="btn-submit">Masuk ke Portal <i data-lucide="arrow-right"></i></button>
+                    </form>
+                </div>
+                <a href="{{ url_for('index') }}" class="login-back"><i data-lucide="arrow-left"></i> Kembali ke beranda</a>
+            </div>
+        </section>
+    </main>
 
     <script>
         lucide.createIcons();
+        const passwordInput = document.getElementById('password');
+        const passwordToggle = document.getElementById('password-toggle');
+        if (passwordInput && passwordToggle) {
+            passwordToggle.addEventListener('click', () => {
+                const isVisible = passwordInput.type === 'text';
+                passwordInput.type = isVisible ? 'password' : 'text';
+                passwordToggle.setAttribute('aria-pressed', String(!isVisible));
+                passwordToggle.setAttribute('aria-label', isVisible ? 'Tampilkan password' : 'Sembunyikan password');
+                passwordToggle.innerHTML = `<i data-lucide="${isVisible ? 'eye' : 'eye-off'}"></i>`;
+                lucide.createIcons();
+            });
+        }
     </script>
 </body>
 </html>
