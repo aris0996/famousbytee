@@ -244,6 +244,7 @@
     <section id="notify-tab-bots" class="notify-tab">
         <div class="notify-panel notify-split">
             <div>
+                {% if can_manage_sidobe_control %}
                 <h2 class="notify-section-title">Koneksi Si Dobe</h2>
                 <p class="notify-muted">Semua pesan WhatsApp dari aplikasi dikirim melalui Si Dobe.</p>
                 <form method="POST" action="/notifications/sidobe/save-config" class="notify-card" style="margin-top:1rem;">
@@ -309,6 +310,7 @@
                     </div>
                     </div>
                 </details>
+                {% endif %}
             </div>
             <div class="notify-card">
                 <h3 style="margin:0;">Daftar Bot</h3>
@@ -318,15 +320,17 @@
                         <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
                             <div>
                                 <strong>{{ bot.name }}</strong>
-                                <div class="notify-mini">{{ 'Si Dobe' if bot.provider == 'sidobe' else 'Koneksi lama' }} · Nomor Pengirim: {{ bot.session_name or '-' }}</div>
+                                <div class="notify-mini">Si Dobe · Nomor Pengirim: {{ bot.session_name or 'Perangkat default' }}</div>
                             </div>
                             <span class="notify-status {{ 'ok' if bot.is_active else 'off' }}">{{ 'Aktif' if bot.is_active else 'Nonaktif' }}</span>
                         </div>
                         <div class="notify-mini" style="margin-top:.5rem;">Status: {{ bot.status or 'unknown' }}</div>
                         <div class="notify-actions" style="margin-top:.75rem;">
-                            <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm('{{ bot.id }}', '{{ bot.name|replace('\'', '\\\'') }}', '{{ bot.session_name|replace('\'', '\\\'') }}', '{{ bot.provider or 'sidobe' }}')">Edit</button>
                             <button class="btn" type="button" style="background:#1e293b; padding:8px 12px;" onclick="checkBotHealth('{{ bot.id }}')">Cek Health</button>
+                            {% if can_manage_sidobe_control %}
+                            <button class="btn" type="button" style="padding:8px 12px;" onclick="fillBotForm({{ bot.id|tojson }}, {{ bot.name|tojson }}, {{ (bot.session_name or '')|tojson }}, {{ (bot.provider or 'sidobe')|tojson }})">Edit</button>
                             <button class="btn" type="button" style="background:#fee2e2; color:#991b1b; padding:8px 12px;" onclick="deleteBot('{{ bot.id }}')">Hapus</button>
+                            {% endif %}
                         </div>
                     </div>
                     {% else %}
@@ -460,6 +464,12 @@ async function apiFetch(url, options = {}) {
     return data;
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, char => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[char]));
+}
+
 async function loadPolicy() {
     const classroomId = document.getElementById('policy-classroom').value;
     try {
@@ -473,12 +483,12 @@ async function loadPolicy() {
         document.getElementById('policy-finance').checked = !!data.finance_enabled;
         document.getElementById('policy-emergency').checked = !!data.emergency_enabled;
         document.getElementById('policy-summary').innerHTML = `
-            <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
-            <span class="notify-mini">Default channel: ${data.default_channel}</span><br>
+            <strong>${escapeHtml(data.classroom_name)}${data.classroom_batch ? ' - ' + escapeHtml(data.classroom_batch) : ''}</strong><br>
+            <span class="notify-mini">Default channel: ${escapeHtml(data.default_channel)}</span><br>
             <span class="notify-mini">Push: ${data.push_enabled ? 'Aktif' : 'Nonaktif'} | Si Dobe: ${(data.sidobe_enabled ?? data.whatsapp_enabled) ? 'Aktif' : 'Nonaktif'}</span>
         `;
     } catch (error) {
-        document.getElementById('policy-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat kebijakan: ${error.message}</span>`;
+        document.getElementById('policy-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat kebijakan: ${escapeHtml(error.message)}</span>`;
     }
 }
 
@@ -512,13 +522,13 @@ async function loadBinding() {
         document.getElementById('binding-chat-label').value = data.chat_label || '';
         await loadSidobeGroups();
         document.getElementById('binding-summary').innerHTML = `
-            <strong>${data.classroom_name}${data.classroom_batch ? ' - ' + data.classroom_batch : ''}</strong><br>
-            <span class="notify-mini">Bot: ${data.bot_name || '-'}</span><br>
-            <span class="notify-mini">Nomor pengirim: ${data.sender_phone || 'Perangkat default Sidobe'}</span><br>
-            <span class="notify-mini">Grup tujuan: ${data.chat_label || data.chat_id || '-'}</span>
+            <strong>${escapeHtml(data.classroom_name)}${data.classroom_batch ? ' - ' + escapeHtml(data.classroom_batch) : ''}</strong><br>
+            <span class="notify-mini">Bot: ${escapeHtml(data.bot_name || '-')}</span><br>
+            <span class="notify-mini">Nomor pengirim: ${escapeHtml(data.sender_phone || 'Perangkat default Sidobe')}</span><br>
+            <span class="notify-mini">Grup tujuan: ${escapeHtml(data.chat_label || data.chat_id || '-')}</span>
         `;
     } catch (error) {
-        document.getElementById('binding-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat binding: ${error.message}</span>`;
+        document.getElementById('binding-summary').innerHTML = `<span style="color:#ef4444;">Gagal memuat binding: ${escapeHtml(error.message)}</span>`;
     }
 }
 
@@ -563,7 +573,7 @@ async function loadSidobeGroups() {
         }
         select.innerHTML = '<option value="">Pilih grup Si Dobe</option>' + items.map(item => {
             const label = `${item.name} (${item.participants || 0})`;
-            return `<option value="${item.chat_id}">${label}</option>`;
+            return `<option value="${escapeHtml(item.chat_id)}">${escapeHtml(label)}</option>`;
         }).join('');
         if (manual && manual.value) {
             select.value = manual.value;
@@ -610,7 +620,7 @@ async function refreshSidobeSessions() {
             return;
         }
         select.innerHTML = '<option value="">Pilih session aktif</option>' + items.map(item => {
-            return `<option value="${item.name}">${item.name} - ${normalizeSidobeStatusText(item.status)}</option>`;
+            return `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)} - ${escapeHtml(normalizeSidobeStatusText(item.status))}</option>`;
         }).join('');
         if (status) status.innerText = `Ditemukan ${items.length} session.`;
     } catch (error) {
@@ -685,15 +695,15 @@ async function refreshSidobeDashboard() {
         const data = await apiFetch('/api/notifications/sidobe/dashboard');
         const workers = data.workers || [];
         const sessions = data.sessions || [];
-        const workerError = data.worker_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.worker_error}</div>` : '';
-        const sessionError = data.session_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${data.session_error}</div>` : '';
+        const workerError = data.worker_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${escapeHtml(data.worker_error)}</div>` : '';
+        const sessionError = data.session_error ? `<div class="notify-output" style="margin-bottom:.75rem; color:#b91c1c;">${escapeHtml(data.session_error)}</div>` : '';
         const workerHtml = workers.length ? workers.map(worker => `
             <div class="sidobe-item">
-                <h4>${worker.name}</h4>
-                <div class="notify-mini">API: ${worker.api || '-'}</div>
-                <div style="margin-top:.45rem;"><span class="sidobe-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : worker.status === 'offline' || worker.status === 'error' ? 'error' : 'warn'}">${normalizeSidobeStatusText(worker.status)}</span></div>
-                <div class="notify-mini" style="margin-top:.45rem;">Info: ${worker.info || '-'}</div>
-                <div class="notify-mini">Sessions: ${worker.sessions || 0}</div>
+                <h4>${escapeHtml(worker.name)}</h4>
+                <div class="notify-mini">API: ${escapeHtml(worker.api || '-')}</div>
+                <div style="margin-top:.45rem;"><span class="sidobe-pill ${worker.status === 'working' || worker.status === 'ok' ? 'ok' : worker.status === 'offline' || worker.status === 'error' ? 'error' : 'warn'}">${escapeHtml(normalizeSidobeStatusText(worker.status))}</span></div>
+                <div class="notify-mini" style="margin-top:.45rem;">Info: ${escapeHtml(worker.info || '-')}</div>
+                <div class="notify-mini">Sessions: ${escapeHtml(worker.sessions || 0)}</div>
             </div>
         `).join('') : '<div class="notify-output">Tidak ada worker terdeteksi.</div>';
 
@@ -701,15 +711,15 @@ async function refreshSidobeDashboard() {
             <div class="sidobe-item">
                 <div style="display:flex; justify-content:space-between; gap:.75rem; align-items:flex-start;">
                     <div>
-                        <h4>${session.name}</h4>
-                        <div class="notify-mini">Account: ${session.account || '-'}</div>
+                        <h4>${escapeHtml(session.name)}</h4>
+                        <div class="notify-mini">Account: ${escapeHtml(session.account || '-')}</div>
                     </div>
-                    <span class="sidobe-pill ${sessionStatusClass(session.status)}">${normalizeSidobeStatusText(session.status)}</span>
+                    <span class="sidobe-pill ${sessionStatusClass(session.status)}">${escapeHtml(normalizeSidobeStatusText(session.status))}</span>
                 </div>
-                <div class="notify-mini" style="margin-top:.45rem;">Server: ${session.server || '-'}</div>
+                <div class="notify-mini" style="margin-top:.45rem;">Server: ${escapeHtml(session.server || '-')}</div>
                 <div class="notify-actions" style="margin-top:.75rem;">
-                    <button class="btn" type="button" style="background:#4338ca;" onclick="useSessionName('${session.name}')">Pakai</button>
-                    <button class="btn" type="button" style="background:#1e293b;" onclick="loadSessionQr('${session.name}')">QR</button>
+                    <button class="btn" type="button" style="background:#4338ca;" data-session-action="use" data-session-name="${escapeHtml(session.name)}">Pakai</button>
+                    <button class="btn" type="button" style="background:#1e293b;" data-session-action="qr" data-session-name="${escapeHtml(session.name)}">QR</button>
                 </div>
             </div>
         `).join('') : '<div class="notify-output">Tidak ada session terdeteksi.</div>';
@@ -720,8 +730,15 @@ async function refreshSidobeDashboard() {
                 <div class="sidobe-item"><h4>Sessions</h4>${sessionError}<div class="sidobe-grid" style="grid-template-columns:1fr;">${sessionHtml}</div></div>
             </div>
         `;
+        board.querySelectorAll('[data-session-action]').forEach(button => {
+            const sessionName = button.dataset.sessionName || '';
+            button.addEventListener('click', () => {
+                if (button.dataset.sessionAction === 'use') useSessionName(sessionName);
+                if (button.dataset.sessionAction === 'qr') loadSessionQr(sessionName);
+            });
+        });
     } catch (error) {
-        if (board) board.innerHTML = `<div class="notify-output" style="color:#ef4444;">${error.message}</div>`;
+        if (board) board.innerHTML = `<div class="notify-output" style="color:#ef4444;">${escapeHtml(error.message)}</div>`;
     }
 }
 

@@ -91,7 +91,7 @@
                     </td>
                     <td style="padding: 1rem; text-align: right;">
                         <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                            <button onclick="openEditModal('{{ u.id }}', '{{ u.full_name|replace('\'','\\\'') or '' }}', '{{ u.email|replace('\'','\\\'') or '' }}', '{{ u.role_id }}', '{{ u.status }}', '{{ u.student_id or 'none' }}', '{{ u.classroom_id or (u.student.classroom_id if u.student else 'none') }}')" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
+                            <button onclick="openEditModal({{ u.id|tojson }}, {{ (u.full_name or '')|tojson }}, {{ (u.email or '')|tojson }}, {{ u.role_id|tojson }}, {{ u.status|tojson }}, {{ (u.student_id or 'none')|tojson }}, {{ (u.classroom_id or (u.student.classroom_id if u.student else 'none'))|tojson }})" style="background: none; border: none; cursor: pointer; color: var(--primary); padding: 5px;">
                                 <i data-lucide="edit-3" style="width: 18px;"></i>
                             </button>
                             {% if u.id != current_user.id %}
@@ -164,7 +164,7 @@
                      {% endif %}
                 </div>
                 <button 
-                    onclick="openEditRoleModal('{{ role.id }}', '{{ role.name }}', '{{ role.description }}', {
+                    onclick="openEditRoleModal({{ role.id|tojson }}, {{ (role.name or '')|tojson }}, {{ (role.description or '')|tojson }}, {
                         mS: {{ 'true' if role.can_manage_students else 'false' }},
                         mSc: {{ 'true' if role.can_manage_schedule else 'false' }},
                         mF: {{ 'true' if role.can_manage_fund else 'false' }},

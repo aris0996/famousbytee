@@ -80,7 +80,7 @@
                     </span>
                 </div>
                 <div class="cat-actions">
-                    <button type="button" onclick="openEditCat('{{ cat.id }}', '{{ cat.name|e }}', '{{ cat.color }}')" title="Edit">
+                    <button type="button" onclick="openEditCat({{ cat.id|tojson }}, {{ cat.name|tojson }}, {{ cat.color|tojson }})" title="Edit">
                         <i data-lucide="edit-3" style="width:16px; color:var(--primary);"></i>
                     </button>
                     <form method="POST" style="display:inline;" onsubmit="return confirm('Hapus kategori ini? Artikel tidak akan terhapus.')">

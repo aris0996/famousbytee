@@ -25,6 +25,9 @@ import json
 import datetime
 from collections import Counter, defaultdict
 
+import os
+import shlex
+
 try:
     import paramiko
 except ImportError:
@@ -80,7 +83,12 @@ class SSHManager:
 
     def connect(self):
         self.client = paramiko.SSHClient()
-        self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        known_hosts = os.environ.get('SSH_KNOWN_HOSTS', '').strip()
+        if known_hosts:
+            self.client.load_host_keys(known_hosts)
+        else:
+            self.client.load_system_host_keys()
+        self.client.set_missing_host_key_policy(paramiko.RejectPolicy())
         self.client.connect(
             self.host, port=self.port,
             username=self.username, password=self.password,
@@ -91,9 +99,12 @@ class SSHManager:
     def run(self, cmd, timeout=20, use_sudo=False):
         """Jalankan command, return (stdout, stderr, exit_code)"""
         if use_sudo:
-            cmd = f"echo '{self.sudo_pass}' | sudo -S bash -c {repr(cmd)} 2>/dev/null"
+            cmd = f"sudo -S -p '' bash -c {shlex.quote(cmd)} 2>/dev/null"
         try:
-            stdin, stdout, stderr = self.client.exec_command(cmd, timeout=timeout)
+            stdin, stdout, stderr = self.client.exec_command(cmd, timeout=timeout, get_pty=use_sudo)
+            if use_sudo:
+                stdin.write(f'{self.sudo_pass}\n')
+                stdin.flush()
             out = stdout.read().decode("utf-8", errors="replace").strip()
             err = stderr.read().decode("utf-8", errors="replace").strip()
             code = stdout.channel.recv_exit_status()

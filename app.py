@@ -21,10 +21,17 @@ import hashlib
 from collections import defaultdict, deque
 from threading import Lock
 from markupsafe import escape
-from security_utils import hash_password, is_password_hash, password_validation_error, verify_password
+from security_utils import (
+    hash_password,
+    is_password_hash,
+    password_validation_error,
+    safe_external_url,
+    sanitize_rich_text,
+    verify_password,
+)
 from datetime import datetime, timedelta
 from urllib import request as urllib_request, error as urllib_error
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from sqlalchemy.exc import OperationalError
 
 import firebase_admin
@@ -115,21 +122,30 @@ def _csrf_token():
     return token
 
 
-def _login_rate_limited(client_ip):
+def _login_rate_limited(client_ip, username=None):
     now = _time.time()
+    keys = [f'ip:{client_ip}']
+    if username:
+        keys.append(f'user:{str(username).strip().lower()}')
     with _LOGIN_ATTEMPTS_LOCK:
-        attempts = _LOGIN_ATTEMPTS[client_ip]
-        while attempts and now - attempts[0] > _LOGIN_WINDOW_SECONDS:
-            attempts.popleft()
-        if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
-            return True
-        attempts.append(now)
+        for key in keys:
+            attempts = _LOGIN_ATTEMPTS[key]
+            while attempts and now - attempts[0] > _LOGIN_WINDOW_SECONDS:
+                attempts.popleft()
+            if len(attempts) >= _LOGIN_MAX_ATTEMPTS:
+                return True
+        for key in keys:
+            _LOGIN_ATTEMPTS[key].append(now)
     return False
 
 
-def _clear_login_attempts(client_ip):
+def _clear_login_attempts(client_ip, username=None):
+    keys = [f'ip:{client_ip}']
+    if username:
+        keys.append(f'user:{str(username).strip().lower()}')
     with _LOGIN_ATTEMPTS_LOCK:
-        _LOGIN_ATTEMPTS.pop(client_ip, None)
+        for key in keys:
+            _LOGIN_ATTEMPTS.pop(key, None)
 
 _SIDOBE_RECENT_COMMANDS = {}
 _SIDOBE_COMMAND_DEDUP_WINDOW_SECONDS = 3  # Reduced from 12 to allow faster re-commands
@@ -235,21 +251,15 @@ def get_whatsapp_setting_value(provider, key, default=''):
 
 
 def get_default_whatsapp_provider():
-    provider = (
-        get_setting_value('whatsapp_provider', None)
-        or os.environ.get('WHATSAPP_PROVIDER', 'sidobe')
-    ).strip().lower()
-    return provider if provider in {'waha', 'sidobe'} else 'sidobe'
+    # Si Dobe is the only supported provider. Legacy values are migrated at
+    # startup but are not allowed to select a different transport.
+    return 'sidobe'
 
 def migrate_legacy_sidobe_settings():
     # Keep the old function name for startup compatibility while making Si Dobe
     # the visible and default notification provider.
     defaults = {
         'whatsapp_provider': 'sidobe',
-        'waha_base_url': os.environ.get('WAHA_BASE_URL', 'http://localhost:3000'),
-        'waha_api_key': os.environ.get('WAHA_API_KEY', ''),
-        'waha_session': os.environ.get('WAHA_SESSION', 'default'),
-        'waha_webhook_secret': os.environ.get('WAHA_WEBHOOK_SECRET', ''),
         'whatsapp_admin_header_enabled': 'true',
         'whatsapp_admin_header_text': '*[PESAN RESMI ADMIN FAMOUSBYTEE]*\n{title_block}Pesan ini dikirim dari sistem admin.\n',
     }
@@ -258,13 +268,24 @@ def migrate_legacy_sidobe_settings():
         if not SystemSetting.query.filter_by(key=key).first():
             db.session.add(SystemSetting(key=key, value=default, description=f'Konfigurasi {key}'))
             changed = True
-    # Existing installations may still point the global default at the retired
-    # provider. Switch only that default; legacy bot records remain untouched.
+    # Existing installations may still point at the retired provider. Convert
+    # those records to the single supported transport and discard old endpoints.
     provider_setting = SystemSetting.query.filter_by(key='whatsapp_provider').first()
     if provider_setting and (provider_setting.value or '').strip().lower() == 'waha':
         provider_setting.value = 'sidobe'
         provider_setting.description = 'Provider notifikasi utama Si Dobe'
         changed = True
+    for legacy_setting in SystemSetting.query.filter(
+        SystemSetting.key.in_({'waha_base_url', 'waha_api_key', 'waha_session', 'waha_webhook_secret'})
+    ).all():
+        db.session.delete(legacy_setting)
+        changed = True
+    for bot in WhatsAppBot.query.all():
+        if (bot.provider or '').strip().lower() != 'sidobe':
+            bot.provider = 'sidobe'
+            bot.base_url = None
+            bot.status = 'migration-required'
+            changed = True
     if changed:
         db.session.commit()
 
@@ -304,8 +325,16 @@ def _build_template_settings():
     merged['logo_display_path'] = merged.get('web_logo_path') or ''
     merged['favicon_display_url'] = (
         merged.get('favicon_path')
-        or merged.get('favicon_url')
+        or safe_external_url(merged.get('favicon_url'), allow_local=True)
         or '/static/favicon.ico'
+    )
+    merged['social_ig'] = safe_external_url(
+        merged.get('social_ig'), allowed_hosts={'instagram.com'}, allow_local=False
+    )
+    merged['social_wa'] = safe_external_url(
+        merged.get('social_wa'),
+        allowed_hosts={'wa.me', 'chat.whatsapp.com', 'api.whatsapp.com'},
+        allow_local=False,
     )
     return _TemplateSettings(merged)
 
@@ -417,7 +446,8 @@ def _default_classroom():
 def _active_classroom_for_user(user=None):
     user = user or current_user
     classroom = getattr(user, 'classroom', None) or (user.student.classroom if getattr(user, 'student', None) else None)
-    return classroom or _default_classroom()
+    # An unassigned authenticated user must not silently inherit another class.
+    return classroom
 
 
 def _has_any_classroom_scope(*flags):
@@ -433,6 +463,17 @@ def _web_allowed_classrooms(*flags):
     if _has_any_classroom_scope(*flags):
         return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
     return [active_classroom] if active_classroom else []
+
+
+def _can_manage_sidobe_control(user=None):
+    user = user or current_user
+    role = getattr(user, 'role', None)
+    return bool(
+        role and getattr(role, 'sidobe_enabled', False) and (
+            getattr(role, 'can_manage_roles', False) or
+            getattr(role, 'can_manage_notifications_multi_class', False)
+        )
+    )
 
 
 def _requested_classroom(form_key='classroom_id', fallback=None, *flags):
@@ -456,8 +497,7 @@ def _can_manage_gallery_content(role=None):
     role = role or current_user.role
     return bool(
         getattr(role, 'can_manage_roles', False) or
-        getattr(role, 'can_manage_gallery', False) or
-        getattr(role, 'name', '') in ['Admin', 'Pengurus']
+        getattr(role, 'can_manage_gallery', False)
     )
 
 
@@ -481,7 +521,7 @@ def _requested_gallery_classroom():
 
 def _is_gallery_photo_in_allowed_scope(photo, classroom):
     if not classroom:
-        return True
+        return False
     if photo.classroom_id == classroom.id:
         return True
     return bool(photo.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
@@ -587,7 +627,7 @@ def _apply_fund_classroom_sum_filter(query, classroom, include_legacy_default=Tr
 
 def _is_fund_in_allowed_scope(fund, classroom):
     if not classroom:
-        return True
+        return False
     if fund.classroom_id == classroom.id:
         return True
     return bool(fund.classroom_id is None and _default_classroom() and classroom.id == _default_classroom().id)
@@ -603,7 +643,17 @@ def _sidobe_headers(api_key_override=None, auth_mode=None):
     return headers
 
 def _sidobe_request(method, path, payload=None, base_url_override=None, api_key_override=None, auth_mode=None):
-    base_url = (base_url_override or SIDOBE_API_BASE_URL).rstrip('/')
+    requested_base_url = (base_url_override or SIDOBE_API_BASE_URL).strip().rstrip('/')
+    parsed_base_url = urlsplit(requested_base_url)
+    allowed_hosts = {
+        item.strip().lower()
+        for item in os.environ.get('SIDOBE_ALLOWED_HOSTS', 'api.sidobe.com').split(',')
+        if item.strip()
+    }
+    hostname = (parsed_base_url.hostname or '').lower().rstrip('.')
+    if parsed_base_url.scheme != 'https' or not hostname or hostname not in allowed_hosts:
+        return {'ok': False, 'error': 'URL Si Dobe tidak diizinkan oleh konfigurasi server.'}
+    base_url = requested_base_url
     api_key = (api_key_override if api_key_override is not None else get_sidobe_setting_value('api_key', '')).strip()
     if not api_key:
         return {'ok': False, 'error': 'Secret Key Sidobe belum diatur'}
@@ -636,65 +686,17 @@ def _sidobe_request(method, path, payload=None, base_url_override=None, api_key_
         return {'ok': False, 'error': str(e)}
 
 
-WAHA_API_BASE_URL = 'http://localhost:3000'
-
-
-def _waha_request(method, path, payload=None, base_url_override=None, api_key_override=None):
-    base_url = (
-        base_url_override
-        or get_whatsapp_setting_value('waha', 'base_url', '')
-        or WAHA_API_BASE_URL
-    ).rstrip('/')
-    api_key = (
-        api_key_override
-        if api_key_override is not None
-        else get_whatsapp_setting_value('waha', 'api_key', '')
-    ).strip()
-    if not api_key:
-        return {'ok': False, 'error': 'API key WAHA belum diatur'}
-
-    headers = {'Content-Type': 'application/json', 'Accept': 'application/json', 'X-Api-Key': api_key}
-    url = f"{base_url}{path if path.startswith('/') else '/' + path}"
-    data = json.dumps(payload).encode('utf-8') if payload is not None else None
-    req = urllib_request.Request(url, data=data, headers=headers, method=method)
-    try:
-        with urllib_request.urlopen(req, timeout=15) as resp:
-            raw = resp.read().decode('utf-8') if resp.length != 0 else ''
-            response_data = json.loads(raw) if raw else None
-            return {'ok': 200 <= resp.status < 300, 'status': resp.status, 'data': response_data,
-                    **({} if 200 <= resp.status < 300 else {'error': 'WAHA mengembalikan response gagal'})}
-    except urllib_error.HTTPError as e:
-        detail = e.read().decode('utf-8', errors='ignore').strip()
-        if e.code in (401, 403):
-            return {'ok': False, 'status': e.code, 'error': f'WAHA menolak akses (HTTP {e.code}). Periksa API key.'}
-        return {'ok': False, 'status': e.code,
-                'error': f'WAHA HTTP {e.code}: {detail[:180]}' if detail else f'WAHA HTTP {e.code}'}
-    except urllib_error.URLError as e:
-        reason = getattr(e, 'reason', None)
-        return {'ok': False, 'error': f'Gagal konek ke WAHA: {reason}' if reason else 'Gagal konek ke WAHA'}
-    except Exception as e:
-        return {'ok': False, 'error': str(e)}
-
-
 def _whatsapp_provider_request(provider, method, path, payload=None, bot=None):
     provider = (provider or get_default_whatsapp_provider()).strip().lower()
-    if provider == 'waha':
-        return _waha_request(
-            method,
-            path,
-            payload=payload,
-            base_url_override=(bot.base_url if bot else None),
-            api_key_override=get_whatsapp_setting_value('waha', 'api_key', ''),
-        )
-    if provider == 'sidobe':
-        return _sidobe_request(
-            method,
-            path,
-            payload=payload,
-            base_url_override=(bot.base_url if bot else None),
-            api_key_override=get_whatsapp_setting_value('sidobe', 'api_key', ''),
-        )
-    return {'ok': False, 'error': f'Provider WhatsApp tidak didukung: {provider}'}
+    if provider != 'sidobe':
+        return {'ok': False, 'error': 'Provider WhatsApp tidak didukung. Gunakan Si Dobe.'}
+    return _sidobe_request(
+        method,
+        path,
+        payload=payload,
+        base_url_override=(bot.base_url if bot else None),
+        api_key_override=get_whatsapp_setting_value('sidobe', 'api_key', ''),
+    )
 
 def _sidobe_request_any(method, paths, payload=None, base_url_override=None, api_key_override=None):
     last_error = None
@@ -1518,45 +1520,30 @@ def send_whatsapp(text, sender_id=None, title=None, chat_id=None, force=False, c
             target_chat = (binding.chat_id or '').strip()
 
     provider = (bot.provider if bot and bot.provider else get_default_whatsapp_provider()).strip().lower()
-    if provider not in {'waha', 'sidobe'}:
-        return {'ok': False, 'error': f'Provider WhatsApp tidak didukung: {provider}'}
+    if provider != 'sidobe':
+        return {'ok': False, 'error': 'Provider WhatsApp legacy ditolak. Gunakan Si Dobe.'}
 
     if not target_chat:
         _log_notification_history(title or "Si Dobe gagal", text, None, sender_id, "Missing target", channel='whatsapp', classroom_id=target_classroom_id, category=category, delivery_mode=delivery_mode, bot_id=bot.id if bot else None, chat_id=target_chat or chat_id)
         return {'ok': False, 'error': 'Nomor atau grup tujuan belum diatur'}
 
-    target_lower = target_chat.lower()
-    if provider == 'waha':
-        session_name = (bot.session_name if bot and bot.session_name else '').strip()
-        if not session_name:
-            session_name = get_whatsapp_setting_value('waha', 'session', 'default').strip() or 'default'
-        if '@' in target_chat:
-            chat_id = target_chat.replace('@s.whatsapp.net', '@c.us')
-        else:
-            phone = _sidobe_e164_phone(target_chat)
-            if not phone:
-                return {'ok': False, 'error': 'Nomor tujuan tidak valid. Gunakan format E.164, contoh +628123456789.'}
-            chat_id = f'{phone[1:]}@c.us'
-        payload = {'session': session_name, 'chatId': chat_id, 'text': text}
-        result = _whatsapp_provider_request(provider, 'POST', '/api/sendText', payload, bot=bot)
+    payload = {
+        'message': text,
+        'is_async': get_whatsapp_setting_value('sidobe', 'is_async', 'true').strip().lower() == 'true',
+    }
+    is_personal_jid = target_chat.lower().endswith(('@c.us', '@s.whatsapp.net'))
+    if '@' in target_chat and not is_personal_jid:
+        payload['group_id'] = target_chat
     else:
-        payload = {
-            'message': text,
-            'is_async': get_whatsapp_setting_value('sidobe', 'is_async', 'true').strip().lower() == 'true',
-        }
-        is_personal_jid = target_lower.endswith(('@c.us', '@s.whatsapp.net'))
-        if '@' in target_chat and not is_personal_jid:
-            payload['group_id'] = target_chat
-        else:
-            phone = _sidobe_e164_phone(target_chat)
-            if not phone:
-                return {'ok': False, 'error': 'Nomor tujuan tidak valid. Gunakan format E.164, contoh +628123456789.'}
-            payload['phone'] = phone
-        if bot and bot.session_name:
-            sender_phone = _sidobe_e164_phone(bot.session_name)
-            if sender_phone:
-                payload['sender_phone'] = sender_phone
-        result = _whatsapp_provider_request(provider, 'POST', '/send-message', payload, bot=bot)
+        phone = _sidobe_e164_phone(target_chat)
+        if not phone:
+            return {'ok': False, 'error': 'Nomor tujuan tidak valid. Gunakan format E.164, contoh +628123456789.'}
+        payload['phone'] = phone
+    if bot and bot.session_name:
+        sender_phone = _sidobe_e164_phone(bot.session_name)
+        if sender_phone:
+            payload['sender_phone'] = sender_phone
+    result = _whatsapp_provider_request(provider, 'POST', '/send-message', payload, bot=bot)
     # Sidobe returns the device actually used. Persist it for legacy/default
     # bot records so the notification page shows the real sender thereafter.
     if result.get('ok') and bot:
@@ -2127,6 +2114,12 @@ def view_announcements():
         anns_query = anns_query.filter(
             (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
         )
+    elif not _has_any_classroom_scope(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    ):
+        anns_query = anns_query.filter(db.false())
     announcements = anns_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     classrooms = _web_allowed_classrooms(
         'can_manage_announcements_multi_class',
@@ -2165,6 +2158,12 @@ def view_logs():
     query = ActivityLog.query
     if active_classroom:
         query = query.filter((ActivityLog.classroom_id == active_classroom.id) | (ActivityLog.classroom_id.is_(None)))
+    elif not _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    ):
+        query = query.filter(db.false())
 
     logs = query.order_by(ActivityLog.timestamp.desc()).limit(100).all()
     classrooms = _web_allowed_classrooms(
@@ -2194,12 +2193,12 @@ def login():
         return redirect(url_for('dashboard'))
 
     if request.method == 'POST':
+        username = (request.form.get('username') or '').strip()
         client_ip = request.remote_addr or 'unknown'
-        if _login_rate_limited(client_ip):
+        if _login_rate_limited(client_ip, username):
             flash('Terlalu banyak percobaan login. Coba kembali beberapa menit lagi.')
             return render_template('login.html'), 429
 
-        username = (request.form.get('username') or '').strip()
         password = request.form.get('password') or ''
 
         if not username:
@@ -2232,8 +2231,10 @@ def login():
             user.password = hash_password(password)
             db.session.commit()
 
-        login_user(user, remember=True)
-        _clear_login_attempts(client_ip)
+        # Persistent login is opt-in; a stolen browser cookie should not live
+        # for the default remember-cookie lifetime.
+        login_user(user, remember=request.form.get('remember') == 'on')
+        _clear_login_attempts(client_ip, username)
         flash(f'Selamat datang, {user.full_name or user.username}.')
         return redirect(url_for('dashboard'))
 
@@ -2255,15 +2256,20 @@ def dashboard():
     serta statistik manajemen bagi Admin/Pengurus.
     """
     # 1. Data Dasar: Pengumuman Terbaru
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _active_classroom_for_user()
+    has_global_scope = _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    )
 
     recent_announcements_query = Announcement.query
     if active_classroom:
         recent_announcements_query = recent_announcements_query.filter(
             (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
         )
+    elif not has_global_scope:
+        recent_announcements_query = recent_announcements_query.filter(db.false())
     recent_announcements = recent_announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).limit(5).all()
     
     # 2. Ambil Info Personal Member (jika User terhubung ke Student)
@@ -2292,6 +2298,8 @@ def dashboard():
         gallery_preview_query = gallery_preview_query.filter(
             (GalleryPhoto.classroom_id == active_classroom.id) | (GalleryPhoto.classroom_id.is_(None))
         )
+    elif not has_global_scope:
+        gallery_preview_query = gallery_preview_query.filter(db.false())
     gallery_preview = gallery_preview_query.order_by(GalleryPhoto.created_at.desc()).limit(4).all()
 
     # 4. NEXT CLASS COUNTDOWN
@@ -2338,6 +2346,11 @@ def dashboard():
             total_in_query = total_in_query.filter((BatchFund.classroom_id == active_classroom.id) | (BatchFund.classroom_id.is_(None)))
             total_out_query = total_out_query.filter((BatchFund.classroom_id == active_classroom.id) | (BatchFund.classroom_id.is_(None)))
             total_ann_query = total_ann_query.filter((Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None)))
+        elif not has_global_scope:
+            total_mhs_query = total_mhs_query.filter(db.false())
+            total_in_query = total_in_query.filter(db.false())
+            total_out_query = total_out_query.filter(db.false())
+            total_ann_query = total_ann_query.filter(db.false())
         total_mhs = total_mhs_query.count()
         total_in = total_in_query.scalar() or 0
         total_out = total_out_query.scalar() or 0
@@ -2351,6 +2364,8 @@ def dashboard():
         recent_students_query = Student.query
         if active_classroom:
             recent_students_query = recent_students_query.filter_by(classroom_id=active_classroom.id)
+        elif not has_global_scope:
+            recent_students_query = recent_students_query.filter(db.false())
         recent_students = recent_students_query.order_by(Student.id.desc()).limit(5).all()
 
     return render_template('dashboard.html', 
@@ -2473,6 +2488,9 @@ def bulk_add_members():
         'can_move_users_between_classrooms',
         'can_view_all_classrooms',
     )
+    if not class_fb:
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_members'))
     
     added_count = 0
     lines = data.strip().split('\n')
@@ -2579,9 +2597,12 @@ def manage_schedule():
             'can_manage_schedule_multi_class',
             'can_view_all_classrooms',
         )
+        if not classroom:
+            flash('Kelas tujuan wajib dipilih.')
+            return redirect(url_for('manage_schedule'))
         # Single Add logic (remains as is)
         sched = Schedule(
-            classroom_id=classroom.id if classroom else None, 
+            classroom_id=classroom.id,
             day=request.form['day'], 
             time_start=request.form['time_start'], 
             time_end=request.form['time_end'], 
@@ -2596,9 +2617,14 @@ def manage_schedule():
     
     # 1. Get All Schedules
     schedules = Schedule.query.filter_by(classroom_id=active_classroom.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all() if active_classroom else []
-    schedule_presets = SchedulePreset.query.filter(
-        (SchedulePreset.classroom_id == active_classroom.id) | (SchedulePreset.classroom_id.is_(None))
-    ).order_by(SchedulePreset.name.asc()).all()
+    if active_classroom:
+        schedule_presets = SchedulePreset.query.filter(
+            (SchedulePreset.classroom_id == active_classroom.id) | (SchedulePreset.classroom_id.is_(None))
+        ).order_by(SchedulePreset.name.asc()).all()
+    elif _has_any_classroom_scope('can_manage_schedule_multi_class', 'can_view_all_classrooms'):
+        schedule_presets = SchedulePreset.query.order_by(SchedulePreset.name.asc()).all()
+    else:
+        schedule_presets = []
     
     # 2. Logic to Find 'Active' and 'Next' Subject
     now = datetime.now()
@@ -2619,13 +2645,23 @@ def manage_schedule():
         elif s.time_start > current_time_str and not next_subject:
             next_subject = s
             
+    assignment_query = Assignment.query
+    if active_classroom:
+        assignment_scope = Assignment.classroom_id == active_classroom.id
+        default_classroom = _default_classroom()
+        if default_classroom and active_classroom.id == default_classroom.id:
+            assignment_scope = db.or_(assignment_scope, Assignment.classroom_id.is_(None))
+        assignment_query = assignment_query.filter(assignment_scope)
+    else:
+        assignment_query = assignment_query.filter(db.false())
+
     return render_template('schedule.html', 
                          schedules=schedules, 
                          active_subject=active_subject, 
                          next_subject=next_subject,
                          today_indo=today_indo,
                          schedule_presets=schedule_presets,
-                         assignments=Assignment.query.order_by(Assignment.deadline.asc()).all(),
+                         assignments=assignment_query.order_by(Assignment.deadline.asc()).all(),
                          classrooms=all_classrooms,
                          active_classroom=active_classroom)
 
@@ -2641,6 +2677,9 @@ def create_schedule_preset():
         'can_manage_schedule_multi_class',
         'can_view_all_classrooms',
     )
+    if not class_fb:
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_schedule') + '#presets')
     name = (request.form.get('name') or '').strip()
     subject = (request.form.get('subject') or '').strip()
     if not name or not subject:
@@ -2648,7 +2687,7 @@ def create_schedule_preset():
         return redirect(url_for('manage_schedule') + '#presets')
 
     preset = SchedulePreset(
-        classroom_id=class_fb.id if class_fb else None,
+        classroom_id=class_fb.id,
         name=name,
         subject=subject,
         lecturer=(request.form.get('lecturer') or '').strip(),
@@ -2674,7 +2713,9 @@ def update_schedule_preset(preset_id):
         'can_view_all_classrooms',
     )
     preset = SchedulePreset.query.get_or_404(preset_id)
-    if class_fb and preset.classroom_id not in (class_fb.id, None):
+    if not _can_manage_web_classroom_record(
+        preset.classroom_id, 'can_manage_schedule_multi_class'
+    ):
         return redirect(url_for('manage_schedule') + '#presets')
     name = (request.form.get('name') or '').strip()
     subject = (request.form.get('subject') or '').strip()
@@ -2704,7 +2745,9 @@ def delete_schedule_preset(preset_id):
         'can_view_all_classrooms',
     )
     preset = SchedulePreset.query.get_or_404(preset_id)
-    if class_fb and preset.classroom_id not in (class_fb.id, None):
+    if not _can_manage_web_classroom_record(
+        preset.classroom_id, 'can_manage_schedule_multi_class'
+    ):
         return redirect(url_for('manage_schedule') + '#presets')
     name = preset.name
     db.session.delete(preset)
@@ -2734,13 +2777,15 @@ def create_schedule_template():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_schedule') + '#templates')
     template = ScheduleTemplate(
         classroom_id=class_fb.id,
         name=(request.form.get('name') or 'Template Jadwal Baru').strip(),
@@ -2759,13 +2804,15 @@ def create_schedule_template_from_current():
     if not current_user.role.can_manage_schedule:
         return redirect(url_for('dashboard'))
 
-    class_fb = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if current_user.role.can_manage_roles:
-        classroom_id = request.form.get('classroom_id')
-        if classroom_id:
-            class_fb = ClassRoom.query.get(int(classroom_id)) or class_fb
+    class_fb = _requested_classroom(
+        'classroom_id',
+        _active_classroom_for_user(),
+        'can_manage_schedule_multi_class',
+        'can_view_all_classrooms',
+    )
     if not class_fb:
-        class_fb = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_schedule') + '#templates')
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all()
     if not schedules:
         flash('Belum ada jadwal aktif untuk dijadikan template.')
@@ -2942,12 +2989,15 @@ def manage_assignments():
             active_classroom,
             'can_manage_assignments_multi_class',
         )
+        if not classroom:
+            flash('Kelas tujuan wajib dipilih.')
+            return redirect(url_for('manage_assignments'))
         a = Assignment(
             title=request.form['title'],
             subject=request.form['subject'],
             deadline=datetime.strptime(request.form['deadline'], '%Y-%m-%dT%H:%M'),
             description=request.form.get('description', ''),
-            classroom_id=classroom.id if classroom else None
+            classroom_id=classroom.id
         )
         db.session.add(a)
         db.session.commit()
@@ -2982,6 +3032,11 @@ def manage_assignments():
         assignments_query = assignments_query.filter(
             (Assignment.classroom_id == active_classroom.id) | (Assignment.classroom_id.is_(None))
         )
+    elif not active_classroom and not _has_any_classroom_scope(
+        'can_manage_assignments_multi_class',
+        'can_view_all_classrooms',
+    ):
+        assignments_query = assignments_query.filter(db.false())
     assignments = assignments_query.order_by(Assignment.deadline.asc()).all()
     classrooms = _web_allowed_classrooms(
         'can_manage_assignments_multi_class',
@@ -3018,6 +3073,9 @@ def schedule_batch():
         'can_manage_schedule_multi_class',
         'can_view_all_classrooms',
     )
+    if not class_fb:
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_schedule'))
     
     if 'file' not in request.files: return redirect(url_for('manage_schedule'))
     file = request.files['file']
@@ -3032,7 +3090,10 @@ def schedule_batch():
         for row in csv_input:
             sid = row.get('id')
             if sid and sid.strip().isdigit():
-                existing = Schedule.query.get(int(sid))
+                existing = Schedule.query.filter_by(
+                    id=int(sid),
+                    classroom_id=class_fb.id if class_fb else None,
+                ).first()
                 if existing:
                     existing.day = row['day']
                     existing.time_start = row['time_start']
@@ -3180,6 +3241,9 @@ def download_schedule_template():
         'can_manage_schedule_multi_class',
         'can_view_all_classrooms',
     )
+    if not class_fb:
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_schedule'))
     schedules = Schedule.query.filter_by(classroom_id=class_fb.id).all()
     
     # Headers dengan ID untuk pendeteksian UPDATE
@@ -3216,8 +3280,11 @@ def manage_announcements():
             'can_manage_announcements_multi_class',
             'can_view_all_classrooms',
         )
+        if not active_classroom:
+            flash('Kelas tujuan wajib dipilih.')
+            return redirect(url_for('manage_announcements'))
         ann = Announcement(
-            classroom_id=active_classroom.id if active_classroom else None,
+            classroom_id=active_classroom.id,
             title=request.form['title'], 
             content=request.form['content'],
             category=request.form['category'],
@@ -3254,6 +3321,13 @@ def manage_announcements():
         announcements_query = announcements_query.filter(
             (Announcement.classroom_id == active_classroom.id) | (Announcement.classroom_id.is_(None))
         )
+    elif not active_classroom and not _has_any_classroom_scope(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+    ):
+        announcements_query = announcements_query.filter(db.false())
     announcements = announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     classrooms = _web_allowed_classrooms(
         'can_manage_announcements_multi_class',
@@ -3268,11 +3342,9 @@ def manage_announcements():
 def edit_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
-    allowed_ids = {item.id for item in _web_allowed_classrooms(
-        'can_manage_announcements_multi_class',
-        'can_view_all_classrooms',
-    )}
-    if ann.classroom_id not in allowed_ids and ann.classroom_id is not None:
+    if not _can_manage_web_classroom_record(
+        ann.classroom_id, 'can_manage_announcements_multi_class'
+    ):
         flash('Akses ditolak.')
         return redirect(url_for('manage_announcements'))
     ann.title = request.form['title']
@@ -3290,11 +3362,9 @@ def edit_announcement(id):
 def delete_announcement(id):
     if not current_user.role.can_manage_announcements: return redirect(url_for('dashboard'))
     ann = Announcement.query.get_or_404(id)
-    allowed_ids = {item.id for item in _web_allowed_classrooms(
-        'can_manage_announcements_multi_class',
-        'can_view_all_classrooms',
-    )}
-    if ann.classroom_id not in allowed_ids and ann.classroom_id is not None:
+    if not _can_manage_web_classroom_record(
+        ann.classroom_id, 'can_manage_announcements_multi_class'
+    ):
         flash('Akses ditolak.')
         return redirect(url_for('manage_announcements'))
     log_activity("Hapus Pengumuman", f"Judul: {ann.title}")
@@ -3306,8 +3376,21 @@ def delete_announcement(id):
 @login_required
 def manage_fund():
     class_fb = _requested_fund_classroom()
+    has_global_scope = _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )
+    if not class_fb:
+        if request.method == 'POST':
+            flash('Kelas transaksi wajib dipilih.')
+            return redirect(url_for('manage_fund'))
+        if not has_global_scope:
+            flash('Akun belum memiliki kelas aktif.')
+            return redirect(url_for('dashboard'))
     classrooms = _fund_allowed_classrooms()
-    students = Student.query.filter_by(classroom_id=class_fb.id).all()
+    students = Student.query.filter_by(classroom_id=class_fb.id).all() if class_fb else []
     if request.method == 'POST':
         if not current_user.role.can_manage_fund:
             flash('Akses ditolak.')
@@ -3337,7 +3420,17 @@ def manage_fund():
         if tags and not tags.startswith('#'): tags = '#' + tags
         
         student_obj = Student.query.get(int(student_id_val)) if student_id_val and str(student_id_val).lower() != 'none' else None
+        if student_id_val and str(student_id_val).lower() != 'none' and not student_obj:
+            flash('Member tidak ditemukan.')
+            return redirect(url_for('manage_fund'))
+        allowed_classroom_ids = {item.id for item in _fund_allowed_classrooms()}
+        if student_obj and student_obj.classroom_id not in allowed_classroom_ids:
+            flash('Member tidak termasuk kelas yang boleh dikelola.')
+            return redirect(url_for('manage_fund'))
         fund_classroom = student_obj.classroom if student_obj and student_obj.classroom else class_fb
+        if not fund_classroom:
+            flash('Kelas transaksi wajib dipilih.')
+            return redirect(url_for('manage_fund'))
 
         fund = BatchFund(
             classroom_id=fund_classroom.id if fund_classroom else None,
@@ -3447,9 +3540,12 @@ def create_fund_period():
         return redirect(url_for('manage_fund'))
 
     class_fb = _requested_fund_classroom()
+    if not class_fb:
+        flash('Kelas periode kas wajib dipilih.')
+        return redirect(url_for('manage_fund'))
 
     db.session.add(FundPeriod(
-        classroom_id=class_fb.id if class_fb else None,
+        classroom_id=class_fb.id,
         title=title,
         start_date=start_date,
         end_date=end_date,
@@ -3468,10 +3564,15 @@ def update_fund_period(id):
         return redirect(url_for('dashboard'))
 
     period = FundPeriod.query.get_or_404(id)
-    if class_fb := _requested_fund_classroom():
-        if period.classroom_id not in (class_fb.id, None if class_fb.id == _default_classroom().id else -1):
-            flash('Akses ditolak.')
-            return redirect(url_for('manage_fund', classroom_id=class_fb.id))
+    class_fb = _requested_fund_classroom()
+    if not class_fb:
+        flash('Kelas periode kas wajib dipilih.')
+        return redirect(url_for('manage_fund'))
+    default_classroom = _default_classroom()
+    legacy_allowed = bool(default_classroom and class_fb.id == default_classroom.id)
+    if period.classroom_id != class_fb.id and not (legacy_allowed and period.classroom_id is None):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund', classroom_id=class_fb.id))
     start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
     end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
     if end_date < start_date:
@@ -3495,10 +3596,15 @@ def delete_fund_period(id):
         return redirect(url_for('dashboard'))
 
     period = FundPeriod.query.get_or_404(id)
-    if class_fb := _requested_fund_classroom():
-        if period.classroom_id not in (class_fb.id, None if class_fb.id == _default_classroom().id else -1):
-            flash('Akses ditolak.')
-            return redirect(url_for('manage_fund', classroom_id=class_fb.id))
+    class_fb = _requested_fund_classroom()
+    if not class_fb:
+        flash('Kelas periode kas wajib dipilih.')
+        return redirect(url_for('manage_fund'))
+    default_classroom = _default_classroom()
+    legacy_allowed = bool(default_classroom and class_fb.id == default_classroom.id)
+    if period.classroom_id != class_fb.id and not (legacy_allowed and period.classroom_id is None):
+        flash('Akses ditolak.')
+        return redirect(url_for('manage_fund', classroom_id=class_fb.id))
     if FundPeriod.query.count() <= 1:
         flash('Minimal harus ada satu periode kas aktif/tersimpan.')
         return redirect(url_for('manage_fund'))
@@ -3542,6 +3648,7 @@ def edit_fund(id):
 
     # Suggestion #1: Auto-Announcement for Edit transactions
     new_ann = Announcement(
+        classroom_id=f.classroom_id,
         title=f"Update Transaksi: {f.description}",
         content=f"ID: {f.id} diperbarui oleh {current_user.username}.\nAlasan: {f.edit_reason}\nNilai Baru: Rp {f.amount:,.0f}",
         category='Penting'
@@ -3591,11 +3698,12 @@ def batch_add_fund():
     desc = request.form.get('common_desc', 'Iuran Massal')
     date_str = request.form.get('common_date', datetime.now().strftime('%Y-%m-%d'))
     
+    allowed_classroom_ids = {item.id for item in _fund_allowed_classrooms()}
     count = 0
     for i in range(len(ids)):
-        if amounts[i] and float(amounts[i]) > 0:
+        if i < len(amounts) and amounts[i] and float(amounts[i]) > 0:
             student = Student.query.get(int(ids[i]))
-            if student:
+            if student and student.classroom_id in allowed_classroom_ids:
                 f = BatchFund(
                     classroom_id=student.classroom_id or (class_fb.id if class_fb else None),
                     description=f"{desc} - {student.full_name}",
@@ -3641,6 +3749,14 @@ def export_fund():
     cw.writerow(['ID', 'Tanggal', 'Keterangan', 'Jumlah', 'Tipe', 'Kategori', 'Pelapor'])
     
     class_fb = _requested_fund_classroom()
+    if not class_fb and not _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    ):
+        flash('Akun belum memiliki kelas aktif.')
+        return redirect(url_for('dashboard'))
     funds = _apply_fund_classroom_filter(BatchFund.query, class_fb).order_by(BatchFund.date.desc()).all()
     for f in funds:
         cw.writerow([f.id, f.date, f.description, f.amount, f.type, f.category, f.recorded_by])
@@ -3664,6 +3780,16 @@ def manage_settings():
         for key in text_keys:
             if key in request.form:
                 val = request.form[key]
+                if key == 'favicon_url':
+                    val = safe_external_url(val, allow_local=True)
+                elif key == 'social_ig':
+                    val = safe_external_url(val, allowed_hosts={'instagram.com'}, allow_local=False)
+                elif key == 'social_wa':
+                    val = safe_external_url(
+                        val,
+                        allowed_hosts={'wa.me', 'chat.whatsapp.com', 'api.whatsapp.com'},
+                        allow_local=False,
+                    )
                 setting = SystemSetting.query.filter_by(key=key).first()
                 if setting: setting.value = val
                 else: db.session.add(SystemSetting(key=key, value=val))
@@ -3726,9 +3852,7 @@ def manage_settings():
         return redirect(url_for('manage_settings'))
     
     settings = {s.key: s.value for s in SystemSetting.query.all()}
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    active_classroom = _active_classroom_for_user()
     classrooms = []
     if current_user.role.can_manage_roles or getattr(current_user.role, 'can_access_multi_classroom', False) or getattr(current_user.role, 'can_switch_classroom_context', False):
         classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all()
@@ -4022,7 +4146,13 @@ def manage_gallery():
         photos_query = photos_query.filter(
             (GalleryPhoto.classroom_id == active_classroom.id) | (GalleryPhoto.classroom_id.is_(None))
         )
-    if current_user.role.name in ['Admin', 'Pengurus']:
+    elif not _has_any_classroom_scope(
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    ):
+        photos_query = photos_query.filter(db.false())
+    if current_user.role.can_manage_gallery:
         photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
     else:
         photos = photos_query.filter(
@@ -4083,11 +4213,17 @@ def upload_gallery():
         'can_view_all_classrooms',
         'can_access_multi_classroom',
     )
+    if not active_classroom:
+        flash('Kelas tujuan wajib dipilih.')
+        return redirect(url_for('manage_gallery'))
     tags = request.form.get('tags', '')
     is_public = 'is_public' in request.form
     
     # Force private if normal member without gallery powers
-    is_admin_power = (hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery) or (current_user.role.name in ['Admin', 'Pengurus'])
+    is_admin_power = bool(
+        current_user.role.can_manage_roles or
+        current_user.role.can_manage_gallery
+    )
     
     status = 'Published' if is_admin_power else 'Pending'
     if not is_admin_power:
@@ -4099,7 +4235,7 @@ def upload_gallery():
             filename = process_image_upload(file)
             if filename:
                 photo = GalleryPhoto(
-                    classroom_id=active_classroom.id if active_classroom else None,
+                    classroom_id=active_classroom.id,
                     filename=filename,
                     thumbnail=filename,
                     caption=request.form.get('caption', ''),
@@ -4221,7 +4357,7 @@ def public_gallery():
 def add_photo_comment(photo_id):
     photo = GalleryPhoto.query.get_or_404(photo_id)
     active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if active_classroom and photo.classroom_id not in (active_classroom.id, None):
+    if photo.status != 'Published' or not _is_gallery_photo_in_allowed_scope(photo, active_classroom):
         flash('Akses ditolak.')
         return redirect(request.referrer or url_for('manage_gallery'))
     body = request.form.get('body', '').strip()
@@ -4254,12 +4390,12 @@ def add_photo_comment(photo_id):
 def delete_photo_comment(id):
     comment = PhotoComment.query.get_or_404(id)
     active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if active_classroom and comment.photo.classroom_id not in (active_classroom.id, None):
+    if not _is_gallery_photo_in_allowed_scope(comment.photo, active_classroom):
         flash('Akses ditolak.')
         return redirect(url_for('manage_gallery'))
     # Allow deletion if Admin/Pengurus or if the user owns the comment
     can_delete = False
-    if current_user.role.name in ['Admin', 'Pengurus']:
+    if current_user.role.can_manage_roles or current_user.role.can_manage_gallery:
         can_delete = True
     elif hasattr(current_user.role, 'can_manage_gallery') and current_user.role.can_manage_gallery:
         can_delete = True
@@ -4662,6 +4798,12 @@ def api_students():
     students_query = Student.query
     if classroom:
         students_query = students_query.filter_by(classroom_id=classroom.id)
+    elif not _has_any_classroom_scope(
+        'can_manage_students_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    ):
+        students_query = students_query.filter(db.false())
     students = students_query.all()
     return jsonify([{'id': s.id, 'nim': s.nim, 'name': s.full_name, 'status': s.status} for s in students])
 
@@ -4673,6 +4815,12 @@ def api_announcements():
     anns_query = Announcement.query
     if classroom:
         anns_query = anns_query.filter((Announcement.classroom_id == classroom.id) | (Announcement.classroom_id.is_(None)))
+    elif not _has_any_classroom_scope(
+        'can_manage_announcements_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    ):
+        anns_query = anns_query.filter(db.false())
     anns = anns_query.all()
     return jsonify([{'id': a.id, 'title': a.title, 'category': a.category, 'date': a.date_posted} for a in anns])
 
@@ -4745,7 +4893,7 @@ def manage_notifications():
                 flash('Penerima tidak ditemukan.')
                 return redirect(url_for('manage_notifications'))
             target_classroom_id = target_user.classroom_id or (target_user.student.classroom_id if target_user.student else None)
-            if active_classroom and target_classroom_id != active_classroom.id:
+            if active_classroom and target_classroom_id != active_classroom.id and not can_manage_multi:
                 flash('Penerima berada di kelas yang berbeda.')
                 return redirect(url_for('manage_notifications'))
             result = send_push(title, body, user_id=target_user.id, sender_id=current_user.id, classroom_id=active_classroom.id if active_classroom else None, category='emergency')
@@ -4775,10 +4923,6 @@ def manage_notifications():
     settings = {
         'whatsapp_provider': get_default_whatsapp_provider(),
         'sidobe_base_url': get_sidobe_setting_value('base_url', SIDOBE_API_BASE_URL),
-        'waha_base_url': get_whatsapp_setting_value('waha', 'base_url', 'http://localhost:3000'),
-        'waha_session': get_whatsapp_setting_value('waha', 'session', 'default'),
-        'waha_webhook_url': url_for('waha_webhook', _external=True),
-        'waha_api_key_masked': ('*' * max(0, len(get_whatsapp_setting_value('waha', 'api_key', '')) - 4)) + get_whatsapp_setting_value('waha', 'api_key', '')[-4:],
         'sidobe_webhook_url': url_for('sidobe_webhook', _external=True),
         'sidobe_api_key_masked': ('*' * max(0, len(get_sidobe_setting_value('api_key', '')) - 4)) + get_sidobe_setting_value('api_key', '')[-4:],
         'sidobe_is_async': get_sidobe_setting_value('is_async', 'true'),
@@ -4797,15 +4941,22 @@ def manage_notifications():
     policies = {item.classroom_id: item for item in ClassroomNotificationConfig.query.all()}
     bindings = {item.classroom_id: item for item in ClassroomWhatsAppBinding.query.all()}
     bots = WhatsAppBot.query.order_by(WhatsAppBot.name.asc()).all()
+    if not _can_manage_sidobe_control():
+        allowed_ids = {
+            binding.bot_id for binding in ClassroomWhatsAppBinding.query.filter(
+                ClassroomWhatsAppBinding.classroom_id.in_({item.id for item in allowed_classrooms})
+            ).all()
+        }
+        bots = [bot for bot in bots if bot.id in allowed_ids]
     # Generate short-lived JWT token untuk AJAX calls dari halaman ini
     from datetime import timedelta
     page_token = create_access_token(identity=str(current_user.id), expires_delta=timedelta(hours=2))
-    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=allowed_classrooms, active_classroom=active_classroom, policies=policies, bindings=bindings, bots=bots, can_manage_multi_notifications=can_manage_multi, page_token=page_token)
+    return render_template('notifications.html', history=history, users=users, settings=settings, classrooms=allowed_classrooms, active_classroom=active_classroom, policies=policies, bindings=bindings, bots=bots, can_manage_multi_notifications=can_manage_multi, can_manage_sidobe_control=_can_manage_sidobe_control(), page_token=page_token)
 
 @app.route('/notifications/sidobe/save-config', methods=['POST'])
 @login_required
 def save_sidobe_config():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         flash('Akses ditolak.')
         return redirect(url_for('manage_notifications'))
 
@@ -4834,101 +4985,42 @@ def save_sidobe_config():
 @app.route('/notifications/waha/save-config', methods=['POST'])
 @login_required
 def save_waha_config():
-    if not current_user.role.sidobe_enabled:
-        flash('Akses ditolak.')
-        return redirect(url_for('manage_notifications'))
-    set_setting_value('whatsapp_provider', (request.form.get('whatsapp_provider') or 'sidobe').strip().lower() if (request.form.get('whatsapp_provider') or 'sidobe').strip().lower() in {'waha', 'sidobe'} else 'sidobe', 'Provider notifikasi utama')
-    set_setting_value('waha_base_url', (request.form.get('waha_base_url') or 'http://localhost:3000').strip().rstrip('/'), 'URL WAHA')
-    set_setting_value('waha_session', (request.form.get('waha_session') or 'default').strip() or 'default', 'Session WAHA default')
-    new_webhook_secret = (request.form.get('waha_webhook_secret') or '').strip()
-    if new_webhook_secret:
-        set_setting_value('waha_webhook_secret', new_webhook_secret, 'Secret webhook WAHA')
-    new_api_key = (request.form.get('waha_api_key') or '').strip()
-    if new_api_key:
-        set_setting_value('waha_api_key', new_api_key, 'API key WAHA')
-    db.session.commit()
-    flash('Konfigurasi WhatsApp/WAHA berhasil disimpan.')
-    return redirect(url_for('manage_notifications'))
+    return jsonify({'ok': False, 'error': 'Konfigurasi WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 @app.route('/notifications/waha/sessions')
 @login_required
 def get_waha_sessions():
-    if not current_user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    result = _waha_request('GET', '/api/sessions')
-    if not result.get('ok'):
-        return jsonify(result), 400
-    raw = result.get('data') or []
-    sessions = raw if isinstance(raw, list) else raw.get('sessions', raw.get('data', [])) if isinstance(raw, dict) else []
-    return jsonify({'ok': True, 'items': [
-        {
-            'name': str(item.get('name') or item.get('session') or item.get('id') or '-'),
-            'status': str(item.get('status') or item.get('state') or 'unknown'),
-            'me': str(item.get('me') or '-'),
-            'engine': str((item.get('engine') or {}).get('engine') if isinstance(item.get('engine'), dict) else item.get('engine') or '-'),
-        }
-        for item in sessions if isinstance(item, dict)
-    ]})
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 
 @app.route('/notifications/waha/sessions/create', methods=['POST'])
 @login_required
 def create_waha_session():
-    if not current_user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    payload = request.get_json(silent=True) or {}
-    name = (payload.get('session_name') or payload.get('name') or '').strip()
-    if not name:
-        return jsonify({'ok': False, 'error': 'Nama session wajib diisi'}), 400
-    webhook = {
-        'url': url_for('waha_webhook', _external=True),
-        'events': ['message.ack'],
-        'retries': {'policy': 'exponential', 'delaySeconds': 2, 'attempts': 4},
-    }
-    webhook_secret = get_whatsapp_setting_value('waha', 'webhook_secret', '').strip()
-    if webhook_secret:
-        webhook['customHeaders'] = [{'name': 'X-Webhook-Secret', 'value': webhook_secret}]
-    result = _waha_request('POST', '/api/sessions', {
-        'name': name,
-        'start': True,
-        'config': {'webhooks': [webhook]},
-    })
-    return jsonify(result), (200 if result.get('ok') else 400)
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 
 @app.route('/notifications/waha/sessions/<string:session_name>/<action>', methods=['POST'])
 @login_required
 def action_waha_session(session_name, action):
-    if not current_user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    if action not in {'start', 'stop', 'restart'}:
-        return jsonify({'ok': False, 'error': 'Aksi session tidak valid'}), 400
-    result = _waha_request('POST', f'/api/sessions/{quote(session_name, safe="")}/{action}', {})
-    return jsonify(result), (200 if result.get('ok') else 400)
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 
 @app.route('/notifications/waha/session/<string:session_name>/qr')
 @login_required
 def get_waha_session_qr(session_name):
-    if not current_user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    result = _waha_request('POST', f'/api/{quote(session_name, safe="")}/auth/qr', {})
-    return jsonify(result), (200 if result.get('ok') else 400)
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 
 @app.route('/notifications/waha/session/<string:session_name>/screenshot')
 @login_required
 def get_waha_session_screenshot(session_name):
-    if not current_user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    result = _waha_request('GET', f'/api/screenshot?session={quote(session_name, safe="")}', None)
-    return jsonify(result), (200 if result.get('ok') else 400)
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 
 @app.route('/notifications/sidobe/sessions')
 @login_required
 def get_sidobe_sessions():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     result = _sidobe_request_with_auth_fallback('GET', '/api/sessions')
     if not result.get('ok'):
@@ -4953,13 +5045,14 @@ def get_sidobe_sessions():
 @app.route('/notifications/sidobe/sessions/create', methods=['POST'])
 @login_required
 def create_sidobe_session():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     payload = request.get_json(silent=True) or (request.form.to_dict(flat=True) if request.form else {})
     session_name = (payload.get('session_name') or payload.get('name') or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session name wajib diisi'}), 400
-    base_url = (payload.get('base_url') or get_sidobe_setting_value('base_url', '')).strip() or None
+    # Provider endpoints are server-controlled; clients may not choose an URL.
+    base_url = get_sidobe_setting_value('base_url', '').strip() or None
     body = {
         'name': session_name,
         'session': session_name,
@@ -4976,12 +5069,12 @@ def create_sidobe_session():
 @app.route('/notifications/sidobe/sessions/<session_name>/start', methods=['POST'])
 @login_required
 def start_sidobe_session(session_name):
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = (session_name or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session wajib diisi'}), 400
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/start',
         f'/api/{session_name}/start',
@@ -4992,12 +5085,12 @@ def start_sidobe_session(session_name):
 @app.route('/notifications/sidobe/sessions/<session_name>/stop', methods=['POST'])
 @login_required
 def stop_sidobe_session(session_name):
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = (session_name or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session wajib diisi'}), 400
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/stop',
         f'/api/{session_name}/stop',
@@ -5008,12 +5101,12 @@ def stop_sidobe_session(session_name):
 @app.route('/notifications/sidobe/sessions/<session_name>/restart', methods=['POST'])
 @login_required
 def restart_sidobe_session(session_name):
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = (session_name or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session wajib diisi'}), 400
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/restart',
         f'/api/{session_name}/restart',
@@ -5025,7 +5118,7 @@ def restart_sidobe_session(session_name):
 @app.route('/notifications/sidobe/dashboard')
 @login_required
 def get_sidobe_dashboard():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
 
     base_url = get_sidobe_setting_value('base_url', '').strip() or None
@@ -5086,7 +5179,7 @@ def get_sidobe_dashboard():
 @app.route('/notifications/sidobe/session/<session_name>/qr')
 @login_required
 def get_sidobe_session_qr(session_name):
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = (session_name or '').strip()
     if not session_name:
@@ -5117,7 +5210,7 @@ def get_sidobe_session_qr(session_name):
 @app.route('/notifications/sidobe/session/<session_name>/screenshot')
 @login_required
 def get_sidobe_session_screenshot(session_name):
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = (session_name or '').strip()
     if not session_name:
@@ -5142,7 +5235,7 @@ def get_sidobe_session_screenshot(session_name):
 @app.route('/notifications/sidobe/groups')
 @login_required
 def get_sidobe_groups():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = get_sidobe_setting_value('session', '').strip()
     if not session_name:
@@ -5175,7 +5268,7 @@ def get_sidobe_groups():
 @app.route('/notifications/sidobe/chats')
 @login_required
 def get_sidobe_chats():
-    if not current_user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control():
         return jsonify({'error': 'Unauthorized'}), 403
     session_name = get_sidobe_setting_value('session', '').strip()
     if not session_name:
@@ -5311,46 +5404,37 @@ def sidobe_webhook():
 
 @app.route('/webhooks/waha', methods=['POST'])
 def waha_webhook():
-    """Receive WAHA events and update local delivery history when possible."""
-    expected_secret = (
-        get_setting_value('waha_webhook_secret', '')
-        or os.environ.get('WAHA_WEBHOOK_SECRET', '')
-    ).strip()
-    supplied_secret = (request.headers.get('X-Webhook-Secret') or '').strip()
-    if expected_secret and not hmac.compare_digest(expected_secret, supplied_secret):
-        return jsonify({'ok': False, 'error': 'Invalid webhook secret'}), 401
-
-    payload = request.get_json(silent=True)
-    if not isinstance(payload, dict):
-        return jsonify({'ok': False, 'error': 'JSON body wajib diisi'}), 400
-    event = str(payload.get('event') or '').strip().lower()
-    inner = payload.get('payload') if isinstance(payload.get('payload'), dict) else payload
-    message_id = inner.get('id') or inner.get('messageId') or inner.get('message_id')
-    raw_ack = inner.get('ack') or inner.get('status')
-    ack_status = {
-        '0': 'PENDING', '1': 'PENDING', '2': 'SUCCESS', '3': 'SUCCESS',
-        'pending': 'PENDING', 'server': 'PENDING', 'delivered': 'SUCCESS',
-        'read': 'SUCCESS', 'failed': 'FAILED', 'error': 'FAILED',
-    }.get(str(raw_ack).strip().lower(), str(raw_ack or '').upper())
-    if event in {'message.ack', 'message_ack', 'message.status'} and message_id and ack_status in {'PENDING', 'SUCCESS', 'FAILED'}:
-        event_id = str(payload.get('id') or payload.get('eventId') or '').strip() or None
-        if event_id and NotificationHistory.query.filter_by(webhook_event_id=event_id).first():
-            return jsonify({'ok': True, 'duplicate': True}), 200
-        updated = _apply_notification_delivery_update('waha', message_id, ack_status, webhook_event_id=event_id)
-        return jsonify({'ok': True, 'accepted': True, 'updated': updated}), 200
-    return jsonify({'ok': True, 'accepted': True, 'ignored': True}), 200
+    """Legacy endpoint kept only to return a safe migration response."""
+    return jsonify({'ok': False, 'error': 'WAHA sudah dinonaktifkan. Gunakan webhook Si Dobe.'}), 410
 
 @app.route('/notifications/clear', methods=['POST'])
 @login_required
 def clear_notification_history():
     if not current_user.role.can_manage_notifications:
         return redirect(url_for('dashboard'))
-    
+
     try:
-        NotificationHistory.query.delete()
+        query = NotificationHistory.query
+        if not _has_any_classroom_scope(
+            'can_manage_notifications_multi_class',
+            'can_view_all_classrooms',
+        ):
+            active_classroom = _active_classroom_for_user()
+            if not active_classroom:
+                flash('Akun belum memiliki kelas aktif.')
+                return redirect(url_for('manage_notifications'))
+            query = query.filter(NotificationHistory.classroom_id == active_classroom.id)
+        deleted_count = query.delete(synchronize_session=False)
         db.session.commit()
-        log_activity("Hapus Riwayat Notifikasi", "Seluruh riwayat notifikasi dikosongkan")
-        flash('Seluruh riwayat notifikasi telah dibersihkan.')
+        scope_label = 'seluruh kelas' if _has_any_classroom_scope(
+            'can_manage_notifications_multi_class',
+            'can_view_all_classrooms',
+        ) else 'kelas aktif'
+        log_activity(
+            "Hapus Riwayat Notifikasi",
+            f"{deleted_count} riwayat notifikasi dari {scope_label} dihapus",
+        )
+        flash(f'{deleted_count} riwayat notifikasi telah dibersihkan dari {scope_label}.')
     except Exception as e:
         db.session.rollback()
         flash(f'Gagal membersihkan riwayat: {e}')
@@ -5374,6 +5458,20 @@ def leaderboard():
             (User.classroom_id == active_classroom.id) |
             (Student.classroom_id == active_classroom.id)
         )
+    elif not _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    ):
+        users_query = users_query.filter(db.false())
+    elif not _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    ):
+        users_query = users_query.filter(db.false())
     all_users = users_query.all()
     ranked_users = []
     for user in all_users:
@@ -5463,6 +5561,13 @@ def get_leaderboard():
             (User.classroom_id == active_classroom.id) |
             (Student.classroom_id == active_classroom.id)
         )
+    elif not _has_any_classroom_scope(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    ):
+        users_query = users_query.filter(db.false())
     ranked = []
     for user in users_query.all():
         breakdown = calculate_user_points_breakdown(user)
@@ -5483,6 +5588,17 @@ def get_leaderboard():
 @login_required
 def get_leaderboard_detail(user_id):
     user = User.query.get_or_404(user_id)
+    if not current_user.role.can_manage_roles and current_user.id != user.id and not current_user.role.can_view_classroom_reports:
+        abort(403)
+    member_classroom_id = user.classroom_id or (user.student.classroom_id if user.student else None)
+    allowed_ids = {item.id for item in _web_allowed_classrooms(
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+        'can_switch_classroom_context',
+        'can_view_classroom_reports',
+    )}
+    if member_classroom_id not in allowed_ids:
+        abort(404)
     breakdown = calculate_user_points_breakdown(user)
     return jsonify({
         "id": user.id,
@@ -5591,6 +5707,8 @@ def news_detail(slug):
     article = NewsArticle.query.filter_by(
         slug=slug, status='Published', is_public=True
     ).first_or_404()
+    # Sanitize legacy rows at render time as well as on future writes.
+    article.content = sanitize_rich_text(article.content)
     try:
         article.views = (article.views or 0) + 1
         db.session.commit()
@@ -5653,7 +5771,7 @@ def news_new():
     categories = NewsCategory.query.order_by(NewsCategory.name).all()
     if request.method == 'POST':
         title   = request.form.get('title', '').strip()
-        content = request.form.get('content', '').strip()
+        content = sanitize_rich_text(request.form.get('content', '').strip())
         excerpt = request.form.get('excerpt', '').strip()[:500]
         cat_id  = request.form.get('category_id') or None
         status  = request.form.get('status', 'Draft')
@@ -5692,7 +5810,7 @@ def news_edit(id):
     categories = NewsCategory.query.order_by(NewsCategory.name).all()
     if request.method == 'POST':
         article.title   = request.form.get('title', '').strip()
-        article.content = request.form.get('content', '').strip()
+        article.content = sanitize_rich_text(request.form.get('content', '').strip())
         article.excerpt = request.form.get('excerpt', '').strip()[:500]
         cat_id = request.form.get('category_id') or None
         article.category_id = int(cat_id) if cat_id else None

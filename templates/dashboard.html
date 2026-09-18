@@ -90,7 +90,7 @@
         </div>
         <div style="display: flex; flex-direction: column; gap: 1.5rem;">
             {% for a in recent_announcements %}
-            <div onclick="openAnnDetail(`{{ a.title|replace('`','\\`') }}`, `{{ a.content|replace('`','\\`') }}`, {{ a.id }})" style="cursor: pointer; display: flex; gap: 15px; position: relative;">
+            <div onclick="openAnnDetail({{ a.title|tojson }}, {{ a.content|tojson }}, {{ a.id|tojson }})" style="cursor: pointer; display: flex; gap: 15px; position: relative;">
                 <div style="width: 48px; height: 48px; border-radius: 12px; background: {{ '#fee2e2' if a.category == 'Penting' else '#eff6ff' }}; color: {{ '#991b1b' if a.category == 'Penting' else '#1d4ed8' }}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
                     <i data-lucide="{{ 'alert-triangle' if a.category == 'Penting' else 'info' }}"></i>
                 </div>

@@ -85,9 +85,9 @@
                     </td>
                     <td style="text-align: right; padding: 1rem;">
                         <div style="display: flex; gap: 10px; justify-content: flex-end;">
-                            <button class="btn btn-sm" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)" style="padding: 5px 15px; font-size: 0.75rem;">Baca</button>
+                            <button class="btn btn-sm" onclick="viewAnnouncement({{ a.title|tojson }}, {{ a.category|tojson }}, {{ a.date_posted.strftime('%d %b %Y')|tojson }}, {{ a.content|tojson }})" style="padding: 5px 15px; font-size: 0.75rem;">Baca</button>
                             {% if current_user.role.can_manage_announcements %}
-                                <button onclick="openEditAnn('{{ a.id }}', `{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ 'true' if a.is_pinned else 'false' }}', '{{ 'true' if a.is_public else 'false' }}', `{{ a.content|replace('`', '\\`') }}`)" style="background:none; border:none; color:var(--primary); cursor:pointer;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
+                                <button onclick="openEditAnn({{ a.id|tojson }}, {{ a.title|tojson }}, {{ a.category|tojson }}, {{ 'true' if a.is_pinned else 'false' }}, {{ 'true' if a.is_public else 'false' }}, {{ a.content|tojson }})" style="background:none; border:none; color:var(--primary); cursor:pointer;"><i data-lucide="edit-3" style="width: 18px;"></i></button>
                                 <form method="POST" action="{{ url_for('delete_announcement', id=a.id) }}" style="display:inline;" onsubmit="return confirm('Hapus?')"><button type="submit" style="border:0; background:none; color:#ef4444; cursor:pointer;"><i data-lucide="trash-2" style="width:18px;"></i></button></form>
                             {% endif %}
                         </div>
@@ -101,7 +101,7 @@
     <!-- Mobile Grid (Hidden on Desktop) -->
     <div class="mobile-only" id="ann-body-mobile" style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 1.5rem;">
         {% for a in announcements %}
-        <div class="card ann-item-mobile" data-title="{{ a.title|lower }}" data-content="{{ a.content|lower }}" style="padding: 1.25rem; {{ 'border-left: 4px solid var(--primary);' if a.is_pinned else '' }} position: relative;" onclick="viewAnnouncement(`{{ a.title|replace('`', '\\`') }}`, '{{ a.category }}', '{{ a.date_posted.strftime('%d %b %Y') }}', `{{ a.content|replace('`', '\\`') }}`)">
+        <div class="card ann-item-mobile" data-title="{{ a.title|lower }}" data-content="{{ a.content|lower }}" style="padding: 1.25rem; {{ 'border-left: 4px solid var(--primary);' if a.is_pinned else '' }} position: relative;" onclick="viewAnnouncement({{ a.title|tojson }}, {{ a.category|tojson }}, {{ a.date_posted.strftime('%d %b %Y')|tojson }}, {{ a.content|tojson }})">
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.75rem;">
                 <span class="status-badge" style="background: {{ '#fef2f2; color: #991b1b' if a.category == 'Penting' else '#eff6ff; color: #1d4ed8' }}; font-size: 0.7rem;">
                     {{ a.category }}

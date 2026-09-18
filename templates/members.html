@@ -117,7 +117,7 @@
                         {% if current_user.role.can_manage_students %}
                         <td style="padding: 1rem; text-align: right;">
                             <div style="display: flex; gap: 12px; justify-content: flex-end;">
-                                <button onclick="openEditMember('{{ m.id }}', '{{ m.nim }}', '{{ m.full_name|replace('\'', '\\\'') }}', '{{ m.status }}', '{{ m.classroom_id or '' }}', '{{ (m.classroom.name if m.classroom else '-')|replace('\'', '\\\'') }}', '{{ (m.classroom.batch if m.classroom and m.classroom.batch else '')|replace('\'', '\\\'') }}')" style="background:none; border:none; cursor:pointer; color:var(--primary); padding: 5px;">
+                                <button onclick="openEditMember({{ m.id|tojson }}, {{ m.nim|tojson }}, {{ m.full_name|tojson }}, {{ m.status|tojson }}, {{ (m.classroom_id or '')|tojson }}, {{ (m.classroom.name if m.classroom else '-')|tojson }}, {{ (m.classroom.batch if m.classroom and m.classroom.batch else '')|tojson }})" style="background:none; border:none; cursor:pointer; color:var(--primary); padding: 5px;">
                                     <i data-lucide="edit-3" style="width: 18px;"></i>
                                 </button>
                                 <form method="POST" action="{{ url_for('delete_member', id=m.id) }}" style="display:inline;" onsubmit="return confirm('Hapus member ini?')"><button type="submit" style="border:0; background:none; color:#ef4444; padding:5px; cursor:pointer;">

@@ -7,10 +7,12 @@ from urllib.parse import quote_plus
 load_dotenv(Path(__file__).resolve().parent / '.env')
 
 
-def _required_env(name):
+def _required_env(name, min_length=1):
     value = os.environ.get(name, '').strip()
     if not value:
         raise RuntimeError(f'{name} wajib disetel di file .env atau environment server.')
+    if len(value) < min_length:
+        raise RuntimeError(f'{name} minimal harus berisi {min_length} karakter.')
     return value
 
 
@@ -19,8 +21,8 @@ def _env_flag(name, default='1'):
     return value not in {'0', 'false', 'no', 'off'}
 
 class Config:
-    SECRET_KEY = _required_env('SECRET_KEY')
-    JWT_SECRET_KEY = _required_env('JWT_SECRET_KEY')
+    SECRET_KEY = _required_env('SECRET_KEY', min_length=32)
+    JWT_SECRET_KEY = _required_env('JWT_SECRET_KEY', min_length=32)
     SESSION_COOKIE_SECURE = _env_flag('SESSION_COOKIE_SECURE', '1')
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = 'Lax'

@@ -66,7 +66,8 @@ def _user_classroom(user):
             return classroom
     if user.student and user.student.classroom_id:
         return user.student.classroom
-    return _default_classroom()
+    # Never silently assign an unscoped authenticated user to another class.
+    return None
 
 
 def _permission_payload(role):
@@ -164,6 +165,25 @@ def _allowed_notification_classrooms_for_user(user):
     return [current] if current else []
 
 
+def _can_manage_sidobe_control(user):
+    """Session/bot administration is global, not a class-level permission."""
+    role = getattr(user, 'role', None)
+    return bool(
+        role and getattr(role, 'sidobe_enabled', False) and
+        _can_manage_notification_across_classes(role)
+    )
+
+
+def _bot_allowed_for_user(user, bot):
+    if _can_manage_sidobe_control(user):
+        return True
+    allowed_classroom_ids = {item.id for item in _allowed_notification_classrooms_for_user(user)}
+    return bool(bot and ClassroomWhatsAppBinding.query.filter(
+        ClassroomWhatsAppBinding.bot_id == bot.id,
+        ClassroomWhatsAppBinding.classroom_id.in_(allowed_classroom_ids),
+    ).first())
+
+
 def _requested_notification_classroom_for_user(user, data_source=None):
     """Resolve a notification target class without falling back across tenants."""
     allowed = _allowed_notification_classrooms_for_user(user)
@@ -251,7 +271,7 @@ def _apply_fund_period_classroom_filter(query, classroom, include_legacy_default
 
 def _is_fund_record_in_scope(record_classroom_id, classroom):
     if not classroom:
-        return True
+        return False
     if record_classroom_id == classroom.id:
         return True
     default_classroom = _default_classroom()
@@ -291,7 +311,7 @@ def _filter_classroom_records(query, model, user, multi_permission):
 
     classroom = _user_classroom(user)
     if not classroom:
-        return query.filter(model.classroom_id.is_(None))
+        return query.filter(db.false())
 
     default_classroom = _default_classroom()
     if default_classroom and classroom.id == default_classroom.id:
@@ -300,6 +320,42 @@ def _filter_classroom_records(query, model, user, multi_permission):
             (model.classroom_id.is_(None))
         )
     return query.filter(model.classroom_id == classroom.id)
+
+
+def _scope_query(query, model, user, multi_permission, include_legacy_default=True):
+    """Apply the same tenant boundary to reads, including unassigned users."""
+    role = getattr(user, 'role', None)
+    if role and (
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, multi_permission, False)
+    ):
+        return query
+
+    classroom = _user_classroom(user)
+    if not classroom:
+        return query.filter(db.false())
+
+    default_classroom = _default_classroom()
+    if include_legacy_default and default_classroom and classroom.id == default_classroom.id:
+        return query.filter(
+            (model.classroom_id == classroom.id) |
+            (model.classroom_id.is_(None))
+        )
+    return query.filter(model.classroom_id == classroom.id)
+
+
+def _require_classroom_for_write(user, data=None):
+    """Writes must always have an explicit or inherited classroom scope."""
+    classroom = _user_classroom(user)
+    if data:
+        classroom = _classroom_from_request(
+            data,
+            classroom,
+            {item.id for item in _allowed_classrooms_for_user(user)},
+        )
+    if not classroom:
+        raise ValueError('Kelas tujuan wajib dipilih')
+    return classroom
 
 
 @api_bp.route('/leaderboard', methods=['GET'])
@@ -326,6 +382,8 @@ def get_mobile_leaderboard():
             (User.classroom_id == classroom.id) |
             (Student.classroom_id == classroom.id)
         )
+    elif not _can_access_multi_class_data(user.role):
+        query = query.filter(db.false())
 
     ranked = []
     for member in query.all():
@@ -351,11 +409,16 @@ def get_mobile_leaderboard():
 @jwt_required(optional=True)
 def get_mobile_leaderboard_detail(user_id):
     requester = _api_request_user_or_session(require_api_access=True)
-    member = User.query.get_or_404(user_id)
     if not requester:
         return jsonify({"error": "Unauthorized"}), 401
+    member = User.query.get_or_404(user_id)
+    if requester.id != member.id and not (
+        requester.role.can_manage_roles or
+        requester.role.can_view_classroom_reports
+    ):
+        return jsonify({"error": "Detail leaderboard tidak diizinkan"}), 403
 
-    allowed_ids = {item.id for item in _allowed_fund_classrooms_for_user(requester)}
+    allowed_ids = {item.id for item in _allowed_classrooms_for_user(requester)}
     member_classroom_id = member.classroom_id or (
         member.student.classroom_id if member.student else None
     )
@@ -392,7 +455,7 @@ def _api_request_user(require_api_access=False):
     identity = get_jwt_identity()
     user = User.query.get(int(identity)) if identity else None
 
-    if not user and current_user.is_authenticated:
+    if not user and current_user.is_authenticated and request.method == 'GET':
         user = current_user
 
     if not user:
@@ -409,7 +472,7 @@ def _api_request_user_or_session(require_api_access=False):
     user = _api_request_user(require_api_access=require_api_access)
     if user:
         return user
-    if current_user.is_authenticated:
+    if request.method == 'GET' and current_user.is_authenticated:
         if require_api_access and not getattr(current_user.role, 'can_use_api', False):
             return None
         return current_user
@@ -509,15 +572,15 @@ def _interleave_explore_items(items):
 def login():
     from app import _login_rate_limited, _clear_login_attempts
     client_ip = request.remote_addr or 'unknown'
-    if _login_rate_limited(client_ip):
-        return jsonify({"msg": "Too many login attempts. Try again later."}), 429
-
     data = request.get_json(silent=True) or request.form or {}
     if not data:
         return jsonify({"msg": "Missing JSON in request"}), 400
         
     username = (data.get('username') or '').strip()
     password = data.get('password') or ''
+
+    if _login_rate_limited(client_ip, username):
+        return jsonify({"msg": "Too many login attempts. Try again later."}), 429
     
     if not username or not password:
         return jsonify({"msg": "Missing username or password"}), 400
@@ -548,7 +611,7 @@ def login():
         if needs_rehash:
             user.password = hash_password(password)
             db.session.commit()
-        _clear_login_attempts(client_ip)
+        _clear_login_attempts(client_ip, username)
 
         student_data = None
         if user.student:
@@ -569,7 +632,14 @@ def login():
                 }
             }
 
-        access_token = create_access_token(identity=str(user.id), expires_delta=timedelta(days=7))
+        try:
+            token_hours = max(1, min(168, int(os.environ.get('API_JWT_TTL_HOURS', '24'))))
+        except ValueError:
+            token_hours = 24
+        access_token = create_access_token(
+            identity=str(user.id),
+            expires_delta=timedelta(hours=token_hours),
+        )
         
         return jsonify({
             "access_token": access_token,
@@ -817,13 +887,17 @@ def get_announcements():
             return jsonify({"error": "Unauthorized"}), 403
 
         data = request.get_json() or {}
+        try:
+            classroom = _require_classroom_for_write(user, data)
+        except (ValueError, PermissionError, LookupError) as exc:
+            return jsonify({"error": str(exc)}), 400
         title = (data.get('title') or '').strip()
         content = (data.get('content') or '').strip()
         if not title or not content:
             return jsonify({"error": "Judul dan isi pengumuman wajib diisi"}), 400
 
         ann = Announcement(
-            classroom_id=classroom.id if classroom else None,
+            classroom_id=classroom.id,
             title=title,
             content=content,
             category=(data.get('category') or 'Info').strip(),
@@ -845,11 +919,12 @@ def get_announcements():
         log_activity("Tambah Pengumuman API", f"Judul: {ann.title}")
         return jsonify({"status": "success", "id": ann.id})
 
-    announcements_query = Announcement.query
-    if classroom:
-        announcements_query = announcements_query.filter(
-            (Announcement.classroom_id == classroom.id) | (Announcement.classroom_id.is_(None))
-        )
+    announcements_query = _scope_query(
+        Announcement.query,
+        Announcement,
+        user,
+        'can_manage_announcements_multi_class',
+    )
     announcements = announcements_query.order_by(Announcement.is_pinned.desc(), Announcement.date_posted.desc()).all()
     return jsonify([{
         "id": a.id,
@@ -870,8 +945,9 @@ def modify_announcement(id):
         return jsonify({"error": "Unauthorized"}), 403
 
     ann = Announcement.query.get_or_404(id)
-    classroom = _user_classroom(user)
-    if classroom and ann.classroom_id not in (classroom.id, None):
+    if not _can_manage_record_in_classroom(
+        user, ann.classroom_id, 'can_manage_announcements_multi_class'
+    ):
         return jsonify({"error": "Not found"}), 404
     if request.method == 'DELETE':
         title = ann.title
@@ -910,13 +986,12 @@ def get_explore():
     items = []
 
     if filter_type in {'all', 'announcement'}:
-        announcement_query = Announcement.query
-        classroom = _user_classroom(user)
-        if classroom:
-            announcement_query = announcement_query.filter(
-                (Announcement.classroom_id == classroom.id) |
-                (Announcement.classroom_id.is_(None))
-            )
+        announcement_query = _scope_query(
+            Announcement.query,
+            Announcement,
+            user,
+            'can_manage_announcements_multi_class',
+        )
         if query:
             announcement_query = announcement_query.filter(or_(
                 _explore_contains(Announcement.title, query),
@@ -946,10 +1021,13 @@ def get_explore():
             })
 
     if filter_type in {'all', 'schedule'}:
-        schedule_query = Schedule.query
-        classroom = _user_classroom(user)
-        if classroom:
-            schedule_query = schedule_query.filter_by(classroom_id=classroom.id)
+        schedule_query = _scope_query(
+            Schedule.query,
+            Schedule,
+            user,
+            'can_manage_schedule_multi_class',
+            include_legacy_default=False,
+        )
         if query:
             schedule_query = schedule_query.filter(or_(
                 _explore_contains(Schedule.subject, query),
@@ -984,13 +1062,12 @@ def get_explore():
             })
 
     if filter_type in {'all', 'assignment'}:
-        assignment_query = Assignment.query
-        classroom = _user_classroom(user)
-        if classroom:
-            assignment_query = assignment_query.filter(
-                (Assignment.classroom_id == classroom.id) |
-                (Assignment.classroom_id.is_(None))
-            )
+        assignment_query = _scope_query(
+            Assignment.query,
+            Assignment,
+            user,
+            'can_manage_assignments_multi_class',
+        )
         if query:
             assignment_query = assignment_query.filter(or_(
                 _explore_contains(Assignment.title, query),
@@ -1019,9 +1096,12 @@ def get_explore():
             })
 
     if filter_type in {'all', 'fund'}:
-        fund_query = BatchFund.query
-        classroom = _user_classroom(user)
-        fund_query = _apply_fund_classroom_filter(fund_query, classroom)
+        fund_query = _scope_query(
+            BatchFund.query,
+            BatchFund,
+            user,
+            'can_view_classroom_reports',
+        )
         if query:
             fund_query = fund_query.outerjoin(Student, BatchFund.student_id == Student.id).filter(or_(
                 _explore_contains(BatchFund.description, query),
@@ -1059,16 +1139,12 @@ def get_explore():
                 (GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == int(user_id))
             )
 
-        classroom = _user_classroom(user)
-        if classroom:
-            default_classroom = _default_classroom()
-            if default_classroom and classroom.id == default_classroom.id:
-                gallery_query = gallery_query.filter(
-                    (GalleryPhoto.classroom_id == classroom.id) |
-                    (GalleryPhoto.classroom_id.is_(None))
-                )
-            else:
-                gallery_query = gallery_query.filter_by(classroom_id=classroom.id)
+        gallery_query = _scope_query(
+            gallery_query,
+            GalleryPhoto,
+            user,
+            'can_manage_gallery_multi_class',
+        )
 
         if query:
             gallery_query = gallery_query.outerjoin(User, GalleryPhoto.uploaded_by == User.id).filter(or_(
@@ -1108,10 +1184,13 @@ def get_explore():
             })
 
     if filter_type in {'all', 'member'}:
-        member_query = Student.query
-        classroom = _user_classroom(user)
-        if classroom:
-            member_query = member_query.filter_by(classroom_id=classroom.id)
+        member_query = _scope_query(
+            Student.query,
+            Student,
+            user,
+            'can_manage_students_multi_class',
+            include_legacy_default=False,
+        )
         if query:
             member_query = member_query.filter(or_(
                 _explore_contains(Student.full_name, query),
@@ -1169,9 +1248,11 @@ def manage_schedules():
         if not user.role.can_manage_schedule:
             return jsonify({"error": "Unauthorized"}), 403
             
-        data = request.get_json()
-        from models import ClassRoom
-        class_fb = _user_classroom(user)
+        data = request.get_json(silent=True) or request.form or {}
+        try:
+            class_fb = _require_classroom_for_write(user, data)
+        except (ValueError, PermissionError, LookupError) as exc:
+            return jsonify({"error": str(exc)}), 400
         
         s = Schedule(
             classroom_id=class_fb.id if class_fb else None,
@@ -1202,9 +1283,13 @@ def manage_schedules():
 
     # GET logic
     classroom = _user_classroom(user)
-    schedules_query = Schedule.query
-    if classroom:
-        schedules_query = schedules_query.filter_by(classroom_id=classroom.id)
+    schedules_query = _scope_query(
+        Schedule.query,
+        Schedule,
+        user,
+        'can_manage_schedule_multi_class',
+        include_legacy_default=False,
+    )
     schedules = schedules_query.all()
         
     return jsonify([{
@@ -1306,6 +1391,8 @@ def schedule_presets():
     classroom = _schedule_classroom_for_user(user)
 
     if request.method == 'POST':
+        if not classroom:
+            return jsonify({"error": "Kelas tujuan wajib dipilih"}), 400
         data = request.get_json() or {}
         name = (data.get('name') or '').strip()
         subject = (data.get('subject') or '').strip()
@@ -1324,12 +1411,12 @@ def schedule_presets():
         db.session.commit()
         return jsonify({"status": "success", "preset": _schedule_preset_payload(preset)}), 201
 
-    query = SchedulePreset.query
-    if classroom:
-        query = query.filter(
-            (SchedulePreset.classroom_id == classroom.id) |
-            (SchedulePreset.classroom_id.is_(None))
-        )
+    query = _scope_query(
+        SchedulePreset.query,
+        SchedulePreset,
+        user,
+        'can_manage_schedule_multi_class',
+    )
     presets = query.order_by(SchedulePreset.name.asc()).all()
     return jsonify([_schedule_preset_payload(preset) for preset in presets])
 
@@ -1342,7 +1429,9 @@ def modify_schedule_preset(preset_id):
 
     preset = SchedulePreset.query.get_or_404(preset_id)
     classroom = _schedule_classroom_for_user(user)
-    if classroom and preset.classroom_id not in (classroom.id, None):
+    if not _can_manage_record_in_classroom(
+        user, preset.classroom_id, 'can_manage_schedule_multi_class'
+    ):
         return jsonify({"error": "Not found"}), 404
 
     if request.method == 'DELETE':
@@ -1393,6 +1482,8 @@ def schedule_templates():
     classroom = _schedule_classroom_for_user(user)
 
     if request.method == 'POST':
+        if not classroom:
+            return jsonify({"error": "Kelas tujuan wajib dipilih"}), 400
         data = request.get_json() or {}
         name = (data.get('name') or '').strip()
         if not name:
@@ -1408,12 +1499,12 @@ def schedule_templates():
         db.session.commit()
         return jsonify({"status": "success", "template": _schedule_template_payload(template)}), 201
 
-    query = ScheduleTemplate.query
-    if classroom:
-        query = query.filter(
-            (ScheduleTemplate.classroom_id == classroom.id) |
-            (ScheduleTemplate.classroom_id.is_(None))
-        )
+    query = _scope_query(
+        ScheduleTemplate.query,
+        ScheduleTemplate,
+        user,
+        'can_manage_schedule_multi_class',
+    )
     templates = query.order_by(ScheduleTemplate.updated_at.desc(), ScheduleTemplate.name.asc()).all()
     return jsonify([_schedule_template_payload(template) for template in templates])
 
@@ -1426,6 +1517,8 @@ def schedule_template_from_current():
 
     from models import ScheduleTemplate, ScheduleTemplateItem
     classroom = _schedule_classroom_for_user(user)
+    if not classroom:
+        return jsonify({"error": "Kelas aktif tidak ditemukan"}), 400
     schedules = Schedule.query.filter_by(classroom_id=classroom.id).order_by(Schedule.day.asc(), Schedule.time_start.asc()).all() if classroom else []
     if not schedules:
         return jsonify({"error": "Belum ada jadwal aktif untuk dijadikan template"}), 400
@@ -1512,6 +1605,8 @@ def apply_schedule_template_api(template_id):
 
     from models import ScheduleTemplate
     classroom = _schedule_classroom_for_user(user)
+    if not classroom:
+        return jsonify({"error": "Kelas tujuan wajib dipilih"}), 400
     template = ScheduleTemplate.query.get_or_404(template_id)
     if not _can_manage_record_in_classroom(
         user, template.classroom_id, 'can_manage_schedule_multi_class'
@@ -1779,6 +1874,8 @@ def classroom_whatsapp_binding_api(classroom_id):
     bot = WhatsAppBot.query.get(bot_id)
     if not bot:
         return jsonify({'error': 'Bot tidak ditemukan'}), 404
+    if not _bot_allowed_for_user(user, bot):
+        return jsonify({'error': 'Bot tidak diizinkan untuk kelas ini'}), 403
     if not binding:
         binding = ClassroomWhatsAppBinding(
             classroom_id=classroom_id,
@@ -1804,11 +1901,22 @@ def notification_bots_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
+    if request.method != 'GET' and not _can_manage_sidobe_control(user):
+        return jsonify({"error": "Administrasi bot Si Dobe harus dilakukan operator global"}), 403
 
     if request.method == 'GET':
         bots = WhatsAppBot.query.order_by(WhatsAppBot.name.asc()).all()
+        if not _can_manage_sidobe_control(user):
+            allowed_ids = {
+                binding.bot_id for binding in ClassroomWhatsAppBinding.query.filter(
+                    ClassroomWhatsAppBinding.classroom_id.in_(
+                        {item.id for item in _allowed_notification_classrooms_for_user(user)}
+                    )
+                ).all()
+            }
+            bots = [bot for bot in bots if bot.id in allowed_ids]
         return jsonify([{
             'id': bot.id,
             'name': bot.name,
@@ -1825,8 +1933,8 @@ def notification_bots_api():
     provider = (data.get('provider') or 'sidobe').strip().lower() or 'sidobe'
     if not name:
         return jsonify({'error': 'Nama bot wajib diisi'}), 400
-    if provider not in {'waha', 'sidobe'}:
-        return jsonify({'error': 'Provider harus berupa waha atau sidobe'}), 400
+    if provider != 'sidobe':
+        return jsonify({'error': 'Provider harus berupa Si Dobe'}), 400
     sender_phone_raw = (data.get('sender_phone') or data.get('session_name') or '').strip()
     if provider == 'sidobe':
         from app import _sidobe_e164_phone
@@ -1855,7 +1963,7 @@ def update_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
     data = request.get_json(silent=True) or request.form or {}
@@ -1863,8 +1971,8 @@ def update_notification_bot_api(bot_id):
         bot.name = (data.get('name') or bot.name).strip() or bot.name
     if data.get('provider') is not None:
         provider = (data.get('provider') or '').strip().lower()
-        if provider not in {'waha', 'sidobe'}:
-            return jsonify({'error': 'Provider harus berupa waha atau sidobe'}), 400
+        if provider != 'sidobe':
+            return jsonify({'error': 'Provider harus berupa Si Dobe'}), 400
         bot.provider = provider
     if data.get('sender_phone') is not None or data.get('session_name') is not None:
         raw_sender_phone = (data.get('sender_phone') or data.get('session_name') or '').strip()
@@ -1890,7 +1998,7 @@ def delete_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
     if ClassroomWhatsAppBinding.query.filter_by(bot_id=bot.id).first():
@@ -1906,21 +2014,14 @@ def notification_bot_health_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _sidobe_request, _sidobe_e164_phone, _waha_request, get_whatsapp_setting_value
+    from app import _sidobe_request, _sidobe_e164_phone
     bot = WhatsAppBot.query.get_or_404(bot_id)
+    if not _bot_allowed_for_user(user, bot):
+        return jsonify({"error": "Bot tidak diizinkan untuk kelas ini"}), 403
     if (bot.provider or '').lower() == 'waha':
-        session_name = (bot.session_name or get_whatsapp_setting_value('waha', 'session', 'default')).strip() or 'default'
-        result = _waha_request('GET', f'/api/sessions/{session_name}', base_url_override=bot.base_url)
-        if not result.get('ok'):
-            return jsonify({'ok': False, 'bot_id': bot.id, 'session_name': session_name, 'error': result.get('error', 'Gagal cek WAHA')}), 400
-        data = result.get('data') or {}
-        status = data.get('status') if isinstance(data, dict) else 'unknown'
-        bot.status = str(status or 'unknown')
-        bot.last_seen_at = datetime.now()
-        db.session.commit()
-        return jsonify({'ok': True, 'bot_id': bot.id, 'session_name': session_name, 'status': status or 'unknown'})
+        return jsonify({'ok': False, 'error': 'Provider WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
     phone = _sidobe_e164_phone(bot.session_name)
     if not phone:
         # sender_phone is optional in Sidobe. Legacy session values therefore
@@ -1953,10 +2054,11 @@ def notification_bot_groups_api(bot_id):
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    from app import _sidobe_request, _sidobe_e164_phone, _waha_request, get_whatsapp_setting_value
+    if not _bot_allowed_for_user(user, bot):
+        return jsonify({"error": "Bot tidak diizinkan untuk kelas ini"}), 403
+    from app import _sidobe_request, _sidobe_e164_phone
     if (bot.provider or '').lower() == 'waha':
-        session_name = (bot.session_name or get_whatsapp_setting_value('waha', 'session', 'default')).strip() or 'default'
-        result = _waha_request('GET', f'/api/{session_name}/groups', base_url_override=bot.base_url)
+        return jsonify({'ok': False, 'error': 'Provider WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
     else:
         phone = _sidobe_e164_phone(bot.session_name)
         path = f'/whatsapp-groups?from_phone={phone[1:]}' if phone else '/whatsapp-groups'
@@ -1987,7 +2089,7 @@ def notification_sidobe_dashboard_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import get_sidobe_setting_value, _sidobe_request_with_auth_fallback, _sidobe_normalize_scalar
     base_url = get_sidobe_setting_value('base_url', '').strip() or None
@@ -2035,31 +2137,7 @@ def notification_sidobe_dashboard_api():
 @api_bp.route('/notifications/waha/dashboard', methods=['GET'])
 @jwt_required()
 def notification_waha_dashboard_api():
-    user = _api_request_user()
-    if not user:
-        return jsonify({'error': 'Unauthorized'}), 401
-    if not user.role.sidobe_enabled:
-        return jsonify({'error': 'Unauthorized'}), 403
-    from app import _waha_request
-    result = _waha_request('GET', '/api/sessions')
-    if not result.get('ok'):
-        return jsonify({'ok': False, 'worker_error': result.get('error', 'Gagal memuat WAHA'), 'sessions': []}), 400
-    raw = result.get('data') or []
-    sessions = raw if isinstance(raw, list) else raw.get('sessions', raw.get('data', [])) if isinstance(raw, dict) else []
-    return jsonify({
-        'ok': True,
-        'base_url': '',
-        'workers': [],
-        'worker_error': '',
-        'session_error': '',
-        'sessions': [{
-            'name': str(item.get('name') or item.get('id') or '-'),
-            'status': str(item.get('status') or 'unknown'),
-            'account': str(item.get('me') or '-'),
-            'server': 'WAHA',
-            'qr': '',
-        } for item in sessions if isinstance(item, dict)],
-    })
+    return jsonify({'ok': False, 'error': 'Endpoint WAHA sudah dinonaktifkan. Gunakan Si Dobe.'}), 410
 
 @api_bp.route('/notifications/sidobe/sessions/create', methods=['POST'])
 @jwt_required()
@@ -2067,14 +2145,14 @@ def notification_sidobe_create_session_api():
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import _sidobe_request_any, get_sidobe_setting_value
     data = request.get_json(silent=True) or {}
     session_name = (data.get('session_name') or data.get('name') or '').strip()
     if not session_name:
         return jsonify({'ok': False, 'error': 'Session name wajib diisi'}), 400
-    base_url = (data.get('base_url') or get_sidobe_setting_value('base_url', '')).strip() or None
+    base_url = get_sidobe_setting_value('base_url', '').strip() or None
     result = _sidobe_request_any('POST', ['/api/sessions', '/api/session'], payload={'name': session_name, 'session': session_name}, base_url_override=base_url)
     if not result.get('ok'):
         return jsonify({'ok': False, 'error': result.get('error', 'Gagal membuat session Si Dobe')}), 400
@@ -2086,10 +2164,10 @@ def notification_sidobe_start_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import _sidobe_request_any, get_sidobe_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/start',
         f'/api/{session_name}/start',
@@ -2105,10 +2183,10 @@ def notification_sidobe_stop_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import _sidobe_request_any, get_sidobe_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/stop',
         f'/api/{session_name}/stop',
@@ -2124,10 +2202,10 @@ def notification_sidobe_restart_session_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import _sidobe_request_any, get_sidobe_setting_value
-    base_url = (request.get_json(silent=True) or {}).get('base_url') or get_sidobe_setting_value('base_url', '')
+    base_url = get_sidobe_setting_value('base_url', '')
     result = _sidobe_request_any('POST', [
         f'/api/sessions/{session_name}/restart',
         f'/api/{session_name}/restart',
@@ -2143,7 +2221,7 @@ def notification_sidobe_session_screenshot_api(session_name):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    if not user or not user.role.sidobe_enabled:
+    if not _can_manage_sidobe_control(user):
         return jsonify({"error": "Unauthorized"}), 403
     from app import _sidobe_request_any, get_sidobe_setting_value
     base_url = get_sidobe_setting_value('base_url', '').strip() or None
@@ -2315,6 +2393,8 @@ def get_funds_summary():
         classroom = _requested_fund_classroom_for_user(user)
     except (ValueError, PermissionError, LookupError) as exc:
         return jsonify({"error": str(exc)}), 400
+    if not classroom and not _can_manage_fund_across_classes(user.role):
+        return jsonify({"error": "Akun belum memiliki kelas aktif"}), 400
 
     total_in = _apply_fund_classroom_filter(
         db.session.query(db.func.sum(BatchFund.amount)).filter(BatchFund.type == 'Masuk'),
@@ -2396,6 +2476,8 @@ def get_funds_history():
         classroom = _requested_fund_classroom_for_user(user)
     except (ValueError, PermissionError, LookupError) as exc:
         return jsonify({"error": str(exc)}), 400
+    if not classroom and not _can_manage_fund_across_classes(user.role):
+        return jsonify([])
     history = _apply_fund_classroom_filter(BatchFund.query, classroom).order_by(BatchFund.date.desc()).all()
     return jsonify([{
         "id": f.id,
@@ -2428,6 +2510,8 @@ def get_funds_audit():
         classroom = _requested_fund_classroom_for_user(user)
     except (ValueError, PermissionError, LookupError) as exc:
         return jsonify({"error": str(exc)}), 400
+    if not classroom and not _can_manage_fund_across_classes(user.role):
+        return jsonify([])
 
     students_query = Student.query.order_by(Student.full_name)
     if classroom:
@@ -2474,6 +2558,8 @@ def get_members():
         students_query = students_query.filter_by(classroom_id=requested_classroom_id)
     elif classroom:
         students_query = students_query.filter_by(classroom_id=classroom.id)
+    else:
+        students_query = students_query.filter(db.false())
 
     students = students_query.order_by(Student.full_name).all()
 
@@ -2496,7 +2582,7 @@ def _get_member_detail_for_requester(request_user, member_id):
     if allowed_ids:
         if member.classroom_id not in allowed_ids:
             return None
-    elif request_user.role.name not in ['Admin', 'Pengurus', 'Staff']:
+    else:
         return None
 
     linked_user = member.user
@@ -2725,6 +2811,8 @@ def create_fund_period_api():
         classroom = _requested_fund_classroom_for_user(user, data)
     except (ValueError, PermissionError, LookupError) as exc:
         return jsonify({"error": str(exc)}), 400
+    if not classroom:
+        return jsonify({"error": "Kelas aktif belum ditentukan"}), 400
 
     period = FundPeriod(
         classroom_id=classroom.id if classroom else None,
@@ -2803,10 +2891,12 @@ def get_gallery():
         # Published OR owned by user
         photos_query = GalleryPhoto.query.filter((GalleryPhoto.status == 'Published') | (GalleryPhoto.uploaded_by == user_id))
 
-    if classroom:
-        photos_query = photos_query.filter(
-            (GalleryPhoto.classroom_id == classroom.id) | (GalleryPhoto.classroom_id.is_(None))
-        )
+    photos_query = _scope_query(
+        photos_query,
+        GalleryPhoto,
+        user,
+        'can_manage_gallery_multi_class',
+    )
 
     photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
 
@@ -2836,7 +2926,9 @@ def add_gallery_comment(photo_id):
     user = User.query.get(user_id)
     classroom = _user_classroom(user)
     photo = GalleryPhoto.query.get_or_404(photo_id)
-    if classroom and photo.classroom_id not in (classroom.id, None):
+    if photo.status != 'Published' or not _can_manage_record_in_classroom(
+        user, photo.classroom_id, 'can_manage_gallery_multi_class'
+    ):
         return jsonify({"error": "Not found"}), 404
     data = request.get_json()
     if not data or not data.get('body'):
@@ -2867,7 +2959,9 @@ def moderate_gallery(photo_id):
         
     photo = GalleryPhoto.query.get_or_404(photo_id)
     classroom = _user_classroom(user)
-    if classroom and photo.classroom_id not in (classroom.id, None):
+    if not _can_manage_record_in_classroom(
+        user, photo.classroom_id, 'can_manage_gallery_multi_class'
+    ):
         return jsonify({"error": "Not found"}), 404
     
     if status == 'Rejected':
@@ -2912,7 +3006,9 @@ def delete_gallery_photo(photo_id):
     user = User.query.get(user_id)
     photo = GalleryPhoto.query.get_or_404(photo_id)
     classroom = _user_classroom(user)
-    if classroom and photo.classroom_id not in (classroom.id, None):
+    if not _can_manage_record_in_classroom(
+        user, photo.classroom_id, 'can_manage_gallery_multi_class'
+    ):
         return jsonify({"error": "Not found"}), 404
     
     # Allow if admin OR the one who uploaded it
@@ -2991,7 +3087,12 @@ def process_image_upload(file):
 def upload_gallery_api():
     user_id = int(get_jwt_identity())
     user = User.query.get(user_id)
-    classroom = _user_classroom(user)
+    if not user or not getattr(user.role, 'can_use_api', False):
+        return jsonify({"error": "Unauthorized"}), 403
+    try:
+        classroom = _require_classroom_for_write(user)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
     
     # User must at least have use_api (already checked by jwt) 
     # and we check if they have specific gallery upload status
@@ -3015,7 +3116,7 @@ def upload_gallery_api():
         return jsonify({"error": "Gagal memproses gambar"}), 500
         
     photo = GalleryPhoto(
-        classroom_id=classroom.id if classroom else None,
+        classroom_id=classroom.id,
         filename=filename,
         thumbnail=filename,
         caption=caption,
@@ -3046,12 +3147,17 @@ def upload_gallery_api():
 @api_bp.route('/logs', methods=['GET'])
 @jwt_required()
 def get_logs():
-    user_id = get_jwt_identity()
-    user = User.query.get(int(user_id))
-    if user.role.name not in ['Admin', 'Pengurus']:
+    user = _api_request_user(require_api_access=True)
+    if not user or not user.role.can_view_logs:
         return jsonify({"error": "Unauthorized"}), 403
 
-    logs = ActivityLog.query.order_by(ActivityLog.timestamp.desc()).limit(50).all()
+    query = ActivityLog.query
+    if not _can_access_multi_class_data(user.role):
+        classroom = _user_classroom(user)
+        if not classroom:
+            return jsonify([])
+        query = query.filter(ActivityLog.classroom_id == classroom.id)
+    logs = query.order_by(ActivityLog.timestamp.desc()).limit(50).all()
     return jsonify([{
         "id": l.id,
         "action": l.action,
@@ -3150,7 +3256,10 @@ def get_notification_recipients():
     for extra_user in extra_users:
         if extra_user.id in seen_user_ids:
             continue
-        if classroom and extra_user.classroom_id not in (classroom.id, None):
+        extra_user_classroom_id = extra_user.classroom_id or (
+            extra_user.student.classroom_id if extra_user.student else None
+        )
+        if classroom and extra_user_classroom_id != classroom.id and not _can_manage_notification_across_classes(user.role):
             continue
         recipients.append({
             "id": f"user:{extra_user.id}",
@@ -3234,9 +3343,11 @@ def api_send_notifications():
         target_user = User.query.get(target_user_id)
         if not target_user:
             return jsonify({"error": "User penerima tidak ditemukan"}), 404
-        if classroom and target_user.classroom_id not in (classroom.id, None):
-            if not (target_user.student and target_user.student.classroom_id == classroom.id):
-                return jsonify({"error": "Not found"}), 404
+        target_classroom_id = target_user.classroom_id or (
+            target_user.student.classroom_id if target_user.student else None
+        )
+        if classroom and target_classroom_id != classroom.id and not _can_manage_notification_across_classes(user.role):
+            return jsonify({"error": "Not found"}), 404
         if not target_user.fcm_token:
             return jsonify({"error": "Penerima belum memiliki token push aktif"}), 400
 
@@ -3270,11 +3381,18 @@ def api_manage_fund():
         classroom = _requested_fund_classroom_for_user(user, data)
     except (ValueError, PermissionError, LookupError) as exc:
         return jsonify({"error": str(exc)}), 400
+    if not classroom:
+        return jsonify({"error": "Kelas aktif belum ditentukan"}), 400
 
-    description = data.get('desc')
-    amount = float(data.get('amount', 0))
-    type_val = data.get('type')
-    category = data.get('category')
+    description = (data.get('desc') or '').strip()
+    try:
+        amount = float(data.get('amount', 0))
+    except (TypeError, ValueError):
+        amount = 0
+    type_val = (data.get('type') or '').strip()
+    category = (data.get('category') or '').strip()
+    if not description or amount <= 0 or type_val not in {'Masuk', 'Keluar'} or not category:
+        return jsonify({"error": "Deskripsi, nominal, tipe, dan kategori wajib valid"}), 400
     
     date_str = data.get('date')
     if date_str:
@@ -3293,7 +3411,10 @@ def api_manage_fund():
     
     student = None
     if student_id_val and str(student_id_val).lower() != 'none':
-        student = Student.query.get(int(student_id_val))
+        try:
+            student = Student.query.get(int(student_id_val))
+        except (TypeError, ValueError):
+            student = None
         if not student:
             return jsonify({"error": "Member tidak ditemukan"}), 404
         if classroom and student.classroom_id != classroom.id:
@@ -3368,7 +3489,10 @@ def update_fund_api(fund_id):
     student_id_val = data.get('student_id')
     student_id = fund.student_id
     if student_id_val is not None:
-        student_id = None if str(student_id_val).lower() == 'none' or str(student_id_val).strip() == '' else int(student_id_val)
+        try:
+            student_id = None if str(student_id_val).lower() == 'none' or str(student_id_val).strip() == '' else int(student_id_val)
+        except (TypeError, ValueError):
+            return jsonify({"error": "student_id tidak valid"}), 400
     student = Student.query.get(student_id) if student_id else None
     if student and classroom and student.classroom_id != classroom.id:
         return jsonify({"error": "Member tidak termasuk kelas aktif"}), 403
@@ -3397,6 +3521,7 @@ def update_fund_api(fund_id):
     auto_recalculate_points()
 
     new_ann = Announcement(
+        classroom_id=fund.classroom_id,
         title=f"Update Transaksi: {fund.description}",
         content=f"ID: {fund.id} diperbarui oleh {user.username}.\nAlasan: {fund.edit_reason}\nNilai Baru: Rp {fund.amount:,.0f}",
         category='Penting'
@@ -3496,6 +3621,10 @@ def create_assignment():
         return jsonify({"error": "Unauthorized"}), 403
         
     data = _get_json_payload(required=True)
+    try:
+        classroom = _require_classroom_for_write(user, data)
+    except (ValueError, PermissionError, LookupError) as exc:
+        return jsonify({"error": str(exc)}), 400
     title = (data.get('title') or '').strip()
     subject = (data.get('subject') or '').strip()
     description = (data.get('description') or '').strip()
@@ -3506,7 +3635,7 @@ def create_assignment():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     a = Assignment(
-        classroom_id=_user_classroom(user).id if _user_classroom(user) else None,
+        classroom_id=classroom.id,
         title=title,
         subject=subject,
         deadline=deadline,

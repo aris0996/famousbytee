@@ -400,7 +400,7 @@
                                 <div style="display: flex; align-items: center; gap: 10px;">
                                     <span class="status-badge" style="font-family: monospace; font-size: 0.75rem;">{{ s.room }}</span>
                                     {% if current_user.role.can_manage_schedule %}
-                                        <button onclick="openEditSchedule('{{ s.id }}', '{{ s.day }}', '{{ s.time_start }}', '{{ s.time_end }}', `{{ s.subject }}`, `{{ s.lecturer }}`, `{{ s.room }}`)" class="icon-btn"><i data-lucide="edit-3" style="width: 14px;"></i></button>
+                                        <button onclick="openEditSchedule({{ s.id|tojson }}, {{ s.day|tojson }}, {{ s.time_start|tojson }}, {{ s.time_end|tojson }}, {{ s.subject|tojson }}, {{ (s.lecturer or '')|tojson }}, {{ (s.room or '')|tojson }})" class="icon-btn"><i data-lucide="edit-3" style="width: 14px;"></i></button>
                                         <form method="POST" action="{{ url_for('delete_schedule', id=s.id) }}" style="display:inline;" onsubmit="return confirm('Hapus?')"><button type="submit" style="border:0; background:none; color:#ef4444; cursor:pointer;" class="icon-btn"><i data-lucide="trash-2" style="width:14px;"></i></button></form>
                                     {% endif %}
                                 </div>
