@@ -1791,7 +1791,7 @@ with app.app_context():
     if os.path.isdir(migrations_path):
         try:
             from flask_migrate import upgrade
-            upgrade()
+            upgrade(directory=migrations_path)
             app.logger.info('Database schema is up to date.')
         except Exception as e:
             app.logger.error(f'Migration auto-run skipped or failed: {e}')
