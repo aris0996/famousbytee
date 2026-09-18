@@ -537,6 +537,64 @@ def _is_gallery_photo_in_allowed_scope(photo, classroom):
     return bool(photo.classroom_id is None and _can_manage_gallery_content())
 
 
+def _gallery_uploader_classroom(photo):
+    """Resolve the uploader's current class without guessing a default class."""
+    uploader = photo.user
+    if not uploader and photo.uploaded_by:
+        uploader = User.query.get(photo.uploaded_by)
+    if not uploader:
+        return None
+    return getattr(uploader, 'classroom', None) or (
+        uploader.student.classroom if getattr(uploader, 'student', None) else None
+    )
+
+
+def _queue_gallery_face_scope_reset(photo_id, classroom_id):
+    """Reset face data when a gallery photo receives a new class scope."""
+    from plugins.face_labeling.config import is_enabled as face_labeling_enabled
+
+    if face_labeling_enabled():
+        from plugins.face_labeling.jobs import reset_photo_scope
+        reset_photo_scope(photo_id, classroom_id)
+
+
+def _auto_assign_gallery_photos(active_classroom=None):
+    """Assign unscoped photos from the uploader's class when it is unambiguous."""
+    if not _can_manage_gallery_content():
+        return 0
+
+    allowed_ids = {classroom.id for classroom in _gallery_allowed_classrooms()}
+    if not allowed_ids:
+        return 0
+    can_switch_scope = _has_any_classroom_scope(
+        'can_manage_gallery_multi_class',
+        'can_view_all_classrooms',
+        'can_access_multi_classroom',
+    )
+    candidates = GalleryPhoto.query.filter(GalleryPhoto.classroom_id.is_(None)).all()
+    assigned = 0
+    try:
+        for photo in candidates:
+            uploader_classroom = _gallery_uploader_classroom(photo)
+            if not uploader_classroom or uploader_classroom.id not in allowed_ids:
+                continue
+            if not can_switch_scope and (
+                not active_classroom or uploader_classroom.id != active_classroom.id
+            ):
+                continue
+            photo.classroom_id = uploader_classroom.id
+            _queue_gallery_face_scope_reset(photo.id, uploader_classroom.id)
+            assigned += 1
+        if assigned:
+            db.session.commit()
+            app.logger.info('Automatically assigned %s gallery photos from uploader class.', assigned)
+    except Exception:
+        db.session.rollback()
+        app.logger.exception('Failed to automatically assign gallery photo classes.')
+        return 0
+    return assigned
+
+
 def _can_manage_web_classroom_record(record_classroom_id, multi_permission):
     role = current_user.role
     if getattr(role, 'can_manage_roles', False) or getattr(role, multi_permission, False):
@@ -4151,6 +4209,8 @@ def manage_gallery():
         'can_view_all_classrooms',
         'can_access_multi_classroom',
     )
+    gallery_can_moderate = _can_manage_gallery_content()
+    _auto_assign_gallery_photos(active_classroom)
     # Admin/Pengurus can see all (including pending), Members can only see Published
     photos_query = GalleryPhoto.query
     if active_classroom:
@@ -4163,7 +4223,7 @@ def manage_gallery():
         'can_access_multi_classroom',
     ):
         photos_query = photos_query.filter(db.false())
-    if current_user.role.can_manage_gallery:
+    if gallery_can_moderate:
         photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
     else:
         photos = photos_query.filter(
@@ -4177,7 +4237,7 @@ def manage_gallery():
         photos=photos,
         classrooms=classrooms,
         active_classroom=active_classroom,
-        gallery_can_moderate=_can_manage_gallery_content(),
+        gallery_can_moderate=gallery_can_moderate,
     )
 
 @app.route('/gallery/edit/<int:id>', methods=['POST'])
@@ -4231,10 +4291,7 @@ def edit_gallery(id):
             # Existing detections and matches belong to the old scope. Clear
             # them and let the plugin worker detect the photo in its new class.
             try:
-                from plugins.face_labeling.config import is_enabled as face_labeling_enabled
-                if face_labeling_enabled():
-                    from plugins.face_labeling.jobs import reset_photo_scope
-                    reset_photo_scope(photo.id, target_classroom.id)
+                _queue_gallery_face_scope_reset(photo.id, target_classroom.id)
             except Exception:
                 db.session.rollback()
                 app.logger.exception('Failed to rescope face data for gallery photo %s.', photo.id)
