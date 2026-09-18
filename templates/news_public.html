@@ -293,8 +293,8 @@
                 </a>
                 <p class="footer-brand-copy">Ruang informasi yang membantu kelas tetap terhubung melalui berita, pengumuman, dan kabar terbaru.</p>
                 <div class="footer-socials">
-                    {% if site_settings.social_ig %}<a href="{{ site_settings.social_ig }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram"><i data-lucide="instagram"></i></a>{% endif %}
-                    {% if site_settings.social_wa %}<a href="{{ site_settings.social_wa }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Si Dobe"><i data-lucide="message-circle"></i></a>{% endif %}
+                    {% if site_settings.social_ig and site_settings.social_ig != '#' %}<a href="{{ site_settings.social_ig }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Instagram"><i data-lucide="instagram"></i></a>{% endif %}
+                    {% if site_settings.social_wa and site_settings.social_wa != '#' %}<a href="{{ site_settings.social_wa }}" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Si Dobe"><i data-lucide="message-circle"></i></a>{% endif %}
                     <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" class="footer-social-btn" title="Sitemap"><i data-lucide="file-code-2"></i></a>
                 </div>
             </div>
