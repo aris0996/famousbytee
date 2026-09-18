@@ -20,8 +20,8 @@
     </header>
 
     {% if current_user.role.can_manage_roles or current_user.role.can_view_all_classrooms or current_user.role.can_access_multi_classroom or current_user.role.can_switch_classroom_context or current_user.role.can_view_classroom_reports %}
-    <form method="GET" action="{{ url_for('manage_fund') }}" class="section-card" style="margin-bottom: 1rem; padding: 1rem 1.15rem;">
-        <div class="filter-grid" style="grid-template-columns: minmax(0, 260px) minmax(0, 1fr) auto auto;">
+    <form method="GET" action="{{ url_for('manage_fund') }}" class="section-card fund-filter-card">
+        <div class="filter-grid fund-filter-grid">
             <div>
                 <label style="display: block; font-size: 0.78rem; text-transform: uppercase; color: #94a3b8; font-weight: 800; margin-bottom: 0.45rem;">Kelas Aktif</label>
                 <select name="classroom_id" class="form-control">
@@ -59,9 +59,9 @@
 
     <!-- Tabbed Content Controller -->
     <div class="tab-switcher">
-        <button class="tab-btn active" onclick="switchTab('history')"><i data-lucide="history"></i> Riwayat
+        <button class="tab-btn active" onclick="switchTab(event, 'history')"><i data-lucide="history"></i> Riwayat
             Transaksi</button>
-        <button class="tab-btn" onclick="switchTab('audit')"><i data-lucide="users-2"></i> Audit Iuran Anggota</button>
+        <button class="tab-btn" onclick="switchTab(event, 'audit')"><i data-lucide="users-2"></i> Audit Iuran Anggota</button>
     </div>
 
     <div id="tab-history" class="tab-pane active">
@@ -119,15 +119,15 @@
                                 </div>
                                 {% endif %}
                             </td>
-                            <td class="text-right">
+                            <td class="text-right" data-label="Nominal">
                                 <span class="amount-text {{ f.type|lower }}">{{ '+' if f.type == 'Masuk' else '-' }} {{
                                     "{:,.0f}".format(f.amount) }}</span>
                             </td>
-                            <td class="text-center">
+                            <td class="text-center" data-label="Tipe">
                                 <span class="status-pill {{ f.type|lower }}">{{ f.type }}</span>
                             </td>
                             {% if current_user.role.can_manage_fund %}
-                            <td class="text-right">
+                            <td class="text-right" data-label="Opsi">
                                 <div class="btn-group-sm">
                                     <button class="edit"
                                         onclick="openEditFund('{{ f.id }}', `{{ f.description|replace('`','\\`') }}`, '{{ f.amount }}', '{{ f.type }}', '{{ f.category }}', '{{ f.tags or '' }}')"><i
@@ -151,7 +151,6 @@
                 </div>
             </div>
         </div>
-    </div>
 
     <div class="section-card period-section">
         <div class="period-section-head">
@@ -185,6 +184,7 @@
             </div>
             {% endfor %}
         </div>
+    </div>
     </div>
 
     <!-- AUDIT TAB -->
@@ -390,6 +390,29 @@
         flex-wrap: wrap;
     }
 
+    .fund-container {
+        width: min(100%, 1440px);
+        margin: 0 auto;
+    }
+
+    .fund-filter-card {
+        margin-bottom: 1.25rem;
+        padding: 1.1rem 1.25rem;
+        background: linear-gradient(135deg, #ffffff, #f8faff);
+    }
+
+    .fund-filter-grid {
+        display: grid;
+        grid-template-columns: minmax(180px, 1.35fr) repeat(2, minmax(150px, .8fr)) auto;
+        gap: .75rem;
+        align-items: end;
+    }
+
+    .fund-filter-grid > div { min-width: 0; }
+    .fund-filter-grid .form-control { min-width: 0; width: 100%; }
+
+    .fund-filter-grid > .btn { min-height: 42px; white-space: nowrap; }
+
     .premium-title {
         font-size: 2rem;
         font-weight: 800;
@@ -463,7 +486,7 @@
     /* Stats Overview Mini */
     .stats-overview-mini {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 350px));
+        grid-template-columns: repeat(2, minmax(0, 350px));
         gap: 1.5rem;
         margin-bottom: 2.5rem;
     }
@@ -546,6 +569,7 @@
     /* Tab Switcher Style */
     .tab-switcher {
         display: inline-flex;
+        max-width: 100%;
         background: #f1f5f9;
         padding: 6px;
         border-radius: 14px;
@@ -667,6 +691,8 @@
         box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
     }
 
+    .control-bar .actions { flex-wrap: wrap; }
+
     .search-box {
         position: relative;
         flex: 1;
@@ -774,6 +800,9 @@
         align-items: center;
         flex-wrap: wrap;
     }
+
+    .advanced-filter-panel .filter-grid > * { flex: 1 1 170px; min-width: 0; }
+    .advanced-filter-panel .filter-grid .btn { flex: 0 0 auto; }
 
     .filter-grid input {
         padding: 10px;
@@ -1221,14 +1250,53 @@
     }
 
     @media (max-width: 800px) {
+        .fund-header { margin-bottom: 1.25rem; }
+        .premium-title { font-size: 1.65rem; }
+        .subtitle { line-height: 1.5; }
+
+        .header-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+        .header-actions .btn { justify-content: center; min-height: 44px; padding: 9px 10px; }
+
+        .fund-filter-card { padding: .9rem; }
+        .fund-filter-grid { grid-template-columns: 1fr 1fr; gap: .7rem; }
+        .fund-filter-grid > div { grid-column: 1 / -1; }
+        .fund-filter-grid > .btn { grid-column: 1 / -1; width: 100%; }
+
+        .stats-overview-mini { grid-template-columns: 1fr; gap: .75rem; margin-bottom: 1.25rem; }
+        .mini-card { min-height: 108px; padding: 1.1rem; }
+        .mini-card .val { font-size: 1.45rem; }
+
+        .tab-switcher { display: flex; overflow-x: auto; padding: 4px; margin-bottom: 1rem; }
+        .tab-btn { flex: 0 0 auto; padding: 10px 14px; font-size: .78rem; white-space: nowrap; }
+
         .control-bar {
             flex-direction: column;
             align-items: stretch;
+            padding: .8rem;
+            gap: .7rem;
         }
 
         .search-box {
             max-width: 100%;
         }
+
+        .control-bar .actions { display: grid; grid-template-columns: 1fr 1fr; }
+        .control-bar .actions > * { justify-content: center; min-height: 38px; }
+
+        .audit-summary-mini { justify-content: space-between; gap: 6px; flex-wrap: wrap; }
+        .audit-summary-mini .sep { display: none; }
+
+        .advanced-filter-panel { padding: .9rem; }
+        .advanced-filter-panel .filter-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .65rem; }
+        .advanced-filter-panel .filter-grid > * { width: 100%; }
+        .advanced-filter-panel .filter-grid .btn { grid-column: span 1; }
+
+        .period-section { margin-top: 1rem; }
+        .period-section-head { align-items: stretch; }
+        .period-section-head .btn { width: 100%; justify-content: center; }
+        .period-card-top { flex-direction: column; }
+        .period-actions { justify-content: stretch; }
+        .period-actions > * { flex: 1; text-align: center; }
 
         .tab-switcher {
             width: 100%;
@@ -1247,7 +1315,7 @@
             display: block;
             border-bottom: 4px solid #f8fafc;
             position: relative;
-            padding: 1.5rem 1rem;
+            padding: 1.1rem 1rem;
         }
 
         .premium-table td {
@@ -1256,12 +1324,24 @@
             border: none;
         }
 
+        .premium-table td[data-label]::before {
+            content: attr(data-label);
+            display: block;
+            color: #94a3b8;
+            font-size: .68rem;
+            font-weight: 800;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            margin-bottom: .15rem;
+        }
+
         .amount-text {
-            position: absolute;
-            top: 1.5rem;
-            right: 1rem;
+            position: static;
             font-size: 1.1rem;
         }
+
+        .premium-table td:first-child { padding-right: 0; }
+        .premium-table td.text-right, .premium-table td.text-center { text-align: left; }
 
         .status-pill {
             width: fit-content;
@@ -1269,19 +1349,38 @@
         }
 
         .btn-group-sm {
-            margin-top: 1rem;
+            margin-top: .6rem;
             justify-content: flex-start;
         }
+
+        .audit-item { align-items: flex-start; gap: .75rem; padding: 1rem; }
+        .stu-info { min-width: 0; flex: 1; }
+        .stu-info h4 { font-size: .95rem; overflow-wrap: anywhere; }
+        .pay-info { flex: 0 0 auto; }
+        .amount-paid { font-size: .95rem; }
+
+        .modal-overlay { padding: .75rem; align-items: flex-end; }
+        .modal-card, .modal-card.wide { width: 100%; border-radius: 20px 20px 12px 12px; max-height: calc(100vh - 1.5rem); }
+        .modal-card .header, .modal-card .footer { padding: 1rem 1.1rem; }
+        .modal-card .body { padding: 1.1rem; max-height: 65vh; }
+        .f-row { grid-template-columns: 1fr; gap: 0; }
+        .modal-card .footer .wide { width: 100%; }
+
+        .batch-header { display: grid; grid-template-columns: 1fr; gap: .65rem; }
+        .batch-rows { overflow-x: hidden; }
+        .batch-rows table { width: 100%; }
+        .batch-rows td { padding: .55rem .25rem; }
+        .batch-rows td:last-child { width: 115px; }
     }
 </style>
 
 <script>
     // Tab Logic
-    function switchTab(id) {
+    function switchTab(buttonEvent, id) {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
 
-        event.currentTarget.classList.add('active');
+        buttonEvent.currentTarget.classList.add('active');
         document.getElementById('tab-' + id).classList.add('active');
 
         // Reset pagination context
