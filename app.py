@@ -41,6 +41,7 @@ from config import Config
 from flask_jwt_extended import JWTManager, create_access_token
 from flask_cors import CORS
 from routes.api import api_bp
+from plugins.face_labeling import register_face_labeling
 
 # ============================================================
 # LOGGING CONFIGURATION
@@ -1759,6 +1760,7 @@ migrate = Migrate(app, db)
 login_manager = LoginManager()
 login_manager.login_view = 'login'
 login_manager.init_app(app)
+register_face_labeling(app, scheduler=scheduler)
 
 
 @login_manager.user_loader

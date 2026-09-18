@@ -1,0 +1,64 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="face-page">
+    <div class="face-page-header">
+        <div>
+            <span class="face-eyebrow">{{ active_classroom.name }} · Foto #{{ photo.id }}</span>
+            <h1>Label wajah pada foto</h1>
+            <p>{{ photo.caption or 'Tanpa caption' }} · {{ 'Publik' if photo.is_public else 'Privat' }}</p>
+        </div>
+        <a class="face-button secondary" href="{{ url_for('face_labeling.index', classroom_id=active_classroom.id) }}">Kembali</a>
+    </div>
+
+    <section class="face-detail-grid">
+        <div class="face-card face-canvas-card">
+            <div class="face-canvas">
+                <img src="{{ url_for('static', filename='uploads/gallery/' ~ photo.filename) }}" alt="{{ photo.caption or 'Foto galeri' }}">
+                {% for row in faces %}
+                <span class="face-box" style="left:{{ row.bbox.left * 100 }}%; top:{{ row.bbox.top * 100 }}%; width:{{ (row.bbox.right - row.bbox.left) * 100 }}%; height:{{ (row.bbox.bottom - row.bbox.top) * 100 }}%;"><b>{{ loop.index }}</b></span>
+                {% endfor %}
+            </div>
+            <div class="face-card-actions">
+                <form method="POST" action="{{ url_for('face_labeling.detect_photo', photo_id=photo.id) }}">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                    <button class="face-button primary" type="submit"><i data-lucide="scan-face"></i> Deteksi ulang</button>
+                </form>
+                {% if job %}<span class="face-status {{ job.status }}">{{ job.status }}{% if job.error_message %}: {{ job.error_message }}{% endif %}</span>{% endif %}
+            </div>
+        </div>
+
+        <aside class="face-card face-label-list">
+            <div class="face-card-heading">
+                <div><span class="face-eyebrow">{{ faces|length }} terdeteksi</span><h2>Pemetaan wajah</h2></div>
+            </div>
+            {% for row in faces %}
+            <div class="face-label-row">
+                <div class="face-label-number">{{ loop.index }}</div>
+                <div class="face-label-content">
+                    {% set best = row.matches[0] if row.matches else none %}
+                    {% if best and best.user %}
+                    <strong>{{ best.user.full_name or best.user.username }}</strong>
+                    <small>{{ best.match.status }} · {{ (best.match.confidence * 100)|round(1) }}%</small>
+                    {% else %}
+                    <strong>Belum ditautkan</strong>
+                    <small>Gunakan pilihan akun di bawah.</small>
+                    {% endif %}
+                    <form method="POST" action="{{ url_for('face_labeling.link_face', face_id=row.face.id) }}" class="face-link-form">
+                        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <select name="user_id" required>
+                            <option value="">Pilih akun kelas {{ active_classroom.name }}</option>
+                            {% for member in members %}
+                            <option value="{{ member.id }}">{{ member.full_name or member.username }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="face-button small" type="submit">Tautkan</button>
+                    </form>
+                </div>
+            </div>
+            {% else %}
+            <div class="face-empty">Belum ada hasil deteksi. Klik Deteksi ulang setelah engine plugin dikonfigurasi.</div>
+            {% endfor %}
+        </aside>
+    </section>
+</div>
+{% endblock %}

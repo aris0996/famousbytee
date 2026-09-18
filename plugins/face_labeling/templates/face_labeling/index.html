@@ -1,0 +1,54 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="face-page">
+    <div class="face-page-header">
+        <div>
+            <span class="face-eyebrow">Plugin superadmin</span>
+            <h1>Pemetaan Wajah Galeri</h1>
+            <p>Deteksi wajah dan tautkan identitas hanya dalam kelas foto yang dipilih.</p>
+        </div>
+        <a class="face-button secondary" href="{{ url_for('manage_gallery') }}">Buka Galeri</a>
+    </div>
+
+    <form class="face-class-picker" method="GET">
+        <label for="classroom_id">Kelas aktif</label>
+        <select id="classroom_id" name="classroom_id" onchange="this.form.submit()">
+            <option value="">Pilih kelas</option>
+            {% for classroom in classrooms %}
+            <option value="{{ classroom.id }}" {% if active_classroom and active_classroom.id == classroom.id %}selected{% endif %}>{{ classroom.name }}{% if classroom.batch %} · {{ classroom.batch }}{% endif %}</option>
+            {% endfor %}
+        </select>
+    </form>
+
+    {% if active_classroom %}
+    <section class="face-card">
+        <div class="face-card-heading">
+            <div>
+                <span class="face-eyebrow">{{ active_classroom.name }}</span>
+                <h2>Foto dalam kelas</h2>
+            </div>
+            <span class="face-count">{{ photos|length }} foto</span>
+        </div>
+        <div class="face-photo-grid">
+            {% for photo in photos %}
+            <a class="face-photo-item" href="{{ url_for('face_labeling.photo_detail', photo_id=photo.id) }}">
+                <img src="{{ url_for('static', filename='uploads/gallery/thumbnails/' ~ photo.thumbnail) }}" alt="{{ photo.caption or 'Foto galeri' }}" loading="lazy">
+                <span class="face-photo-meta">
+                    <strong>{{ photo.caption or 'Tanpa caption' }}</strong>
+                    <small>{{ photo.status }}{% if photo.is_public %} · Publik{% else %} · Privat{% endif %}</small>
+                </span>
+            </a>
+            {% else %}
+            <div class="face-empty">Belum ada foto pada kelas ini.</div>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <section class="face-card face-empty-state">
+        <i data-lucide="scan-face"></i>
+        <h2>Pilih kelas untuk mulai</h2>
+        <p>Scope label dan pencarian wajah selalu mengikuti kelas foto.</p>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

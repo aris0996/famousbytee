@@ -13,6 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
+    {% if face_labeling_enabled %}<link rel="stylesheet" href="{{ url_for('face_labeling.static', filename='face_labeling.css') }}">{% endif %}
     <script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
     <style>
         :root {
@@ -646,6 +647,22 @@
                     <i data-lucide="image"></i> <span>{{ 'Manajemen Galeri' if current_user.role.can_manage_gallery else 'Galeri Kelas' }}</span>
                 </a>
             </div>
+
+            {% if face_labeling_enabled and current_user.role.can_manage_roles %}
+            <div class="nav-item">
+                <a href="{{ url_for('face_labeling.index') }}"
+                    class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('face_labeling.') and request.endpoint != 'face_labeling.consent_page' else '' }}">
+                    <i data-lucide="scan-face"></i> <span>Pemetaan Wajah</span>
+                </a>
+            </div>
+            {% elif face_labeling_enabled %}
+            <div class="nav-item">
+                <a href="{{ url_for('face_labeling.consent_page') }}"
+                    class="nav-link {{ 'active' if request.endpoint == 'face_labeling.consent_page' else '' }}">
+                    <i data-lucide="scan-face"></i> <span>Persetujuan Wajah</span>
+                </a>
+            </div>
+            {% endif %}
 
             <!-- Berita -->
             <div class="nav-item">

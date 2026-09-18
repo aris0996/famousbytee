@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="face-page">
+    <div class="face-page-header">
+        <div>
+            <span class="face-eyebrow">Privasi anggota</span>
+            <h1>Persetujuan Wajah</h1>
+            <p>Setujui atau cabut penggunaan profil wajah untuk membantu pemetaan foto kelas.</p>
+        </div>
+    </div>
+    <section class="face-card consent-card">
+        {% for profile in profiles %}
+        <div class="consent-row">
+            <div><strong>Permintaan kelas #{{ profile.classroom_id }}</strong><p>Profil wajah hanya berlaku di kelas tersebut.</p></div>
+            <form method="POST"><input type="hidden" name="_csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="profile_id" value="{{ profile.id }}"><button class="face-button primary" type="submit">Setujui</button></form>
+        </div>
+        {% else %}
+        <div class="face-empty">Tidak ada permintaan consent yang menunggu.</div>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}
