@@ -65,7 +65,8 @@
         .chips { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; }
         .chip { display: inline-flex; align-items: center; min-height: 40px; padding: .62rem .9rem; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: #fff; font-size: .78rem; font-weight: 800; text-decoration: none; transition: .2s ease; }
         .chip:hover { color: var(--primary); border-color: rgba(56,86,232,.35); transform: translateY(-1px); }
-        .chip.all, .chip.all.active { color: #fff; border-color: transparent; background: var(--primary); box-shadow: 0 9px 18px rgba(56,86,232,.16); }
+        .chip.all.active { color: #fff; border-color: transparent; background: var(--primary); box-shadow: 0 9px 18px rgba(56,86,232,.16); }
+        .chip.all:not(.active):hover { color: var(--primary); border-color: rgba(56,86,232,.35); background: #fff; }
 
         .article-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
         .card { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: 22px; background: var(--surface); box-shadow: 0 8px 24px rgba(16,25,54,.045); transition: transform .25s ease, box-shadow .25s ease, border-color .25s ease; }
