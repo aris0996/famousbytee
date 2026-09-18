@@ -317,32 +317,29 @@
         }
 
         @media (min-width: 769px) {
-            /* Desktop uses one document scroll. The sidebar grows with the
-               page instead of competing with the main content for scrolling. */
+            /* Desktop keeps the sidebar independent from the page content.
+               Only the menu list scrolls, matching the mobile drawer. */
             body {
-                align-items: stretch;
-                overflow-y: visible;
+                height: 100vh;
+                overflow: hidden;
             }
 
             .sidebar {
-                align-self: stretch;
-                height: auto;
-                min-height: 100vh;
-                overflow: visible;
+                height: 100vh;
+                max-height: 100vh;
+                overflow: hidden;
             }
 
             .nav-list {
-                flex: 0 0 auto;
-                overflow: visible;
-                overscroll-behavior: auto;
+                overflow-y: auto;
+                overflow-x: hidden;
+                -webkit-overflow-scrolling: touch;
             }
 
             .main-content {
-                overflow: visible;
-            }
-
-            .btn-logout {
-                margin-top: 1.5rem;
+                height: 100vh;
+                overflow-y: auto;
+                overflow-x: hidden;
             }
 
             .mobile-toggle {
