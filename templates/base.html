@@ -163,6 +163,16 @@
             height: 0;
         }
 
+        .nav-list::-webkit-scrollbar-button:single-button,
+        .nav-list::-webkit-scrollbar-button:vertical:start:decrement,
+        .nav-list::-webkit-scrollbar-button:vertical:end:increment {
+            display: none;
+            width: 0;
+            height: 0;
+            background: transparent;
+            border: 0;
+        }
+
         .nav-list::-webkit-scrollbar-track {
             margin: 6px 0;
             background: rgba(255, 255, 255, .04);
