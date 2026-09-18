@@ -7,7 +7,7 @@ from flask_login import current_user, login_required
 from models import ClassRoom, GalleryPhoto, User, db
 
 from .crypto import FaceDataUnavailable, decrypt_embedding
-from .jobs import enqueue_photo, process_photo
+from .jobs import enqueue_photo, spawn_photo_worker
 from .matcher import rematch_profile, set_profile_embedding
 from .models import ClassFaceProfile, FaceMatch, FaceProcessingJob, PhotoFace
 from .scope import (
@@ -126,11 +126,11 @@ def detect_photo(photo_id):
     photo = get_scoped_photo(photo_id)
     ensure_photo_class(photo)
     enqueue_photo(photo.id)
-    result = process_photo(photo.id)
-    if result.get('ok'):
-        flash(f"Deteksi selesai. {result.get('faces', 0)} wajah ditemukan.", 'success')
+    worker = spawn_photo_worker(photo.id, force=True)
+    if worker:
+        flash('Deteksi dimasukkan ke antrean. Halaman akan menampilkan hasil setelah worker selesai.', 'success')
     else:
-        flash(result.get('error') or 'Deteksi wajah belum berhasil.', 'error')
+        flash('Deteksi foto sedang diproses atau worker belum tersedia. Coba lagi setelah beberapa saat.', 'warning')
     return redirect(url_for('face_labeling.photo_detail', photo_id=photo.id))
 
 

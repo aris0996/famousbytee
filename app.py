@@ -1780,14 +1780,19 @@ def run_automated_reminders():
 # Initialize Scheduler (WSGI-safe: only start once, not on reload)
 scheduler = None
 try:
-    # Prevent duplicate schedulers in multi-process WSGI deployments
-    if not getattr(app, '_scheduler_started', False):
+    scheduler_disabled = os.environ.get('FAMOUSBYTEE_DISABLE_SCHEDULER', '').strip().lower() in {
+        '1', 'true', 'yes', 'on'
+    }
+    # Worker processes must not start the web application's schedulers.
+    if not scheduler_disabled and not getattr(app, '_scheduler_started', False):
         scheduler = BackgroundScheduler(daemon=True)
         scheduler.add_job(func=run_automated_reminders, trigger="interval", minutes=1)
         scheduler.add_job(func=cleanup_old_activity_logs, trigger="cron", hour=3, minute=0)
         scheduler.start()
         app._scheduler_started = True
         app.logger.info('Background scheduler started successfully.')
+    elif scheduler_disabled:
+        app.logger.info('Background scheduler disabled for an isolated worker process.')
 except Exception as _sched_err:
     app.logger.error(f'Failed to start background scheduler: {_sched_err}')
 

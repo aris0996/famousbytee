@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 from datetime import datetime, timedelta
 
 from flask import current_app
@@ -12,6 +14,71 @@ from .crypto import FaceDataUnavailable, encrypt_embedding
 from .engine import FaceEngineUnavailable, get_engine
 from .matcher import rematch_profile
 from .models import ClassFaceProfile, FaceMatch, FaceProcessingJob, PhotoFace
+
+
+def _worker_python():
+    configured = os.environ.get('FACE_LABELING_WORKER_PYTHON', '').strip()
+    if configured:
+        return configured
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    project_virtualenv_python = os.path.join(project_root, 'venv', 'bin', 'python')
+    if os.path.exists(project_virtualenv_python):
+        return project_virtualenv_python
+    virtualenv_python = os.path.join(sys.prefix, 'bin', 'python')
+    if os.path.exists(virtualenv_python):
+        return virtualenv_python
+    return sys.executable
+
+
+def spawn_photo_worker(photo_id, force=False):
+    """Claim a job and run native face detection outside Apache/mod_wsgi."""
+    job = FaceProcessingJob.query.filter_by(photo_id=photo_id).first()
+    if not job:
+        return None
+
+    now = datetime.utcnow()
+    if job.status == 'processing':
+        stale = job.locked_at and (now - job.locked_at) >= timedelta(minutes=5)
+        if not force or not stale:
+            return None
+    elif job.status not in {'queued', 'failed', 'completed'}:
+        return None
+
+    job.status = 'processing'
+    job.locked_at = now
+    job.error_message = None
+    db.session.commit()
+
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    worker_log_path = os.path.join(project_root, 'logs', 'face-worker.log')
+    worker_env = os.environ.copy()
+    worker_env['FAMOUSBYTEE_DISABLE_SCHEDULER'] = '1'
+    command = [
+        _worker_python(),
+        '-m',
+        'plugins.face_labeling.worker',
+        '--photo-id',
+        str(photo_id),
+    ]
+    try:
+        with open(worker_log_path, 'ab') as worker_log:
+            subprocess.Popen(
+                command,
+                cwd=project_root,
+                env=worker_env,
+                stdout=worker_log,
+                stderr=subprocess.STDOUT,
+                close_fds=True,
+                start_new_session=True,
+            )
+    except Exception as exc:
+        job.status = 'failed'
+        job.error_message = 'Worker deteksi tidak dapat dijalankan.'
+        job.locked_at = None
+        db.session.commit()
+        current_app.logger.exception('Could not start face worker for photo %s.', photo_id)
+        return None
+    return job
 
 
 def reset_photo_scope(photo_id, classroom_id):
@@ -135,6 +202,19 @@ def run_scheduled_jobs(app):
         with app.app_context():
             if not is_enabled():
                 return
+            stale_before = datetime.utcnow() - timedelta(minutes=5)
+            stale_jobs = FaceProcessingJob.query.filter(
+                FaceProcessingJob.status == 'processing',
+                FaceProcessingJob.locked_at.isnot(None),
+                FaceProcessingJob.locked_at < stale_before,
+            ).all()
+            for stale_job in stale_jobs:
+                stale_job.status = 'queued'
+                stale_job.error_message = 'Worker sebelumnya berhenti sebelum selesai.'
+                stale_job.locked_at = None
+            if stale_jobs:
+                db.session.commit()
+
             public_photos = GalleryPhoto.query.filter_by(is_public=True, status='Published').order_by(GalleryPhoto.created_at.desc()).limit(10).all()
             for photo in public_photos:
                 job = FaceProcessingJob.query.filter_by(photo_id=photo.id).first()
@@ -149,6 +229,6 @@ def run_scheduled_jobs(app):
                 GalleryPhoto.status == 'Published',
             ).order_by(FaceProcessingJob.created_at.asc()).first()
             if job:
-                process_photo(job.photo_id)
+                spawn_photo_worker(job.photo_id)
     except Exception:
         app.logger.exception('Face-labeling scheduler failed.')
