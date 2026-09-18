@@ -11,9 +11,9 @@ sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='repla
 
 Usage:
   python server_analyzer.py --host <IP> --port <PORT> --user <USER> --password <PASS>
-  python server_analyzer.py --host 103.210.121.29 --port 1990 --user faaris --password 090906sept
-  python server_analyzer.py --host 103.210.121.29 --port 1990 --user faaris --password 090906sept --module attacks
-  python server_analyzer.py --host 103.210.121.29 --port 1990 --user faaris --password 090906sept --block-ip 62.60.130.237
+  python server_analyzer.py --host <HOST> --port <PORT> --user <USER> --password <PASSWORD>
+  python server_analyzer.py --host <HOST> --port <PORT> --user <USER> --password <PASSWORD> --module attacks
+  python server_analyzer.py --host <HOST> --port <PORT> --user <USER> --password <PASSWORD> --block-ip <IP>
 """
 
 import argparse
@@ -812,25 +812,25 @@ def parse_args():
         epilog="""
 Contoh penggunaan:
   # Audit lengkap:
-  python server_analyzer.py --host 103.210.121.29 --port 1990 --user faaris --password 090906sept
+  python server_analyzer.py --host <HOST> --port <PORT> --user <USER> --password <PASSWORD>
 
   # Hanya cek serangan:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept -m attacks
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> -m attacks
 
   # Beberapa modul:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept -m attacks,network,firewall
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> -m attacks,network,firewall
 
   # Blokir IP penyerang:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept --block-ip 62.60.130.237
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> --block-ip <IP>
 
   # Hapus blokir IP:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept --unblock-ip 62.60.130.237
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> --unblock-ip <IP>
 
   # Hardening cepat:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept --harden
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> --harden
 
   # Lihat IP yang diblokir:
-  python server_analyzer.py -H 103.210.121.29 -P 1990 -u faaris -p 090906sept --show-blocked
+  python server_analyzer.py -H <HOST> -P <PORT> -u <USER> -p <PASSWORD> --show-blocked
 
 Modul tersedia:
   system, users, attacks, processes, network, files, ssh, cron, firewall, updates

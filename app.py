@@ -1470,16 +1470,19 @@ def send_push(title, body, user_id=None, sender_id=None, extra_data=None, classr
                         token=u.fcm_token
                     ) for u in users
                 ]
-                # send_each is better for multiple tokens
-                response = messaging.send_each(messages)
-                status = f"Success ({response.success_count}/{len(users)})"
-                
-                # Cleanup invalid tokens if any failed
-                if response.failure_count > 0:
+                # FCM accepts at most 500 messages per multicast request.
+                success_count = 0
+                failure_count = 0
+                for offset in range(0, len(messages), 500):
+                    batch_users = users[offset:offset + 500]
+                    response = messaging.send_each(messages[offset:offset + 500])
+                    success_count += response.success_count
+                    failure_count += response.failure_count
                     for idx, resp in enumerate(response.responses):
-                        if not resp.success:
-                            if "registration-token-not-registered" in str(resp.exception).lower():
-                                users[idx].fcm_token = None
+                        if not resp.success and 'registration-token-not-registered' in str(resp.exception).lower():
+                            batch_users[idx].fcm_token = None
+                status = f"Success ({success_count}/{len(users)})"
+                if failure_count or success_count:
                     db.session.commit()
     except Exception as e:
         print(f"Push Notification General Error: {e}")
@@ -1675,7 +1678,13 @@ def run_automated_reminders():
         else:
             lease = SystemSetting(key='notifications_scheduler_lease', value=(now + timedelta(seconds=55)).isoformat(), description='Lease scheduler notifikasi')
             db.session.add(lease)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except Exception:
+            # Multiple WSGI workers may create the lease row simultaneously.
+            # The unique-key loser must not execute the job after rollback.
+            db.session.rollback()
+            return
         current_day_indo = {'Monday': 'Senin', 'Tuesday': 'Selasa', 'Wednesday': 'Rabu', 'Thursday': 'Kamis', 'Friday': 'Jumat', 'Saturday': 'Sabtu', 'Sunday': 'Minggu'}.get(now.strftime('%A'))
         current_time_plus_15 = (now + timedelta(minutes=15)).strftime('%H:%M')
         
@@ -1778,7 +1787,8 @@ with app.app_context():
     except Exception as _create_all_err:
         app.logger.warning(f'Initial database table creation skipped: {_create_all_err}')
     # Auto-run migrations on startup to ensure schema is always up to date
-    if os.path.exists('migrations'):
+    migrations_path = os.path.join(app.root_path, 'migrations')
+    if os.path.isdir(migrations_path):
         try:
             from flask_migrate import upgrade
             upgrade()
@@ -1922,9 +1932,7 @@ with app.app_context():
                 if not user.classroom_id:
                     if user.student and user.student.classroom_id:
                         user.classroom_id = user.student.classroom_id
-                    else:
-                        user.classroom_id = default_class.id
-                    changed = True
+                        changed = True
             if changed:
                 db.session.commit()
     except Exception as e:
@@ -4675,11 +4683,24 @@ def manage_notifications():
         flash('Akses ditolak.')
         return redirect(url_for('dashboard'))
 
-    active_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
-    if not active_classroom:
-        active_classroom = ClassRoom.query.filter_by(name='Famousbytee.b').first() or ClassRoom.query.first()
+    can_manage_multi = (
+        current_user.role.can_manage_roles or
+        getattr(current_user.role, 'can_manage_notifications_multi_class', False)
+    )
+    user_classroom = current_user.classroom or (current_user.student.classroom if current_user.student else None)
+    active_classroom = _requested_classroom(
+        'classroom_id',
+        user_classroom,
+        'can_manage_notifications_multi_class',
+    )
+    if not active_classroom and not can_manage_multi:
+        flash('Akun belum memiliki kelas aktif untuk mengelola notifikasi.')
+        return redirect(url_for('dashboard'))
     
     if request.method == 'POST':
+        if not active_classroom:
+            flash('Pilih kelas tujuan sebelum mengirim notifikasi.')
+            return redirect(url_for('manage_notifications'))
         if request.is_json:
             data = request.get_json()
             title = (data.get('title') or '').strip()
@@ -4703,7 +4724,14 @@ def manage_notifications():
             return redirect(url_for('manage_notifications'))
 
         if target == 'all':
-            result = send_sidobe_multichannel(title, body, sender_id=current_user.id, allow_sidobe=True, classroom_id=active_classroom.id if active_classroom else None, category='emergency')
+            result = send_sidobe_multichannel(
+                title,
+                body,
+                sender_id=current_user.id,
+                allow_sidobe=current_user.role.sidobe_enabled,
+                classroom_id=active_classroom.id if active_classroom else None,
+                category='emergency',
+            )
             if not result.get('ok'):
                 flash(result.get('error') or 'Notifikasi siaran gagal dikirim.')
                 return redirect(url_for('manage_notifications'))
@@ -4729,10 +4757,6 @@ def manage_notifications():
         log_activity("Kirim Notifikasi", f"Judul: {title}, Target: {target}")
         return redirect(url_for('manage_notifications'))
 
-    can_manage_multi = (
-        current_user.role.can_manage_roles or
-        getattr(current_user.role, 'can_manage_notifications_multi_class', False)
-    )
     allowed_classrooms = ClassRoom.query.order_by(ClassRoom.name.asc()).all() if can_manage_multi else ([active_classroom] if active_classroom else [])
 
     history_query = NotificationHistory.query
@@ -5225,12 +5249,19 @@ def _apply_notification_delivery_update(provider, message_id, status, webhook_ev
     status = str(status or '').strip().upper()
     if not message_id or not status:
         return False
-    history = NotificationHistory.query.filter_by(provider_message_id=message_id).order_by(
+    provider = str(provider or '').strip().lower()
+    history = NotificationHistory.query.filter_by(provider=provider, provider_message_id=message_id).order_by(
         NotificationHistory.sent_at.desc()
     ).first()
     if not history:
         return False
     if webhook_event_id and history.webhook_event_id == webhook_event_id and history.status == status:
+        return True
+    current_status = str(history.status or '').upper()
+    terminal_statuses = {'SUCCESS', 'FAILED'}
+    if current_status in terminal_statuses and status == 'PENDING':
+        return True
+    if current_status == 'SUCCESS' and status == 'FAILED':
         return True
     history.status = status[:99]
     if webhook_event_id:

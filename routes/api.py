@@ -158,10 +158,28 @@ def _can_manage_notification_across_classes(role):
 
 
 def _allowed_notification_classrooms_for_user(user):
-    current = _user_classroom(user)
+    current = user.classroom or (user.student.classroom if user.student else None)
     if user.role and _can_manage_notification_across_classes(user.role):
         return ClassRoom.query.order_by(ClassRoom.name.asc()).all()
     return [current] if current else []
+
+
+def _requested_notification_classroom_for_user(user, data_source=None):
+    """Resolve a notification target class without falling back across tenants."""
+    allowed = _allowed_notification_classrooms_for_user(user)
+    allowed_ids = {item.id for item in allowed}
+    data_source = data_source or {}
+    raw_classroom_id = data_source.get('classroom_id')
+    if raw_classroom_id in (None, ''):
+        current = user.classroom or (user.student.classroom if user.student else None)
+        return current if current in allowed else None
+    try:
+        classroom_id = int(raw_classroom_id)
+    except (TypeError, ValueError):
+        raise ValueError('Format classroom_id tidak valid')
+    if classroom_id not in allowed_ids:
+        raise PermissionError('Kelas tidak diizinkan')
+    return ClassRoom.query.get(classroom_id)
 
 
 def _can_manage_fund_across_classes(role):
@@ -3048,7 +3066,9 @@ def get_notification_history():
     user_id = get_jwt_identity()
     db.session.rollback()
     user = User.query.get(int(user_id))
-    classroom = _user_classroom(user)
+    classroom = user.classroom or (user.student.classroom if user.student else None)
+    if not classroom and not _can_manage_notification_across_classes(user.role):
+        return jsonify([])
     
     # Show notifications that are for "All" or for this specific user
     history_query = NotificationHistory.query.filter(
@@ -3087,7 +3107,12 @@ def get_notification_recipients():
     if not user.role.can_manage_notifications:
         return jsonify({"error": "Unauthorized"}), 403
 
-    classroom = _user_classroom(user)
+    try:
+        classroom = _requested_notification_classroom_for_user(user, request.args)
+    except (ValueError, PermissionError) as exc:
+        return jsonify({'error': str(exc)}), 400
+    if not classroom and not _can_manage_notification_across_classes(user.role):
+        return jsonify({'error': 'Akun belum memiliki kelas aktif'}), 400
     if classroom:
         students = Student.query.filter_by(
             classroom_id=classroom.id
@@ -3166,14 +3191,25 @@ def api_send_notifications():
     if not body:
         body = title
     
-    classroom = _user_classroom(user)
+    try:
+        classroom = _requested_notification_classroom_for_user(user, data)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    except PermissionError as exc:
+        return jsonify({'error': str(exc)}), 403
+    if not classroom:
+        return jsonify({'error': 'Kelas tujuan wajib dipilih'}), 400
 
     if target == 'all':
+        if not user.role.sidobe_enabled:
+            policy = ClassroomNotificationConfig.query.filter_by(classroom_id=classroom.id).first()
+            if policy and policy.default_channel in {'whatsapp', 'both'}:
+                return jsonify({'error': 'Anda tidak memiliki izin mengirim melalui Si Dobe'}), 403
         result = send_multichannel_notification(
             title,
             body,
             sender_id=user.id,
-            allow_whatsapp=True,
+            allow_whatsapp=user.role.sidobe_enabled,
             classroom_id=classroom.id if classroom else None,
             category='emergency',
         )
