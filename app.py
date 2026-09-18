@@ -258,6 +258,13 @@ def migrate_legacy_sidobe_settings():
         if not SystemSetting.query.filter_by(key=key).first():
             db.session.add(SystemSetting(key=key, value=default, description=f'Konfigurasi {key}'))
             changed = True
+    # Existing installations may still point the global default at the retired
+    # provider. Switch only that default; legacy bot records remain untouched.
+    provider_setting = SystemSetting.query.filter_by(key='whatsapp_provider').first()
+    if provider_setting and (provider_setting.value or '').strip().lower() == 'waha':
+        provider_setting.value = 'sidobe'
+        provider_setting.description = 'Provider notifikasi utama Si Dobe'
+        changed = True
     if changed:
         db.session.commit()
 
