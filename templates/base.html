@@ -77,6 +77,11 @@
             padding: 0.75rem;
         }
 
+        .sidebar.minimized .btn-logout {
+            justify-content: center;
+            padding: 0.75rem;
+        }
+
         .sidebar.minimized .sidebar-brand {
             justify-content: center;
             padding: 0;
@@ -149,16 +154,28 @@
         }
 
         .nav-list::-webkit-scrollbar {
-            width: 6px;
+            width: 5px;
+        }
+
+        .nav-list::-webkit-scrollbar-button {
+            display: none;
+            width: 0;
+            height: 0;
         }
 
         .nav-list::-webkit-scrollbar-track {
-            background: transparent;
+            margin: 6px 0;
+            background: rgba(255, 255, 255, .04);
+            border-radius: 999px;
         }
 
         .nav-list::-webkit-scrollbar-thumb {
-            background: rgba(203, 213, 225, 0.35);
+            background: rgba(203, 213, 225, 0.42);
             border-radius: 999px;
+        }
+
+        .nav-list:hover::-webkit-scrollbar-thumb {
+            background: rgba(203, 213, 225, 0.7);
         }
 
         .nav-item {
@@ -199,16 +216,31 @@
         }
 
         .btn-logout {
-            margin-top: auto;
+            margin-top: 0;
             color: #ef4444;
+            background: transparent;
+            border: 0;
+            border-radius: 12px;
             display: flex;
             align-items: center;
             gap: 12px;
             padding: 0.75rem 1rem;
             text-decoration: none;
             font-weight: 600;
+            text-align: left;
             white-space: nowrap;
             overflow: hidden;
+        }
+
+        .sidebar > form {
+            flex: 0 0 auto;
+            margin-top: auto;
+            padding-top: .75rem;
+        }
+
+        .btn-logout:hover {
+            background: rgba(239, 68, 68, .12);
+            color: #fca5a5;
         }
 
         /* Responsive Content */
