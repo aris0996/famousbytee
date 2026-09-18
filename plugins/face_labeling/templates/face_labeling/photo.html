@@ -45,6 +45,7 @@
                     {% endif %}
                     <form method="POST" action="{{ url_for('face_labeling.link_face', face_id=row.face.id) }}" class="face-link-form">
                         <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="photo_id" value="{{ photo.id }}">
                         <select name="user_id" required>
                             <option value="">Pilih akun kelas {{ active_classroom.name }}</option>
                             {% for member in members %}

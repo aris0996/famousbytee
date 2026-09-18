@@ -138,7 +138,20 @@ def detect_photo(photo_id):
 @login_required
 def link_face(face_id):
     require_superadmin()
-    face = PhotoFace.query.get_or_404(face_id)
+    face = PhotoFace.query.get(face_id)
+    if not face:
+        # Re-detection replaces face rows, so an already-open page can submit a
+        # valid-looking but stale face_id. Never silently map it to another face.
+        raw_photo_id = request.form.get('photo_id')
+        try:
+            stale_photo_id = int(raw_photo_id)
+        except (TypeError, ValueError):
+            stale_photo_id = None
+        stale_photo = GalleryPhoto.query.filter_by(id=stale_photo_id).first() if stale_photo_id else None
+        if stale_photo and stale_photo.classroom_id:
+            flash('Hasil deteksi berubah. Halaman foto sudah dimuat ulang; pilih wajah lalu tautkan kembali.', 'warning')
+            return redirect(url_for('face_labeling.photo_detail', photo_id=stale_photo.id))
+        abort(404, description='Data wajah tidak ditemukan. Muat ulang halaman foto dan coba lagi.')
     photo = get_scoped_photo(face.photo_id)
     classroom_id = ensure_photo_class(photo)
     if face.classroom_id != classroom_id:
@@ -148,7 +161,10 @@ def link_face(face_id):
         user_id = int(data.get('user_id', 0))
     except (TypeError, ValueError):
         abort(400, description='Akun tidak valid.')
-    user = User.query.get_or_404(user_id)
+    user = User.query.get(user_id)
+    if not user:
+        flash('Akun kelas sudah berubah. Muat ulang halaman foto lalu pilih akun yang tersedia.', 'warning')
+        return redirect(url_for('face_labeling.photo_detail', photo_id=photo.id))
     if not member_in_class(user, classroom_id):
         abort(403, description='Akun bukan anggota kelas foto.')
 
