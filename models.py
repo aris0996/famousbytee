@@ -272,9 +272,9 @@ class ClassroomNotificationConfig(db.Model):
 class WhatsAppBot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False, unique=True)
-    provider = db.Column(db.String(30), default='sidobe')
-    # Legacy column name retained to avoid a destructive migration. For Sidobe
-    # this stores sender_phone (a registered device number in E.164 format).
+    provider = db.Column(db.String(30), default='waha')
+    # Legacy column name retained for compatibility. It stores a WAHA session
+    # name or a Sidobe sender phone, depending on provider.
     session_name = db.Column(db.String(120), nullable=False)
     base_url = db.Column(db.String(255))
     status = db.Column(db.String(30), default='unknown')
@@ -342,6 +342,9 @@ class NotificationHistory(db.Model):
     user = db.relationship('User', backref='notifications_sent', lazy=True)
     sent_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     status = db.Column(db.String(100)) # Success, Failed, Error Details
+    provider = db.Column(db.String(30), nullable=True)
+    provider_message_id = db.Column(db.String(120), nullable=True, index=True)
+    webhook_event_id = db.Column(db.String(120), nullable=True, index=True)
     classroom = db.relationship('ClassRoom', backref=db.backref('notification_histories', lazy=True), lazy=True)
     bot = db.relationship('WhatsAppBot', backref=db.backref('notification_histories', lazy=True), lazy=True)
 

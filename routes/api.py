@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 import os
 import json
 from werkzeug.utils import secure_filename
-from security_utils import hash_password, verify_password
+from security_utils import hash_password, password_validation_error, verify_password
 from sqlalchemy import or_
 from markupsafe import escape
 
@@ -238,6 +238,50 @@ def _is_fund_record_in_scope(record_classroom_id, classroom):
         return True
     default_classroom = _default_classroom()
     return bool(record_classroom_id is None and default_classroom and classroom.id == default_classroom.id)
+
+
+def _can_manage_record_in_classroom(user, record_classroom_id, multi_permission):
+    """Authorize mutations against a classroom-owned record."""
+    role = getattr(user, 'role', None)
+    if not role:
+        return False
+    if getattr(role, 'can_manage_roles', False) or getattr(role, multi_permission, False):
+        return True
+
+    classroom = _user_classroom(user)
+    if not classroom:
+        return False
+    if record_classroom_id == classroom.id:
+        return True
+
+    default_classroom = _default_classroom()
+    return bool(
+        record_classroom_id is None and
+        default_classroom and
+        classroom.id == default_classroom.id
+    )
+
+
+def _filter_classroom_records(query, model, user, multi_permission):
+    """Limit reads to the active classroom unless a role has explicit multi-class permission."""
+    role = getattr(user, 'role', None)
+    if role and (
+        getattr(role, 'can_manage_roles', False) or
+        getattr(role, multi_permission, False)
+    ):
+        return query
+
+    classroom = _user_classroom(user)
+    if not classroom:
+        return query.filter(model.classroom_id.is_(None))
+
+    default_classroom = _default_classroom()
+    if default_classroom and classroom.id == default_classroom.id:
+        return query.filter(
+            (model.classroom_id == classroom.id) |
+            (model.classroom_id.is_(None))
+        )
+    return query.filter(model.classroom_id == classroom.id)
 
 
 @api_bp.route('/leaderboard', methods=['GET'])
@@ -561,6 +605,10 @@ def change_password():
     
     if not old_password or not new_password:
         return jsonify({"msg": "Old and new password required"}), 400
+
+    password_error = password_validation_error(new_password)
+    if password_error:
+        return jsonify({"msg": password_error}), 400
         
     valid_password, _ = verify_password(user.password, old_password)
     if not valid_password:
@@ -1120,9 +1168,10 @@ def manage_schedules():
         db.session.commit()
         
         preferences = get_notification_preferences_for_classroom(s.classroom_id)
+        notification_result = {'ok': True, 'skipped': True}
         if preferences['schedule_notify_on_create']:
             from app import send_multichannel_notification
-            send_multichannel_notification(
+            notification_result = send_multichannel_notification(
                 "Jadwal Baru Ditambahkan",
                 f"Jadwal {s.subject} ditambahkan pada hari {s.day} pukul {s.time_start}.",
                 sender_id=user.id,
@@ -1131,7 +1180,7 @@ def manage_schedules():
                 category='schedule',
             )
         
-        return jsonify({"status": "success", "id": s.id})
+        return jsonify({"status": "success", "id": s.id, "notification": notification_result})
 
     # GET logic
     classroom = _user_classroom(user)
@@ -1159,6 +1208,10 @@ def modify_schedule(id):
         return jsonify({"error": "Unauthorized"}), 403
         
     s = Schedule.query.get_or_404(id)
+    if not _can_manage_record_in_classroom(
+        user, s.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Jadwal tidak ditemukan atau tidak dapat diakses"}), 404
     
     if request.method == 'DELETE':
         subject_name = s.subject
@@ -1167,9 +1220,10 @@ def modify_schedule(id):
         db.session.commit()
 
         preferences = get_notification_preferences_for_classroom(classroom_id)
+        notification_result = {'ok': True, 'skipped': True}
         if preferences['schedule_notify_on_delete']:
             from app import send_multichannel_notification
-            send_multichannel_notification(
+            notification_result = send_multichannel_notification(
                 "Jadwal Dihapus",
                 f"Jadwal {subject_name} telah dihapus dari sistem.",
                 sender_id=user.id,
@@ -1178,7 +1232,7 @@ def modify_schedule(id):
                 category='schedule',
             )
         
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "notification": notification_result})
         
     if request.method == 'PUT':
         data = request.get_json()
@@ -1192,9 +1246,10 @@ def modify_schedule(id):
         db.session.commit()
         
         preferences = get_notification_preferences_for_classroom(s.classroom_id)
+        notification_result = {'ok': True, 'skipped': True}
         if preferences['schedule_notify_on_edit']:
             from app import send_multichannel_notification
-            send_multichannel_notification(
+            notification_result = send_multichannel_notification(
                 "Jadwal Diperbarui",
                 f"Jadwal {s.subject} telah diperbarui menjadi hari {s.day} pukul {s.time_start}.",
                 sender_id=user.id,
@@ -1203,7 +1258,7 @@ def modify_schedule(id):
                 category='schedule',
             )
         
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "notification": notification_result})
 
 def _schedule_classroom_for_user(user):
     return _user_classroom(user)
@@ -1389,6 +1444,10 @@ def add_schedule_template_item_api(template_id):
 
     from models import ScheduleTemplate, ScheduleTemplateItem
     template = ScheduleTemplate.query.get_or_404(template_id)
+    if not _can_manage_record_in_classroom(
+        user, template.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Template tidak ditemukan atau tidak dapat diakses"}), 404
     data = request.get_json() or {}
     required = ['day', 'time_start', 'time_end', 'subject']
     if any(not (data.get(key) or '').strip() for key in required):
@@ -1418,6 +1477,10 @@ def delete_schedule_template_item_api(item_id):
 
     from models import ScheduleTemplateItem
     item = ScheduleTemplateItem.query.get_or_404(item_id)
+    if not _can_manage_record_in_classroom(
+        user, item.template.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Item template tidak ditemukan atau tidak dapat diakses"}), 404
     db.session.delete(item)
     db.session.commit()
     return jsonify({"status": "success"})
@@ -1432,6 +1495,10 @@ def apply_schedule_template_api(template_id):
     from models import ScheduleTemplate
     classroom = _schedule_classroom_for_user(user)
     template = ScheduleTemplate.query.get_or_404(template_id)
+    if not _can_manage_record_in_classroom(
+        user, template.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Template tidak ditemukan atau tidak dapat diakses"}), 404
     if not template.items:
         return jsonify({"error": "Template belum memiliki item jadwal"}), 400
 
@@ -1461,9 +1528,18 @@ def duplicate_schedule_template_api(template_id):
 
     from models import ScheduleTemplate, ScheduleTemplateItem
     original = ScheduleTemplate.query.get_or_404(template_id)
+    if not _can_manage_record_in_classroom(
+        user, original.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Template tidak ditemukan atau tidak dapat diakses"}), 404
     data = request.get_json() or {}
     duplicate = ScheduleTemplate(
-        classroom_id=original.classroom_id,
+        classroom_id=(
+            original.classroom_id
+            if getattr(user.role, 'can_manage_schedule_multi_class', False)
+            or getattr(user.role, 'can_manage_roles', False)
+            else (_user_classroom(user).id if _user_classroom(user) else None)
+        ),
         name=(data.get('name') or f"Salinan {original.name}").strip(),
         description=original.description,
         created_by=user.id
@@ -1493,6 +1569,10 @@ def delete_schedule_template_api(template_id):
 
     from models import ScheduleTemplate
     template = ScheduleTemplate.query.get_or_404(template_id)
+    if not _can_manage_record_in_classroom(
+        user, template.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Template tidak ditemukan atau tidak dapat diakses"}), 404
     db.session.delete(template)
     db.session.commit()
     return jsonify({"status": "success"})
@@ -1525,6 +1605,7 @@ def get_notification_preferences():
     })
 
 @api_bp.route('/notifications/preferences', methods=['POST'])
+@jwt_required()
 def update_notification_preferences():
     """Update notification preferences for schedule management"""
     from app import get_classroom_notification_policy
@@ -1593,6 +1674,7 @@ def get_notification_preferences_for_classroom(classroom_id, overrides=None):
 
 
 @api_bp.route('/notifications/classrooms/<int:classroom_id>/policy', methods=['GET', 'PUT'])
+@jwt_required()
 def classroom_notification_policy_api(classroom_id):
     user = _api_request_user()
     if not user:
@@ -1642,6 +1724,7 @@ def classroom_notification_policy_api(classroom_id):
 
 
 @api_bp.route('/notifications/classrooms/<int:classroom_id>/whatsapp-binding', methods=['GET', 'PUT'])
+@jwt_required()
 def classroom_whatsapp_binding_api(classroom_id):
     user = _api_request_user()
     if not user:
@@ -1698,6 +1781,7 @@ def classroom_whatsapp_binding_api(classroom_id):
 
 
 @api_bp.route('/notifications/bots', methods=['GET', 'POST'])
+@jwt_required()
 def notification_bots_api():
     user = _api_request_user()
     if not user:
@@ -1720,17 +1804,23 @@ def notification_bots_api():
 
     data = request.get_json(silent=True) or request.form or {}
     name = (data.get('name') or '').strip()
-    sender_phone_raw = (data.get('sender_phone') or data.get('session_name') or '').strip()
+    provider = (data.get('provider') or 'waha').strip().lower() or 'waha'
     if not name:
         return jsonify({'error': 'Nama bot wajib diisi'}), 400
-    from app import _sidobe_e164_phone
-    sender_phone = _sidobe_e164_phone(sender_phone_raw) if sender_phone_raw else ''
-    if sender_phone_raw and not sender_phone:
-        return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
+    if provider not in {'waha', 'sidobe'}:
+        return jsonify({'error': 'Provider harus berupa waha atau sidobe'}), 400
+    sender_phone_raw = (data.get('sender_phone') or data.get('session_name') or '').strip()
+    if provider == 'sidobe':
+        from app import _sidobe_e164_phone
+        sender_phone = _sidobe_e164_phone(sender_phone_raw) if sender_phone_raw else ''
+        if sender_phone_raw and not sender_phone:
+            return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
+    else:
+        sender_phone = sender_phone_raw
     bot = WhatsAppBot(
         name=name,
-        provider=(data.get('provider') or 'sidobe').strip() or 'sidobe',
-        # Empty string means Sidobe chooses the default registered device.
+        provider=provider,
+        # Empty string means the provider uses its configured default device/session.
         session_name=sender_phone,
         base_url=None,
         status=(data.get('status') or 'configured').strip() or 'configured',
@@ -1742,6 +1832,7 @@ def notification_bots_api():
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>', methods=['PUT'])
+@jwt_required()
 def update_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
@@ -1752,12 +1843,20 @@ def update_notification_bot_api(bot_id):
     data = request.get_json(silent=True) or request.form or {}
     if data.get('name') is not None:
         bot.name = (data.get('name') or bot.name).strip() or bot.name
+    if data.get('provider') is not None:
+        provider = (data.get('provider') or '').strip().lower()
+        if provider not in {'waha', 'sidobe'}:
+            return jsonify({'error': 'Provider harus berupa waha atau sidobe'}), 400
+        bot.provider = provider
     if data.get('sender_phone') is not None or data.get('session_name') is not None:
-        from app import _sidobe_e164_phone
         raw_sender_phone = (data.get('sender_phone') or data.get('session_name') or '').strip()
-        sender_phone = _sidobe_e164_phone(raw_sender_phone) if raw_sender_phone else ''
-        if raw_sender_phone and not sender_phone:
-            return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
+        if bot.provider == 'sidobe':
+            from app import _sidobe_e164_phone
+            sender_phone = _sidobe_e164_phone(raw_sender_phone) if raw_sender_phone else ''
+            if raw_sender_phone and not sender_phone:
+                return jsonify({'error': 'Nomor pengirim harus berformat E.164, contoh +628123456789'}), 400
+        else:
+            sender_phone = raw_sender_phone
         bot.session_name = sender_phone
     if data.get('status') is not None:
         bot.status = (data.get('status') or 'configured').strip() or 'configured'
@@ -1768,6 +1867,7 @@ def update_notification_bot_api(bot_id):
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>', methods=['DELETE'])
+@jwt_required()
 def delete_notification_bot_api(bot_id):
     user = _api_request_user()
     if not user:
@@ -1783,14 +1883,26 @@ def delete_notification_bot_api(bot_id):
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>/health', methods=['GET'])
+@jwt_required()
 def notification_bot_health_api(bot_id):
     user = _api_request_user()
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
-    from app import _sidobe_request, _sidobe_e164_phone
+    from app import _sidobe_request, _sidobe_e164_phone, _waha_request, get_whatsapp_setting_value
     bot = WhatsAppBot.query.get_or_404(bot_id)
+    if (bot.provider or '').lower() == 'waha':
+        session_name = (bot.session_name or get_whatsapp_setting_value('waha', 'session', 'default')).strip() or 'default'
+        result = _waha_request('GET', f'/api/sessions/{session_name}', base_url_override=bot.base_url)
+        if not result.get('ok'):
+            return jsonify({'ok': False, 'bot_id': bot.id, 'session_name': session_name, 'error': result.get('error', 'Gagal cek WAHA')}), 400
+        data = result.get('data') or {}
+        status = data.get('status') if isinstance(data, dict) else 'unknown'
+        bot.status = str(status or 'unknown')
+        bot.last_seen_at = datetime.now()
+        db.session.commit()
+        return jsonify({'ok': True, 'bot_id': bot.id, 'session_name': session_name, 'status': status or 'unknown'})
     phone = _sidobe_e164_phone(bot.session_name)
     if not phone:
         # sender_phone is optional in Sidobe. Legacy session values therefore
@@ -1815,6 +1927,7 @@ def notification_bot_health_api(bot_id):
 
 
 @api_bp.route('/notifications/bots/<int:bot_id>/groups', methods=['GET'])
+@jwt_required()
 def notification_bot_groups_api(bot_id):
     user = _api_request_user()
     if not user:
@@ -1822,10 +1935,14 @@ def notification_bot_groups_api(bot_id):
     if not user or not user.role.sidobe_enabled:
         return jsonify({"error": "Unauthorized"}), 403
     bot = WhatsAppBot.query.get_or_404(bot_id)
-    from app import _sidobe_request, _sidobe_e164_phone
-    phone = _sidobe_e164_phone(bot.session_name)
-    path = f'/whatsapp-groups?from_phone={phone[1:]}' if phone else '/whatsapp-groups'
-    result = _sidobe_request('GET', path)
+    from app import _sidobe_request, _sidobe_e164_phone, _waha_request, get_whatsapp_setting_value
+    if (bot.provider or '').lower() == 'waha':
+        session_name = (bot.session_name or get_whatsapp_setting_value('waha', 'session', 'default')).strip() or 'default'
+        result = _waha_request('GET', f'/api/{session_name}/groups', base_url_override=bot.base_url)
+    else:
+        phone = _sidobe_e164_phone(bot.session_name)
+        path = f'/whatsapp-groups?from_phone={phone[1:]}' if phone else '/whatsapp-groups'
+        result = _sidobe_request('GET', path, base_url_override=bot.base_url)
     if not result.get('ok'):
         return jsonify(result), 400
     response = result.get('data') or {}
@@ -1834,11 +1951,11 @@ def notification_bot_groups_api(bot_id):
     for item in chats:
         if not isinstance(item, dict):
             continue
-        chat_id = str(item.get('id') or '').strip()
+        chat_id = str(item.get('id') or item.get('chatId') or '').strip()
         if not chat_id:
             continue
         normalized.append({
-            'name': str(item.get('name') or chat_id),
+            'name': str(item.get('name') or item.get('subject') or item.get('name') or chat_id),
             'chat_id': chat_id,
             'participants': 0,
             'owner': str(item.get('owner_phone') or '-'),
@@ -1847,6 +1964,7 @@ def notification_bot_groups_api(bot_id):
 
 
 @api_bp.route('/notifications/sidobe/dashboard', methods=['GET'])
+@jwt_required()
 def notification_sidobe_dashboard_api():
     user = _api_request_user()
     if not user:
@@ -1894,6 +2012,36 @@ def notification_sidobe_dashboard_api():
         dashboard['session_error'] = sessions_result.get('error', 'Gagal memuat session Si Dobe')
 
     return jsonify(dashboard)
+
+
+@api_bp.route('/notifications/waha/dashboard', methods=['GET'])
+@jwt_required()
+def notification_waha_dashboard_api():
+    user = _api_request_user()
+    if not user:
+        return jsonify({'error': 'Unauthorized'}), 401
+    if not user.role.sidobe_enabled:
+        return jsonify({'error': 'Unauthorized'}), 403
+    from app import _waha_request
+    result = _waha_request('GET', '/api/sessions')
+    if not result.get('ok'):
+        return jsonify({'ok': False, 'worker_error': result.get('error', 'Gagal memuat WAHA'), 'sessions': []}), 400
+    raw = result.get('data') or []
+    sessions = raw if isinstance(raw, list) else raw.get('sessions', raw.get('data', [])) if isinstance(raw, dict) else []
+    return jsonify({
+        'ok': True,
+        'base_url': '',
+        'workers': [],
+        'worker_error': '',
+        'session_error': '',
+        'sessions': [{
+            'name': str(item.get('name') or item.get('id') or '-'),
+            'status': str(item.get('status') or 'unknown'),
+            'account': str(item.get('me') or '-'),
+            'server': 'WAHA',
+            'qr': '',
+        } for item in sessions if isinstance(item, dict)],
+    })
 
 @api_bp.route('/notifications/sidobe/sessions/create', methods=['POST'])
 @jwt_required()
@@ -2009,6 +2157,10 @@ def send_schedule_whatsapp(id):
         return jsonify({"error": "Perlu izin kelola jadwal dan Si Dobe"}), 403
     
     schedule = Schedule.query.get_or_404(id)
+    if not _can_manage_record_in_classroom(
+        user, schedule.classroom_id, 'can_manage_schedule_multi_class'
+    ):
+        return jsonify({"error": "Jadwal tidak ditemukan atau tidak dapat diakses"}), 404
     
     data = request.get_json() or {}
     action = data.get('action', 'update')  # create, update, delete, custom
@@ -2778,6 +2930,10 @@ from PIL import Image
 def process_image_upload(file):
     if not file: return None
     try:
+        allowed_mimetypes = {'image/jpeg', 'image/png', 'image/webp'}
+        if (file.mimetype or '').lower() not in allowed_mimetypes:
+            return None
+
         # Using current_app.config
         gallery_dir = os.path.join(current_app.config['UPLOAD_FOLDER'], 'gallery')
         thumb_dir = os.path.join(gallery_dir, 'thumbnails')
@@ -2790,6 +2946,12 @@ def process_image_upload(file):
         thumbpath = os.path.join(thumb_dir, filename)
 
         img = Image.open(file.stream)
+        img.verify()
+        file.stream.seek(0)
+        img = Image.open(file.stream)
+        width, height = img.size
+        if width <= 0 or height <= 0 or width * height > 25_000_000:
+            return None
         if img.mode in ("RGBA", "P"): img = img.convert("RGB")
         
         # Save Preview/Standard
@@ -2905,6 +3067,8 @@ def get_notification_history():
         "title": h.title,
         "body": h.body,
         "channel": h.channel or 'push',
+        "provider": h.provider,
+        "provider_message_id": h.provider_message_id,
         "category": h.category,
         "delivery_mode": h.delivery_mode,
         "chat_id": h.chat_id,
@@ -3005,7 +3169,7 @@ def api_send_notifications():
     classroom = _user_classroom(user)
 
     if target == 'all':
-        send_multichannel_notification(
+        result = send_multichannel_notification(
             title,
             body,
             sender_id=user.id,
@@ -3013,6 +3177,8 @@ def api_send_notifications():
             classroom_id=classroom.id if classroom else None,
             category='emergency',
         )
+        if not result.get('ok'):
+            return jsonify(result), 400
     else:
         target_user_id = None
         if target.startswith('student:'):
@@ -3038,7 +3204,7 @@ def api_send_notifications():
         if not target_user.fcm_token:
             return jsonify({"error": "Penerima belum memiliki token push aktif"}), 400
 
-        send_push(
+        result = send_push(
             title,
             body,
             user_id=target_user_id,
@@ -3046,8 +3212,10 @@ def api_send_notifications():
             classroom_id=classroom.id if classroom else None,
             category='emergency',
         )
+        if not result.get('ok'):
+            return jsonify(result), 400
         
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "result": result})
 
 @api_bp.route('/fund/add', methods=['POST'])
 @jwt_required()
@@ -3270,7 +3438,10 @@ def get_assignments():
     user = _api_request_user_or_session(require_api_access=True)
     if not user:
         return jsonify({"error": "Unauthorized"}), 401
-    assignments = Assignment.query.order_by(Assignment.deadline.asc()).all()
+    assignments_query = _filter_classroom_records(
+        Assignment.query, Assignment, user, 'can_manage_assignments_multi_class'
+    )
+    assignments = assignments_query.order_by(Assignment.deadline.asc()).all()
     return jsonify([{
         "id": a.id,
         "title": a.title,
@@ -3299,6 +3470,7 @@ def create_assignment():
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     a = Assignment(
+        classroom_id=_user_classroom(user).id if _user_classroom(user) else None,
         title=title,
         subject=subject,
         deadline=deadline,
@@ -3308,7 +3480,7 @@ def create_assignment():
     db.session.commit()
     
     from app import send_multichannel_notification
-    send_multichannel_notification(
+    notification_result = send_multichannel_notification(
         "Tugas Baru!",
         f"Tugas {a.subject}: {a.title}. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
         sender_id=user.id,
@@ -3318,7 +3490,7 @@ def create_assignment():
         category='assignment',
     )
     
-    return jsonify({"status": "success", "id": a.id})
+    return jsonify({"status": "success", "id": a.id, "notification": notification_result})
 
 @api_bp.route('/assignments/<int:id>', methods=['PUT', 'DELETE'])
 @jwt_required()
@@ -3329,6 +3501,10 @@ def modify_assignment(id):
         return jsonify({"error": "Unauthorized"}), 403
         
     a = Assignment.query.get_or_404(id)
+    if not _can_manage_record_in_classroom(
+        user, a.classroom_id, 'can_manage_assignments_multi_class'
+    ):
+        return jsonify({"error": "Tugas tidak ditemukan atau tidak dapat diakses"}), 404
     
     if request.method == 'DELETE':
         db.session.delete(a)
@@ -3352,7 +3528,7 @@ def modify_assignment(id):
         db.session.commit()
         
         from app import send_multichannel_notification
-        send_multichannel_notification(
+        notification_result = send_multichannel_notification(
             "Tugas Diperbarui",
             f"Tugas {a.subject}: {a.title} telah diperbarui. Deadline: {a.deadline.strftime('%d %b %H:%M')}",
             sender_id=user.id,
@@ -3362,4 +3538,4 @@ def modify_assignment(id):
             category='assignment',
         )
         
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "notification": notification_result})

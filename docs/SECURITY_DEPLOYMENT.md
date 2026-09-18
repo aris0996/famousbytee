@@ -1,9 +1,10 @@
 # Security deployment checklist
 
-1. Generate new independent values for `SECRET_KEY`, `JWT_SECRET_KEY`, database password, and `SIDOBE_WEBHOOK_SECRET`.
+1. Generate new independent values for `SECRET_KEY`, `JWT_SECRET_KEY`, database password, `WAHA_WEBHOOK_SECRET`, and the provider API keys.
 2. Put them in the production environment using `.env.example` as the variable list. Never commit `.env`.
+   For WAHA set `WAHA_BASE_URL`, `WAHA_API_KEY`, `WAHA_SESSION`, and `WAHA_WEBHOOK_SECRET`; use `WHATSAPP_PROVIDER=waha` unless a bot explicitly selects the optional Si Dobe adapter.
 3. Change the database user's password on the database server, then update `DB_PASS` atomically.
-4. Configure Si Dobe to send `X-Webhook-Secret` with the same `SIDOBE_WEBHOOK_SECRET` value.
+4. Configure WAHA to send `X-Webhook-Secret` with the same `WAHA_WEBHOOK_SECRET` value. Configure the optional Si Dobe webhook with its documented `X-Webhook-Signature` header and the same Si Dobe secret key used for API calls.
 5. Apply `docs/apache-security.conf.example` in the Apache VirtualHost and restart Apache.
 6. Deploy the application, restart every WSGI worker, then log in again because rotating session/JWT secrets invalidates existing sessions.
 7. Purge the historical `config.py` secret from Git history if this repository has ever been shared, and rotate credentials again after the purge.
