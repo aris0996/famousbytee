@@ -317,6 +317,34 @@
         }
 
         @media (min-width: 769px) {
+            /* Desktop uses one document scroll. The sidebar grows with the
+               page instead of competing with the main content for scrolling. */
+            body {
+                align-items: stretch;
+                overflow-y: visible;
+            }
+
+            .sidebar {
+                align-self: stretch;
+                height: auto;
+                min-height: 100vh;
+                overflow: visible;
+            }
+
+            .nav-list {
+                flex: 0 0 auto;
+                overflow: visible;
+                overscroll-behavior: auto;
+            }
+
+            .main-content {
+                overflow: visible;
+            }
+
+            .btn-logout {
+                margin-top: 1.5rem;
+            }
+
             .mobile-toggle {
                 display: none;
             }
