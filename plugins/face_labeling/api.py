@@ -28,6 +28,23 @@ face_labeling_api_bp = Blueprint(
 APPROVED_MATCH_STATUSES = {'approved', 'auto_linked'}
 
 
+def _safe_user_display_name(user, fallback='Pengguna Famousbytee'):
+    """Serialize a member name without exposing a username to mobile clients."""
+    student = getattr(user, 'student', None)
+    linked_name = str(getattr(student, 'full_name', '') or '').strip()
+    if linked_name:
+        return linked_name
+
+    full_name = str(getattr(user, 'full_name', '') or '').strip()
+    if full_name:
+        return full_name
+
+    role_name = str(getattr(getattr(user, 'role', None), 'name', '') or '').lower()
+    if 'admin' in role_name or 'pengelola' in role_name:
+        return 'Akun admin'
+    return fallback
+
+
 def _jwt_user():
     """Resolve only an API JWT user; Flask sessions are intentionally ignored."""
     identity = get_jwt_identity()
@@ -203,7 +220,7 @@ def _photo_payload(photo, face_data=None, match_status=None, face_bbox=None):
         'status': photo.status,
         'is_public': bool(photo.is_public),
         'classroom_id': photo.classroom_id,
-        'uploaded_by': (photo.user.full_name if photo.user and photo.user.full_name else 'System'),
+        'uploaded_by': _safe_user_display_name(photo.user, 'System'),
         'created_at': photo.created_at.isoformat(),
         'face': face_data or {
             'enabled': is_enabled(),

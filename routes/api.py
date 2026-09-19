@@ -99,6 +99,23 @@ def _permission_payload(role):
     }
 
 
+def _safe_user_display_name(user, fallback='Pengguna Famousbytee'):
+    """Return a member-facing name without exposing an admin username."""
+    student = getattr(user, 'student', None)
+    linked_name = str(getattr(student, 'full_name', '') or '').strip()
+    if linked_name:
+        return linked_name
+
+    full_name = str(getattr(user, 'full_name', '') or '').strip()
+    if full_name:
+        return full_name
+
+    role_name = str(getattr(getattr(user, 'role', None), 'name', '') or '').lower()
+    if 'admin' in role_name or 'pengelola' in role_name:
+        return 'Akun admin'
+    return fallback
+
+
 def _can_access_multi_class_data(role):
     return bool(
         getattr(role, 'can_manage_roles', False) or
@@ -647,6 +664,8 @@ def login():
                 "id": user.id,
                 "username": user.username,
                 "full_name": user.full_name,
+                "display_name": _safe_user_display_name(user),
+                "display_role": user.role.name if user.role else 'Member',
                 "email": user.email,
                 "role": user.role.name,
                 "points": user.points or 0,
@@ -739,6 +758,8 @@ def get_profile():
         "id": user.id,
         "username": user.username,
         "full_name": user.full_name,
+        "display_name": _safe_user_display_name(user),
+        "display_role": user.role.name if user.role else 'Member',
         "email": user.email,
         "role": user.role.name,
         "points": user.points or 0,
@@ -748,6 +769,67 @@ def get_profile():
         "permissions": _permission_payload(user.role),
         "student": student_data
     })
+
+@api_bp.route('/profile/photos/uploads', methods=['GET'])
+@jwt_required()
+def get_profile_uploaded_photos():
+    """Return only photos uploaded by the authenticated account."""
+    try:
+        user_id = int(get_jwt_identity())
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    user = User.query.get(user_id)
+    if not user or not getattr(user.role, 'can_use_api', False):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    allowed_classroom_ids = {
+        classroom.id for classroom in _allowed_classrooms_for_user(user)
+    }
+    scope_filter = GalleryPhoto.classroom_id.is_(None)
+    if allowed_classroom_ids:
+        scope_filter = or_(
+            GalleryPhoto.classroom_id.is_(None),
+            GalleryPhoto.classroom_id.in_(allowed_classroom_ids),
+        )
+
+    photos = GalleryPhoto.query.filter(
+        GalleryPhoto.uploaded_by == user.id,
+        scope_filter,
+    ).order_by(GalleryPhoto.created_at.desc()).all()
+
+    from plugins.face_labeling.api import face_metadata_for_photos
+    face_metadata = face_metadata_for_photos(photos, user)
+
+    def photo_payload(photo):
+        return {
+            "id": photo.id,
+            "filename": photo.filename,
+            "thumbnail": photo.thumbnail,
+            "caption": photo.caption,
+            "tags": photo.tags,
+            "status": photo.status,
+            "is_public": bool(photo.is_public),
+            "classroom_id": photo.classroom_id,
+            "classroom_name": photo.classroom.name if photo.classroom else None,
+            "uploaded_by": _safe_user_display_name(photo.user, 'Pengguna'),
+            "created_at": photo.created_at.isoformat(),
+            "face": face_metadata.get(photo.id, {
+                'enabled': False,
+                'status': 'not_requested',
+                'face_count': None,
+                'faces': [],
+            }),
+            "comments": [{
+                "id": comment.id,
+                "user": _safe_user_display_name(comment.user, 'Pengguna'),
+                "body": comment.body,
+                "time": comment.created_at.strftime('%d %b %H:%M'),
+            } for comment in photo.comments],
+        }
+
+    return jsonify({'photos': [photo_payload(photo) for photo in photos]})
+
 
 @api_bp.route('/profile/classroom', methods=['PUT'])
 @jwt_required(optional=True)
@@ -2912,7 +2994,7 @@ def get_gallery():
         "status": p.status,
         "is_public": p.is_public,
         "classroom_id": p.classroom_id,
-        "uploaded_by": p.user.full_name if p.user else "System",
+        "uploaded_by": _safe_user_display_name(p.user, "System"),
         "created_at": p.created_at.isoformat(),
         "face": face_metadata.get(p.id, {
             'enabled': False,
@@ -2922,7 +3004,7 @@ def get_gallery():
         }),
         "comments": [{
             "id": c.id,
-            "user": c.user.student.full_name if c.user.student else c.user.full_name or c.user.username,
+            "user": _safe_user_display_name(c.user, "Pengguna"),
             "body": c.body,
             "time": c.created_at.strftime('%d %b %H:%M')
         } for c in p.comments]
