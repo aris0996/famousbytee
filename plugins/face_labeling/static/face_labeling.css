@@ -37,6 +37,7 @@
 .face-canvas img { display:block; width:100%; height:auto; }
 .face-box { position:absolute; border:2px solid #ffb347; border-radius:8px; box-shadow:0 0 0 1px rgba(16,25,54,.35); }
 .face-box b { position:absolute; top:-1.55rem; left:-2px; min-width:22px; padding:.2rem .35rem; border-radius:6px 6px 0 0; color:#101936; background:#ffb347; font-size:.7rem; text-align:center; }
+.public-face-count { position:absolute; right:.65rem; bottom:.65rem; z-index:2; padding:.35rem .55rem; border-radius:999px; color:#fff; background:rgba(16,25,54,.78); font-size:.7rem; font-weight:800; }
 .face-card-actions { display:flex; align-items:center; gap:.75rem; flex-wrap:wrap; margin-top:1rem; }
 .face-status.failed { color:#dc2626; }
 .face-status.completed { color:#059669; }

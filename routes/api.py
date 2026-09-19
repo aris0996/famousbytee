@@ -2900,6 +2900,8 @@ def get_gallery():
 
     photos = photos_query.order_by(GalleryPhoto.created_at.desc()).all()
 
+    from plugins.face_labeling.api import face_metadata_for_photos
+    face_metadata = face_metadata_for_photos(photos, user)
 
     return jsonify([{
         "id": p.id,
@@ -2909,8 +2911,15 @@ def get_gallery():
         "tags": p.tags,
         "status": p.status,
         "is_public": p.is_public,
+        "classroom_id": p.classroom_id,
         "uploaded_by": p.user.full_name if p.user else "System",
         "created_at": p.created_at.isoformat(),
+        "face": face_metadata.get(p.id, {
+            'enabled': False,
+            'status': 'not_requested',
+            'face_count': None,
+            'faces': [],
+        }),
         "comments": [{
             "id": c.id,
             "user": c.user.student.full_name if c.user.student else c.user.full_name or c.user.username,

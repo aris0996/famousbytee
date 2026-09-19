@@ -337,12 +337,12 @@ def public_photo_faces(photo_id):
     job = FaceProcessingJob.query.filter_by(photo_id=photo.id).first()
     if not job:
         enqueue_photo(photo.id)
-        return jsonify({'ok': True, 'status': 'queued', 'faces': []})
+        return jsonify({'ok': True, 'status': 'queued', 'face_count': None})
     if job.status != 'completed':
-        return jsonify({'ok': True, 'status': job.status, 'faces': []})
+        return jsonify({'ok': True, 'status': job.status, 'face_count': None})
     faces = PhotoFace.query.filter_by(photo_id=photo.id).all()
     return jsonify({
         'ok': True,
         'status': 'completed',
-        'faces': [{'bbox': _face_json(face), 'quality_score': face.quality_score} for face in faces],
+        'face_count': len(faces),
     })
